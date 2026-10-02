@@ -52,7 +52,7 @@ Decisions that still belong to the project owner are listed at the end.
 | Source | What it is | Use it for | Watch out |
 |---|---|---|---|
 | **The original `dr.exe`** (Steam / Remedy freeware, 2009) | Remedy's official Windows port. Jari Komppa made it from the original source code; it uses SDL 1.2, OpenGL and FMOD. Its readme is in the game folder (`readme/index.html`). | **Ground truth.** Run it for side-by-side comparison. Read its disassembly when in doubt. | 32-bit Windows only. On macOS/Linux use CrossOver/Wine. Never modify the installed copy. |
-| **DreeRally** — [victortrnka/DreeRally](https://github.com/victortrnka/DreeRally/tree/foundation) | A readable C decompilation of that `dr.exe`, kept 1:1 function-for-function and **playable**. Its `foundation` branch (to be merged into `0.3.x`) has over 200 `fix:` commits, each verified against the original. | **Executable specification.** When you need to know exactly what the game does, read the corresponding DreeRally function (original address in its `//----- (00XXXXXX)` marker), or run it and log state. | Still decompiled code: ints used as pointers, Hex-Rays names (`dword_45EB50`), 32-bit only. Read `doc/FINDINGS.md` before trusting any odd-looking expression. |
+| **DreeRally** — [victortrnka/DreeRally](https://github.com/victortrnka/DreeRally/tree/0.4.x) | A readable C decompilation of that `dr.exe`, kept 1:1 function-for-function and **playable**. Its `0.4.x` branch has over 200 `fix:` commits, each verified against the original. | **Executable specification.** When you need to know exactly what the game does, read the corresponding DreeRally function (original address in its `//----- (00XXXXXX)` marker), or run it and log state. | Still decompiled code: ints used as pointers, Hex-Rays names (`dword_45EB50`), 32-bit only. Read `doc/FINDINGS.md` before trusting any odd-looking expression. |
 | **dRally** — [urxp/dRally](https://github.com/urxp/dRally) | An independent decompilation of the **DOS** version (1996). It runs natively, 64-bit, on Linux with SDL2. MIT. | A second opinion on game logic: the same source, a different compiler. Its struct layouts with offsets (`drally_structs_fixed.h`); how it solved 64-bit and the sound playback; DOS multiplayer (IPX). | Its addresses do **not** map to the Windows exe; match functions by strings and constants. The DOS version differs in video, sound, input, the CD check and multiplayer. |
 
 The game data is identical between the DOS and Windows versions: dRally needs the same BPA files.
@@ -229,6 +229,6 @@ This setup worked well for DreeRally:
 ## Links
 
 - DeadRally: https://github.com/victortrnka/DeadRally
-- DreeRally (Windows decompilation, oracle): https://github.com/victortrnka/DreeRally
+- DreeRally (Windows decompilation, oracle): https://github.com/victortrnka/DreeRally/tree/0.4.x
 - dRally (DOS decompilation, MIT): https://github.com/urxp/dRally
 - Original game: Death Rally (Classic) on Steam, or Remedy's 2009 freeware release
