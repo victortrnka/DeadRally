@@ -7,9 +7,12 @@
 #![forbid(unsafe_code)]
 
 mod frame;
+mod game;
 mod input;
+mod test_scene;
 
 pub use frame::{Frame, expand_6bit};
+pub use game::Game;
 pub use input::{InputEvent, Key, PadAxis, PadButton};
 
 /// Simulation ticks per second. The original runs its logic at 70 Hz and stores lap times in
