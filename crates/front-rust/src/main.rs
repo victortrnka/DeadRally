@@ -1,5 +1,5 @@
-//! Platform spike candidate: the DeadRally test scene on winit, wgpu (via pixels), cpal and
-//! gilrs (spec section 7).
+//! Platform spike candidate: the DeadRally test scene on winit, wgpu, cpal and gilrs (spec
+//! section 7).
 //!
 //! Options: `-window` starts windowed (default: borderless fullscreen at the desktop
 //! resolution); `-novsync` turns vsync off, for measuring present cost. Alt+Enter toggles
@@ -14,10 +14,9 @@ use std::error::Error;
 use std::sync::{Arc, PoisonError};
 use std::time::{Duration, Instant};
 
-use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
+use deadrally_core::host::{AudioGate, Pacer, RunStats};
 use deadrally_core::{AUDIO_CHANNELS, Game, InputEvent, PadAxis};
 use gilrs::{Axis, EventType, Gilrs};
-use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -26,7 +25,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::audio::SampleQueue;
-use crate::present::Presenter;
+use crate::present::Gpu;
 
 struct Options {
     windowed: bool,
@@ -59,12 +58,11 @@ fn stick(value: f32, invert: bool) -> i16 {
     (value.clamp(-1.0, 1.0) * 32_767.0) as i16
 }
 
-/// Window, GPU surface and presenter, created once the event loop is running.
+/// The window and its GPU side, created once the event loop is running.
 struct Display {
     window: Arc<Window>,
-    pixels: Pixels<'static>,
-    presenter: Presenter,
-    buffer_size: (u32, u32),
+    gpu: Gpu,
+    rgba: Vec<u8>,
 }
 
 struct App {
@@ -96,19 +94,11 @@ impl App {
             attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
         }
         let window = Arc::new(event_loop.create_window(attributes)?);
-        let size = window.inner_size();
-        let frame = self.game.frame();
-        let surface =
-            SurfaceTexture::new(size.width.max(1), size.height.max(1), Arc::clone(&window));
-        let pixels = PixelsBuilder::new(frame.width, frame.height, surface)
-            .enable_vsync(self.options.vsync)
-            .build()?;
-        let presenter = Presenter::new(&pixels);
+        let gpu = Gpu::new(Arc::clone(&window), self.options.vsync)?;
         Ok(Display {
             window,
-            pixels,
-            presenter,
-            buffer_size: (frame.width, frame.height),
+            gpu,
+            rgba: Vec::new(),
         })
     }
 
@@ -187,19 +177,9 @@ impl App {
         };
         let present_start = Instant::now();
         let frame = self.game.frame();
-        if display.buffer_size != (frame.width, frame.height) {
-            display.pixels.resize_buffer(frame.width, frame.height)?;
-            display.presenter = Presenter::new(&display.pixels);
-            display.buffer_size = (frame.width, frame.height);
-        }
-        frame.write_rgba(display.pixels.frame_mut());
-        let size = display.window.inner_size();
-        let viewport = letterbox(size.width, size.height, frame.aspect);
-        let (presenter, smooth) = (&display.presenter, self.smooth);
-        display.pixels.render_with(|encoder, target, _| {
-            presenter.render(encoder, target, viewport, smooth);
-            Ok(())
-        })?;
+        display.rgba.resize(frame.pixels.len() * 4, 0);
+        frame.write_rgba(&mut display.rgba);
+        display.gpu.present(&frame, &display.rgba, self.smooth)?;
         self.stats
             .add_present(u32::try_from(present_start.elapsed().as_micros()).unwrap_or(u32::MAX));
         Ok(())
@@ -224,15 +204,6 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => {
-                if let Some(display) = &mut self.display
-                    && size.width > 0
-                    && size.height > 0
-                    && let Err(error) = display.pixels.resize_surface(size.width, size.height)
-                {
-                    self.fail(event_loop, error.into());
-                }
-            }
             WindowEvent::ModifiersChanged(modifiers) => self.alt_held = modifiers.state().alt_key(),
             WindowEvent::KeyboardInput {
                 event:
