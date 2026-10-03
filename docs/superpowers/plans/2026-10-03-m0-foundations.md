@@ -14,7 +14,7 @@
 
 - Toolchain pinned in `rust-toolchain.toml`: `channel = "1.99.0"`, components `rustfmt`, `clippy`. Edition 2024, resolver 3.
 - Dependency versions (verified): `sdl3 = { version = "0.20.0", features = ["build-from-source-static"] }`, `winit = "0.30.13"`, `pixels = "0.17.2"`, `cpal = "0.18.2"`, `gilrs = "0.11.2"`, `sha2 = "0.11.0"`, `toml = "1.1.6"`, `directories = "6.0.0"`, dev `tempfile = "3.27.0"`. Newer semver-compatible patch releases resolved by Cargo are fine.
-- Workspace licence field `GPL-3.0-only` (the owner may switch it to `GPL-3.0-or-later`; change only the root `Cargo.toml`).
+- Licence: `GPL-3.0-or-later` (owner's decision, 2026-10-03), in the root `Cargo.toml` and the docs.
 - `[workspace.lints.rust] unsafe_code = "forbid"`; every crate has `[lints] workspace = true`.
 - `overflow-checks = true` in `dev`, `test` and `release`; dependencies at `opt-level = 2` in `dev`.
 - `deadrally-core`: no platform crates, `#![forbid(unsafe_code)]`, determinism bans in `crates/core/clippy.toml`, integer arithmetic only in the test scene.
@@ -139,7 +139,7 @@ members = ["crates/*"]
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.99"
-license = "GPL-3.0-only"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/victortrnka/DeadRally"
 publish = false
 
@@ -5275,7 +5275,7 @@ DeadRally is a clean, native reimplementation of *Death Rally* (Remedy, 2009) in
 
 1. **Faithfulness first.** Anything that changes how the game plays (timings, physics, prices, AI) must match the original first. Improvements come later, as options that default to the original behaviour.
 2. **Never commit game data:** BPA, HAF, the original exe or DLLs, saves, sound, music, or screenshots that are mostly original art. `.gitignore` and `scripts/check-no-game-data.sh` (run in CI) enforce this. Never `git add -f` such files.
-3. **Provenance.** New code is ours (GPL-3.0). Facts, file formats and constants from DreeRally or dRally are fine: describe them in your own words and credit them. Code copied from dRally (MIT) keeps its notice. Do not paste decompiled DreeRally code; re-implement from understanding. When unsure, ask the owner.
+3. **Provenance.** New code is ours (GPL-3.0-or-later). Facts, file formats and constants from DreeRally or dRally are fine: describe them in your own words and credit them. Code copied from dRally (MIT) keeps its notice. Do not paste decompiled DreeRally code; re-implement from understanding. When unsure, ask the owner.
 4. **Evidence for every gameplay claim:** a parity log, a side-by-side screenshot, or a reference to the original's code (a DreeRally function with its original address).
 
 ## Determinism (`crates/core`)
@@ -5331,7 +5331,7 @@ Thank you for helping. Read [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md) first
 
 1. **Faithfulness first.** Gameplay must match the original before anything is improved; improvements are options that default to the original behaviour.
 2. **No game data in the repository**, ever: no BPA or HAF files, no executables or DLLs, no saves, sound, music, or screenshots of original art. CI rejects tracked files that match `.gitignore`.
-3. **Know where code comes from.** Our code is GPL-3.0. Facts and formats from [DreeRally](https://github.com/victortrnka/DreeRally/tree/0.4.x) and [dRally](https://github.com/urxp/dRally) are welcome with credit; copied dRally code keeps its MIT notice; do not paste decompiled DreeRally code.
+3. **Know where code comes from.** Our code is GPL-3.0-or-later. Facts and formats from [DreeRally](https://github.com/victortrnka/DreeRally/tree/0.4.x) and [dRally](https://github.com/urxp/dRally) are welcome with credit; copied dRally code keeps its MIT notice; do not paste decompiled DreeRally code.
 4. **Evidence:** every gameplay change comes with a parity log, a side-by-side screenshot, or a reference to the original's code.
 
 ## You need the original game
@@ -5423,7 +5423,7 @@ cargo run --release -p deadrally -- -window
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the full setup, the data configuration and the rules.
 
-Licence: GPL-3.0, see [LICENSE](LICENSE).
+Licence: GPL-3.0-or-later, see [LICENSE](LICENSE).
 ````
 
 - [ ] **Step 4: Update the brief** (`docs/PROJECT_BRIEF.md`; each change replaces one exact passage)

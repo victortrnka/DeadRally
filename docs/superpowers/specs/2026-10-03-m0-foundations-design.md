@@ -32,7 +32,7 @@ The brief's sub-project order is therefore: **A = M0** (this spec), **B = oracle
 
 **In M0**
 
-1. Cargo workspace, pinned toolchain, GPL-3.0 metadata, `.gitignore`.
+1. Cargo workspace, pinned toolchain, `GPL-3.0-or-later` metadata (owner's decision), `.gitignore`.
 2. `deadrally-core`: deterministic core skeleton (fixed 1/70 s tick, frame and audio output, input events) running the test scene.
 3. `deadrally-gamedata`: locating and validating the game data, plus config file reading.
 4. `deadrally-headless`: determinism runner and `check-data` command.
