@@ -8,6 +8,7 @@
 
 mod frame;
 mod game;
+pub mod host;
 mod input;
 mod test_scene;
 
