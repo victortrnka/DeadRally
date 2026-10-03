@@ -1,7 +1,7 @@
 # M0 — Repository foundations: design
 
 - **Date:** 2026-10-03
-- **Status:** agreed in brainstorming with the owner; this written spec awaits review.
+- **Status:** approved by the owner on 2026-10-03; amended the same day with what compiling and running the design revealed (section 18).
 - **Scope:** milestone M0 of [PROJECT_BRIEF.md](../../PROJECT_BRIEF.md) §7.
 - **Supersedes:** the C++20/CMake/ASan parts of the brief (§5, the M0 row in §7, §10 step 4, §12). M0 edits the brief to match (section 13).
 
@@ -58,7 +58,9 @@ crates/
   front-sdl/            deadrally-front-sdl bin "deadrally-sdl"   (spike)
   front-rust/           deadrally-front-rust bin "deadrally-rust" (spike)
 scripts/
-  install-linux-deps.sh system packages for building the frontends (CI and local)
+  install-linux-deps.sh system packages for building the frontends (CI and local; --local adds Xvfb and screenshot tools)
+  check-no-game-data.sh fails if a tracked file matches .gitignore (CI)
+  spike-check.sh        Xvfb + null-sink runs of a frontend: screenshots, soak and present-time logs
 docs/
   PROJECT_BRIEF.md
   adr/0001-platform-layer.md
@@ -72,7 +74,7 @@ Dependency rules:
 | Crate | May depend on |
 |---|---|
 | `deadrally-core` | nothing in M0 (it gains `deadrally-gamedata` in M1) |
-| `deadrally-gamedata` | small pure-Rust crates: `sha2`, `serde`, `toml`, `directories` |
+| `deadrally-gamedata` | small pure-Rust crates: `sha2`, `toml`, `directories` (`toml::Table` makes `serde` unnecessary) |
 | `deadrally-headless` | `deadrally-core`, `deadrally-gamedata`, `sha2` |
 | frontends | `deadrally-core` and their platform crates |
 
@@ -121,7 +123,8 @@ pub enum PadAxis { StickX, StickY }
 - **The frontend owns wall-clock time.** It calls `tick()` once for every 1/70 s that has elapsed and catches up at most 5 ticks per presented frame; ticks dropped beyond that are counted and logged. Then it presents the latest `frame()`. The core never reads a clock.
 - **The frontend handles Alt+Enter and F12 itself** (they are presentation concerns) and does not forward them.
 - **Frame sizes and aspect** are whatever the core reports. The frontend scales to the window or desktop, keeps the aspect ratio and adds black bars. This keeps widescreen (M8+) a core-only change.
-- **The 6-bit to 8-bit conversion** in M0 is `(v << 2) | (v >> 4)`. M2 pins the exact formula against the oracle.
+- **The 6-bit to 8-bit conversion** in M0 is `(v << 2) | (v >> 4)`, ignoring the top two bits as the VGA DAC does. M2 pins the exact formula against the oracle.
+- **Shared frontend helpers** live in `deadrally_core::host`: the tick pacer, the audio gate (section 7), the letterbox computation and the stats line. They take measured time as input and never read a clock, so every frontend behaves identically and the helpers are unit-tested.
 
 ### Determinism rules (enforced)
 
@@ -155,7 +158,9 @@ Sources in precedence order:
 
 **The first source that is specified is used. Failure does not fall through:** an invalid `--data` is an error even if the environment variable is valid. If none is specified, the error names all three sources and the config file location.
 
-If the chosen directory lacks the files but contains a `Death Rally` subdirectory, that subdirectory is used. Steam nests the data like this: `steamapps/common/Death Rally/Death Rally/`.
+An empty `DEADRALLY_DATA` counts as unset. A leading `~` in `data_path` means the home directory (the shell expands it for the other two sources, but nothing does inside a file).
+
+If the chosen directory holds none of the required files but contains a `Death Rally` subdirectory, that subdirectory is used. A directory holding some of the files is the data directory, and its missing files are the error. Steam nests the data like this: `steamapps/common/Death Rally/Death Rally/`.
 
 ### Config file
 
@@ -218,8 +223,9 @@ For reference only, not validated: `dr.exe` is 365952 bytes with SHA-256 `54fe78
 Both frontends implement the same loop around the core (section 5) and the same audio policy:
 
 - **Pacing:** the wall clock paces the ticks.
-- **Audio queue:** the frontend queues each tick's samples to the device, aiming for about 3 ticks (≈43 ms) in the queue. When more than 8 ticks are queued, it discards queued audio down to 3 ticks.
+- **Audio queue:** the frontend queues each tick's samples to the device, aiming for about 3 ticks (≈43 ms) in the queue. When the queue is empty (at start, or after the device ran dry) it first queues silence up to one tick below the target; without this the queue hovers at one or two ticks and ordinary jitter starves the device (measured: about 7 underruns per second). Running dry after the start counts as an underrun. When more than 8 ticks are queued, incoming audio is dropped until the queue has drained to 3 ticks.
 - **Logging:** queue depth, underruns and dropped ticks are logged once per second.
+- **Options:** `-window` as in section 2's checklist, and `-novsync` for measuring present cost (with vsync on, present time is mostly waiting for the display).
 - **Determinism:** the trimming happens only in the frontend, so the core's audio stays deterministic.
 
 ### Must-pass checklist (both frontends, all items)
@@ -248,7 +254,7 @@ A must-item that can only be met by patching a dependency counts as failed.
 
 | Item | Verified by |
 |---|---|
-| windowed rendering | Claude: screenshots under Xvfb |
+| windowed rendering | Claude: screenshots under Xvfb (`scripts/spike-check.sh`) |
 | timing, underrun and queue logs | Claude |
 | CI builds | Claude |
 | fullscreen, Alt+Enter, F12, gamepad, listening | owner: this Linux machine at its monitor (X11) and the owner's Mac |
@@ -317,7 +323,7 @@ deadrally-headless check-data [--data PATH]
 - Clippy at its default lint set, with warnings denied in CI.
 - `[workspace.lints]` sets `rust.unsafe_code = "forbid"`. Every crate opts in with `[lints] workspace = true`.
 - `rust-toolchain.toml` pins an exact stable version. Toolchain updates are deliberate `build:` commits (section 14).
-- Profiles: `overflow-checks = true` for `dev`, `test` and `release`.
+- Profiles: `overflow-checks = true` for `dev`, `test` and `release`. Dependencies are optimised even in `dev` (`[profile.dev.package."*"] opt-level = 2`): unoptimised SHA-256 made data validation take 9 s instead of 0.3 s.
 
 ## 12. `.gitignore`
 
@@ -333,7 +339,7 @@ The owner asked for a thorough one. It covers:
   - `/dumps/` (asset dumps, M1)
   - `/captures/` (screenshots, WAV captures, parity logs)
   - `*.wav`, `*.mp3`, `*.flac`, `*.xm`, `*.s3m`
-  - `*.log`
+  - `*.log`, `*.raw` (SDL's disk audio driver writes `sdlaudio.raw`)
 - **Local environment:** `.env`, `.env.*`, `.worktrees/`, `.claude/settings.local.json`.
 - **Editors and OS:** `.DS_Store`, `Thumbs.db`, `desktop.ini`, `.idea/`, `.vscode/`, `*.swp`, `*.swo`, `*~`.
 
@@ -398,3 +404,21 @@ The owner asked for a thorough one. It covers:
 | Fullscreen semantics differ (macOS Spaces, Wayland) | Manual checks; untested platforms are recorded as such in the ADR. |
 | Cross-OS float differences surface later | The `determinism` job exists from M0; transcendental functions are banned in core. |
 | The owner cannot see this machine's display (remote session) | Xvfb screenshots for Claude; physical checks by the owner per section 7. |
+
+## 18. Amendments from verification (2026-10-03)
+
+Before the implementation plan was written, all M0 code was compiled, linted and tested in a scratch workspace (Rust 1.99.0; sdl3 0.20.0, winit 0.30.13, pixels 0.17.2, cpal 0.18.2, gilrs 0.11.2), and the SDL frontend was run without a display. That changed the following, now reflected above:
+
+- **Audio priming** (section 7): without it the queue never reached its target and the device underran about 7 times per second.
+- **`deadrally_core::host`** (section 5) holds the helpers all frontends share.
+- **Data locating details** (section 6): an empty `DEADRALLY_DATA` is unset; `~` is expanded in the config file; "lacks the files" means "holds none of them".
+- **`serde` dropped** from `deadrally-gamedata` (section 4).
+- **Optimised dependencies in `dev`** (section 11) and **`*.raw`** in `.gitignore` (section 12).
+- **`-novsync`** option and **`scripts/spike-check.sh`** for the spike measurements (section 7).
+- **`front-rust` draws through its own small wgpu pipeline** (via `pixels::Pixels::render_with`): the `pixels` scaler only scales by whole multiples and assumes square pixels, so it cannot show 320x200 at 4:3 or switch between nearest and bilinear.
+
+Facts worth knowing for later milestones:
+
+- **Overflow checks** slow the test scene's per-pixel loops about 13x (7000 ticks: 0.27 s without, 3.6 s with). Input for the M7 review of `overflow-checks` in release.
+- **SHA-256 without CPU support** (the owner's Xeon E5 v2 has no SHA extensions): `deadrally-headless run --ticks 7000` takes about 35 s locally. CI runners have SHA extensions.
+- **Binary sizes on Linux:** `deadrally-sdl` 4.3 MB (static SDL3, only libc linked dynamically); `deadrally-rust` 13.1 MB (links `libudev` and `libasound` dynamically).
