@@ -62,6 +62,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "deadrally-headless"
+version = "0.0.0"
+dependencies = [
+ "deadrally-core",
+ "deadrally-gamedata",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
