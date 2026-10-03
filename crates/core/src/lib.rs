@@ -6,6 +6,12 @@
 //! on every OS: parity with the original is impossible otherwise.
 #![forbid(unsafe_code)]
 
+mod frame;
+mod input;
+
+pub use frame::{Frame, expand_6bit};
+pub use input::{InputEvent, Key, PadAxis, PadButton};
+
 /// Simulation ticks per second. The original runs its logic at 70 Hz and stores lap times in
 /// 1/70 s units.
 pub const TICKS_PER_SECOND: u32 = 70;
