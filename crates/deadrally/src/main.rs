@@ -1,4 +1,5 @@
-//! Platform spike candidate: the DeadRally test scene on SDL3 (spec section 7).
+//! DeadRally: the game's frontend (see docs/adr/0001-platform-layer.md). In M0 it runs the test
+//! scene on SDL3.
 //!
 //! Options: `-window` starts windowed (default: borderless fullscreen at the desktop
 //! resolution); `-novsync` turns vsync off, for measuring present cost. Alt+Enter toggles

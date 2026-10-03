@@ -1,6 +1,6 @@
 [package]
-name = "deadrally-front-sdl"
-description = "Platform spike candidate: DeadRally frontend on SDL3."
+name = "deadrally"
+description = "DeadRally: the game's window, input and sound around deadrally-core."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "deadrally-sdl"
+name = "deadrally"
 path = "src/main.rs"
 
 [dependencies]

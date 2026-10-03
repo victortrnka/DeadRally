@@ -67,16 +67,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "deadrally-core"
-version = "0.0.0"
-
-[[package]]
-name = "deadrally-front-sdl"
+name = "deadrally"
 version = "0.0.0"
 dependencies = [
  "deadrally-core",
  "sdl3",
 ]
+
+[[package]]
+name = "deadrally-core"
+version = "0.0.0"
 
 [[package]]
 name = "deadrally-gamedata"
