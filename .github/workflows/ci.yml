@@ -46,7 +46,7 @@ jobs:
           name: deadrally-${{ runner.os }}-${{ runner.arch }}
           if-no-files-found: error
           path: |
-            target/release/deadrally-*
+            target/release/deadrally*
             !target/release/*.d
             !target/release/*.pdb
 
@@ -63,7 +63,7 @@ jobs:
           name: deadrally-macOS-X64
           if-no-files-found: error
           path: |
-            target/x86_64-apple-darwin/release/deadrally-*
+            target/x86_64-apple-darwin/release/deadrally*
             !target/x86_64-apple-darwin/release/*.d
 
   core-purity:

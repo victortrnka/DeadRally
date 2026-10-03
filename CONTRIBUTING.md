@@ -53,12 +53,13 @@ In the game: `-window` starts windowed, Alt+Enter toggles fullscreen, F12 toggle
 
 CI does not run `cargo test-data`, because GitHub has no game data. Run it yourself when you touch data code.
 
-## Builds from CI on macOS
+## Builds from CI
 
-CI builds are not signed, so macOS blocks them until you remove the quarantine flag:
+GitHub artifacts lose the executable bit, so on Linux and macOS make the binary runnable first. CI builds are not signed, so macOS also blocks them until you remove the quarantine flag:
 
 ```
-xattr -d com.apple.quarantine deadrally
+chmod +x deadrally
+xattr -d com.apple.quarantine deadrally     # macOS only
 ```
 
 ## Commits and pull requests
