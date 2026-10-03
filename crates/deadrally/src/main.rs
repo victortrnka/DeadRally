@@ -11,7 +11,7 @@ mod keymap;
 use std::error::Error;
 use std::time::{Duration, Instant};
 
-use deadrally_core::host::{AudioDecision, AudioGate, Pacer, RunStats, letterbox};
+use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis};
 use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
@@ -79,6 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut texture = None;
     let mut rgba = Vec::new();
     let mut samples = Vec::new();
+    let mut outgoing = Vec::new();
     let mut smooth = false;
     let mut open_pads: Vec<Gamepad> = Vec::new();
 
@@ -189,11 +190,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             game.take_audio(&mut samples);
             let queued_frames =
                 usize::try_from(stream.queued_bytes()?)? / (AUDIO_CHANNELS * BYTES_PER_SAMPLE);
-            if let AudioDecision::Queue { silence_frames } = gate.decide(queued_frames) {
-                if silence_frames > 0 {
-                    stream.put_data_i16(&vec![0; silence_frames * AUDIO_CHANNELS])?;
-                }
-                stream.put_data_i16(&samples)?;
+            outgoing.clear();
+            gate.feed(queued_frames, &samples, &mut outgoing);
+            if !outgoing.is_empty() {
+                stream.put_data_i16(&outgoing)?;
             }
         }
         stats.add_ticks(ticks);

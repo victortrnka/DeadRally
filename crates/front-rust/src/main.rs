@@ -14,7 +14,7 @@ use std::error::Error;
 use std::sync::{Arc, PoisonError};
 use std::time::{Duration, Instant};
 
-use deadrally_core::host::{AudioDecision, AudioGate, Pacer, RunStats, letterbox};
+use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
 use deadrally_core::{AUDIO_CHANNELS, Game, InputEvent, PadAxis};
 use gilrs::{Axis, EventType, Gilrs};
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
@@ -76,6 +76,7 @@ struct App {
     queue: SampleQueue,
     _stream: Option<cpal::Stream>,
     samples: Vec<i16>,
+    outgoing: Vec<i16>,
     smooth: bool,
     alt_held: bool,
     pacer: Pacer,
@@ -152,12 +153,11 @@ impl App {
             self.samples.clear();
             self.game.take_audio(&mut self.samples);
             let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-            if let AudioDecision::Queue { silence_frames } =
-                self.gate.decide(queue.len() / AUDIO_CHANNELS)
-            {
-                queue.extend(std::iter::repeat_n(0, silence_frames * AUDIO_CHANNELS));
-                queue.extend(&self.samples);
-            }
+            self.outgoing.clear();
+            let queued_frames = queue.len() / AUDIO_CHANNELS;
+            self.gate
+                .feed(queued_frames, &self.samples, &mut self.outgoing);
+            queue.extend(&self.outgoing);
         }
         self.stats.add_ticks(ticks);
 
@@ -307,6 +307,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         queue,
         _stream: stream,
         samples: Vec::new(),
+        outgoing: Vec::new(),
         smooth: false,
         alt_held: false,
         pacer: Pacer::new(),

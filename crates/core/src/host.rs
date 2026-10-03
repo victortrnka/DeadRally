@@ -2,7 +2,7 @@
 //! letterbox and report in exactly the same way. Nothing here reads a clock: the frontend
 //! measures time and passes it in.
 
-use crate::{AUDIO_FRAMES_PER_TICK, AUDIO_SAMPLE_RATE, TICKS_PER_SECOND};
+use crate::{AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, AUDIO_SAMPLE_RATE, TICKS_PER_SECOND};
 
 /// The most ticks a frontend runs before presenting a frame. After a stall (a dragged window,
 /// a breakpoint, a laptop waking up) the game skips ahead instead of fast-forwarding.
@@ -54,15 +54,6 @@ impl Pacer {
     }
 }
 
-/// What to do with one tick's samples.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AudioDecision {
-    /// Queue `silence_frames` stereo frames of silence, then the tick's samples.
-    Queue { silence_frames: usize },
-    /// Drop the tick's samples: the device queue is too long.
-    Drop,
-}
-
 /// Keeps the audio device queue near [`AUDIO_TARGET_QUEUE_TICKS`], so latency is low but
 /// stable and identical in every frontend.
 ///
@@ -86,9 +77,10 @@ impl AudioGate {
         AudioGate::default()
     }
 
-    /// `queued_frames` is the number of stereo frames still waiting to be played. Call once per
-    /// tick, just before queueing that tick's samples.
-    pub fn decide(&mut self, queued_frames: usize) -> AudioDecision {
+    /// Appends to `out` what to queue at the audio device for one tick's `samples`
+    /// (interleaved stereo), given `queued_frames` stereo frames still waiting to be played.
+    /// Call once per tick and queue `out` as it is; it may be empty.
+    pub fn feed(&mut self, queued_frames: usize, samples: &[i16], out: &mut Vec<i16>) {
         let queued_ticks = queued_frames / AUDIO_FRAMES_PER_TICK;
         if queued_ticks > AUDIO_MAX_QUEUE_TICKS {
             self.draining = true;
@@ -97,18 +89,17 @@ impl AudioGate {
         }
         if self.draining {
             self.discarded_ticks += 1;
-            return AudioDecision::Drop;
+            return;
         }
-        if queued_frames > 0 {
-            return AudioDecision::Queue { silence_frames: 0 };
+        if queued_frames == 0 {
+            if self.started {
+                self.underruns += 1;
+            }
+            self.started = true;
+            let silence = (AUDIO_TARGET_QUEUE_TICKS - 1) * AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS;
+            out.extend(std::iter::repeat_n(0, silence));
         }
-        if self.started {
-            self.underruns += 1;
-        }
-        self.started = true;
-        AudioDecision::Queue {
-            silence_frames: (AUDIO_TARGET_QUEUE_TICKS - 1) * AUDIO_FRAMES_PER_TICK,
-        }
+        out.extend_from_slice(samples);
     }
 
     /// Times the queue ran dry after audio had started.
@@ -280,21 +271,37 @@ mod tests {
         assert_eq!(pacer.advance(0), 0);
     }
 
+    /// One tick of recognisable, non-silent samples.
+    fn tick_samples() -> Vec<i16> {
+        (1..=AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS)
+            .map(|i| i16::try_from(i).expect("fits"))
+            .collect()
+    }
+
     #[test]
     fn audio_gate_primes_an_empty_queue_with_silence() {
         // Queueing one tick at a time into an empty device starves it on the first jitter;
         // starting two ticks ahead keeps the queue near the ~43 ms target.
         let mut gate = AudioGate::new();
-        let prime = AudioDecision::Queue {
-            silence_frames: 2 * AUDIO_FRAMES_PER_TICK,
-        };
-        assert_eq!(gate.decide(0), prime);
+        let tick = tick_samples();
+        let silence = 2 * AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS;
+        let mut out = Vec::new();
+        gate.feed(0, &tick, &mut out);
+        assert!(out[..silence].iter().all(|&sample| sample == 0));
+        assert_eq!(out[silence..], tick[..]);
         assert_eq!(gate.underruns(), 0, "starting is not an underrun");
+
+        out.clear();
+        gate.feed(AUDIO_FRAMES_PER_TICK, &tick, &mut out);
+        assert_eq!(out, tick);
+
+        out.clear();
+        gate.feed(0, &tick, &mut out);
         assert_eq!(
-            gate.decide(AUDIO_FRAMES_PER_TICK),
-            AudioDecision::Queue { silence_frames: 0 }
+            out.len(),
+            silence + tick.len(),
+            "after running dry, prime again"
         );
-        assert_eq!(gate.decide(0), prime, "after running dry, prime again");
         assert_eq!(gate.underruns(), 1);
     }
 
@@ -302,19 +309,18 @@ mod tests {
     fn audio_gate_drains_to_target_then_queues_again() {
         // Latency must come back down to ~43 ms, not hover just under the maximum.
         let mut gate = AudioGate::new();
-        let tick = AUDIO_FRAMES_PER_TICK;
-        let queue = AudioDecision::Queue { silence_frames: 0 };
-        assert_eq!(gate.decide(AUDIO_MAX_QUEUE_TICKS * tick), queue);
-        assert_eq!(
-            gate.decide((AUDIO_MAX_QUEUE_TICKS + 1) * tick),
-            AudioDecision::Drop
-        );
-        assert_eq!(gate.decide(5 * tick), AudioDecision::Drop);
-        assert_eq!(
-            gate.decide((AUDIO_TARGET_QUEUE_TICKS + 1) * tick),
-            AudioDecision::Drop
-        );
-        assert_eq!(gate.decide(AUDIO_TARGET_QUEUE_TICKS * tick), queue);
+        let tick = tick_samples();
+        let frames = AUDIO_FRAMES_PER_TICK;
+        let mut fed = |queued: usize| {
+            let mut out = Vec::new();
+            gate.feed(queued, &tick, &mut out);
+            out.len()
+        };
+        assert_eq!(fed(AUDIO_MAX_QUEUE_TICKS * frames), tick.len());
+        assert_eq!(fed((AUDIO_MAX_QUEUE_TICKS + 1) * frames), 0);
+        assert_eq!(fed(5 * frames), 0);
+        assert_eq!(fed((AUDIO_TARGET_QUEUE_TICKS + 1) * frames), 0);
+        assert_eq!(fed(AUDIO_TARGET_QUEUE_TICKS * frames), tick.len());
         assert_eq!(gate.discarded_ticks(), 3);
         assert_eq!(gate.report(7).queued_frames, 7);
     }
