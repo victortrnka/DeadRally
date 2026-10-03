@@ -1,0 +1,40 @@
+# Build output
+/target/
+
+# Original game data and anything derived from it: never commit (brief §2).
+# Patterns are case-insensitive by hand because Git on Linux is case-sensitive.
+*.[Bb][Pp][Aa]
+*.[Hh][Aa][Ff]
+[Ee][Nn][Dd].[Bb][Mm][Pp]
+[Rr][Mm][Dd].[Bb][Mm][Pp]
+[Dd][Rr].[Ss][Gg][0-9]
+[Dd][Rr].[Cc][Ff][Gg]
+*.[Ee][Xx][Ee]
+*.[Dd][Ll][Ll]
+
+# Generated locally: asset dumps (M1), screenshots, audio captures, parity logs
+/dumps/
+/captures/
+*.wav
+*.mp3
+*.flac
+*.xm
+*.s3m
+*.log
+*.raw
+
+# Local environment
+.env
+.env.*
+.worktrees/
+.claude/settings.local.json
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
