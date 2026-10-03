@@ -244,3 +244,32 @@ fn stick_extremes_stay_on_screen_in_every_mode() {
         press(&mut game, Key::Tab);
     }
 }
+
+#[test]
+fn grid_cells_look_square_on_screen_in_every_mode() {
+    // Testers judge the aspect ratio by eye from these cells: cells that are not square make
+    // correct scaling look stretched (the owner saw rectangles in 16:9).
+    let mut game = Game::new();
+    for _ in 0..3 {
+        let frame = game.frame();
+        let (width, height) = (frame.width as usize, frame.height as usize);
+        let grey = |x: usize, y: usize| frame.pixels[y * width + x] == 2;
+        // The top-left grid cell is the first run of at least 8 grey pixels; the ramp's grey
+        // diagonal never makes runs longer than one pixel.
+        let (x0, y0) = (0..height)
+            .flat_map(|y| (0..width - 8).map(move |x| (x, y)))
+            .find(|&(x, y)| (0..8).all(|i| grey(x + i, y)))
+            .expect("the frame has a grid cell");
+        let cell_width = (x0..width).take_while(|&x| grey(x, y0)).count();
+        let cell_height = (y0..height).take_while(|&y| grey(x0, y)).count();
+        // On screen a frame pixel is aspect.0 / width wide and aspect.1 / height tall.
+        let shown_width = cell_width as f64 * f64::from(frame.aspect.0) / width as f64;
+        let shown_height = cell_height as f64 * f64::from(frame.aspect.1) / height as f64;
+        let ratio = shown_width / shown_height;
+        assert!(
+            (0.95..=1.05).contains(&ratio),
+            "{width}x{height}: a {cell_width}x{cell_height} px cell shows at {ratio:.3}:1"
+        );
+        press(&mut game, Key::Tab);
+    }
+}

@@ -164,8 +164,14 @@ impl TestScene {
         let bar_x = (self.tick % u64::from(width)) as u32;
         self.fill_rect(bar_x, 0, BAR_WIDTH, height, WHITE);
 
-        let cell_width = width / 20;
+        // A frame pixel is shown aspect.0 / width wide and aspect.1 / height tall, so this many
+        // pixels across look as long on screen as `tall` pixels down. Squares stay squares in
+        // every mode; a wider mode shows more, it never stretches.
+        let (aspect_width, aspect_height) = self.mode.aspect();
+        let across = |tall: u32| tall * width * aspect_height / (height * aspect_width);
+
         let cell_height = height / 16;
+        let cell_width = across(cell_height);
         let key_count = Key::ALL.len();
         for cell in 0..key_count + PadButton::ALL.len() {
             let held = if cell < key_count {
@@ -184,16 +190,18 @@ impl TestScene {
             );
         }
 
-        let radius = i32::try_from(height / 8).expect("frame height fits i32");
-        let dot = (cell_height / 2).max(2);
-        let centre_x = i32::try_from(width / 2).expect("frame width fits i32");
-        let centre_y = i32::try_from(height * 3 / 4).expect("frame height fits i32");
-        let offset_x = i32::from(self.stick[0]) * radius / 32_768;
-        let offset_y = i32::from(self.stick[1]) * radius / 32_768;
-        let half_dot = i32::try_from(dot / 2).expect("dot size fits i32");
-        let dot_x = u32::try_from(centre_x + offset_x - half_dot).expect("dot stays on screen");
-        let dot_y = u32::try_from(centre_y + offset_y - half_dot).expect("dot stays on screen");
-        self.fill_rect(dot_x, dot_y, dot, dot, RED);
+        let radius_y = height / 8;
+        let radius_x = across(radius_y);
+        let dot_height = (cell_height / 2).max(2);
+        let dot_width = across(dot_height).max(2);
+        let offset = |value: i16, radius: u32, dot: u32, centre: u32| {
+            let radius = i32::try_from(radius).expect("radius fits i32");
+            let corner = i32::try_from(centre - dot / 2).expect("centre fits i32");
+            u32::try_from(corner + i32::from(value) * radius / 32_768).expect("dot stays on screen")
+        };
+        let dot_x = offset(self.stick[0], radius_x, dot_width, width / 2);
+        let dot_y = offset(self.stick[1], radius_y, dot_height, height * 3 / 4);
+        self.fill_rect(dot_x, dot_y, dot_width, dot_height, RED);
     }
 
     /// Fills a rectangle, clipped to the frame.
