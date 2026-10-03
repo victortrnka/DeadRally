@@ -5,7 +5,8 @@
 #
 #   scripts/install-linux-deps.sh           build dependencies
 #   scripts/install-linux-deps.sh --local   also the tools for checking frontends without a
-#                                           monitor (Xvfb, screenshots, software Vulkan)
+#                                           monitor (Xvfb, screenshots, software Vulkan, and
+#                                           headless Weston for scripts/fullscreen-check.sh)
 set -euo pipefail
 
 packages=(
@@ -17,7 +18,7 @@ packages=(
 )
 case "${1:-}" in
     "") ;;
-    --local) packages+=(xvfb imagemagick xdotool x11-apps mesa-vulkan-drivers) ;;
+    --local) packages+=(xvfb imagemagick xdotool x11-apps mesa-vulkan-drivers weston wmctrl) ;;
     *) echo "usage: $0 [--local]" >&2; exit 1 ;;
 esac
 
