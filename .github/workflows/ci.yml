@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: No game data or local output is tracked
+        run: scripts/check-no-game-data.sh
+      - run: scripts/install-linux-deps.sh
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - if: runner.os == 'Linux'
+        run: scripts/install-linux-deps.sh
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo build --workspace --release --locked
+      - name: Determinism hash
+        shell: bash
+        run: target/release/deadrally-headless run --ticks 7000 | tee "determinism-${{ runner.os }}.txt"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: determinism-${{ runner.os }}
+          path: determinism-${{ runner.os }}.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deadrally-${{ runner.os }}-${{ runner.arch }}
+          if-no-files-found: error
+          path: |
+            target/release/deadrally-*
+            !target/release/*.d
+            !target/release/*.pdb
+
+  macos-intel:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - run: rustup target add x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release --locked --target x86_64-apple-darwin
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deadrally-macOS-X64
+          if-no-files-found: error
+          path: |
+            target/x86_64-apple-darwin/release/deadrally-*
+            !target/x86_64-apple-darwin/release/*.d
+
+  core-purity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - name: deadrally-core depends on no platform crate
+        run: |
+          tree=$(cargo tree --locked -p deadrally-core -e normal --prefix none)
+          echo "$tree"
+          if echo "$tree" | grep -Eiq '^(sdl|winit|wgpu|pixels|cpal|gilrs)'; then
+            echo "error: deadrally-core depends on a platform crate" >&2
+            exit 1
+          fi
+
+  determinism:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: determinism-*
+          merge-multiple: true
+      - name: Identical hashes on Linux, macOS and Windows
+        run: |
+          cat determinism-*.txt
+          test "$(ls determinism-*.txt | wc -l)" -eq 3
+          test "$(sort -u determinism-*.txt | wc -l)" -eq 1
