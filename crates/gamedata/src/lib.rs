@@ -3,12 +3,15 @@
 //!
 //! Data files are only ever opened for reading; nothing is written into the data directory.
 
+pub mod bmp;
 pub mod bpa;
 pub mod bpk;
 mod config;
+pub mod image;
 mod known_versions;
 mod locate;
 mod lzw;
+pub mod track;
 mod validate;
 
 pub use config::{Config, ConfigError, config_path, load_config};
