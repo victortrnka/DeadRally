@@ -2,7 +2,7 @@
 
 Original Death Rally reincarnation for modern systems: a clean, native, 64-bit reimplementation of *Death Rally for Windows* (Remedy, 2009) for Windows, macOS and Linux, written in Rust.
 
-**Status:** M1a, game data and pictures. The game starts like the original, without sound: intro, Apogee and Remedy logos, title screen. Nothing is playable yet. [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md) covers the goal, the approach and the roadmap.
+**Status:** M1b, sound. The game starts like the original: the intro with its music and effects, then the Apogee and Remedy logos and the title screen under the menu music. Nothing is playable yet. [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md) covers the goal, the approach and the roadmap.
 
 The repository contains no game data. You need your own copy of the game: Death Rally (Classic) on Steam (free) or Remedy's 2009 freeware release.
 
