@@ -157,6 +157,10 @@ impl Startup {
     /// One tick of `openAnimation`: when frame `next` is due it replaces the previous one, then
     /// the original checks for a key before showing it. So a key press ends the intro at the
     /// next frame, which is never shown, and the last frame is never shown either.
+    ///
+    /// The original also checks once before frame 0. A press made while the game loads is read
+    /// only when a frame is next shown (`refreshScreen`, 0x43B580), that is during frame 0's
+    /// wait, so it ends the intro when frame 0 is due, as here.
     fn tick_intro(&mut self, mut next: usize, mut waited: u32) -> Stage {
         let intro = &self.assets.intro;
         let mut due = None;

@@ -240,7 +240,7 @@ impl RunStats {
     }
 
     /// One cumulative log line, for example
-    /// `t=60.000s ticks=4200 rate=70.00/s frames=3600 dropped_ticks=0 underruns=0 discarded_ticks=0 drift_frames=+3 queue_ms=39 present_avg_us=850 present_p99_us=1200`.
+    /// `t=60.000s ticks=4286 rate=71.43/s frames=3600 dropped_ticks=0 underruns=0 discarded_ticks=0 drift_frames=+3 queue_ms=39 present_avg_us=850 present_p99_us=1200`.
     #[must_use]
     pub fn line(&self, elapsed_nanos: u64, dropped_ticks: u64, audio: AudioReport) -> String {
         let millis = elapsed_nanos / 1_000_000;

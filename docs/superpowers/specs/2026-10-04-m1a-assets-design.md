@@ -118,6 +118,8 @@ All the images are in `MENU.BPA`.
   - Palette entries 0..254 go black. The `FRAMES.BPK` palette is set into entries 0–15 and its 320×200 image drawn.
   - For each frame: check for a key and stop if there is one; decode the frame; wait until `delay[i]` ticks after the previous frame; set palette entries 16–255 from the frame and copy its 320×120 pixels to row 40. The frame is shown by the next iteration's first wait.
   - So a key ends the intro when the next frame is due, and that frame is never shown. Neither is the last frame: the palette goes black right after it is drawn.
+  - The original also checks before frame 0. A press made while the game loads is read only when a frame is next shown (`refreshScreen` reads key presses), that is during frame 0's wait, so DeadRally needs no check before frame 0.
+  - Alt+Enter skips too: `refreshScreen` remembers every key press except F12 and Enter with Alt, so the Alt press counts.
 - **Window:** always 640×480. With `-nogl`, `refreshScreen` (0x43B580) doubles 320×200 screens to 640×400 from row 40, black above and below; the default OpenGL path stretches them over the whole 4:3 window.
 - **Tick:** `SDL_GetTicks()/14` drives the whole Windows version: the same per-tick callback runs menus and races (`setBackgroundRefreshFunction`, `dr.c:10273`).
 
@@ -231,7 +233,7 @@ Because the original's timing under Wine jitters, comparisons **search for a mat
 | Apogee, Remedy, title (BPK, BMP, palettes) | screenshots during the holds and after the title fade | pixel-identical to our render |
 | Fade formula, including the red `− 4` question | bursts of screenshots every 25 ms during fades; `find` | every screenshot equals one of our fade levels exactly |
 | Key during fade-in | a scenario presses a key during the Apogee fade-in | our rule reproduces whether the hold was skipped |
-| Timing | a screenshot every 200 ms; intro length and hold lengths measured from frame changes | within ±5 % of `Σ delay × 14 ms` and `(26 + 180 + 26) × 14 ms` |
+| Timing | a screenshot every 200 ms; intro length and hold lengths measured from frame changes | within ±5 % of `Σ delay × 14 ms` and `(25 + 180 + 26) × 14 ms` |
 
 - **Presentation:** the original's `-nogl` window doubles 320×200 screens to 640×400 from row 40 (section 3.6); `render` and `find` reproduce that, so no scale or offset option is needed.
 - **Records:** `docs/verification/m1a.md` keeps the results (pass/fail, which frame or level matched, image hashes) and the scenario files used, never the images.

@@ -190,6 +190,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     repeat: false,
                     ..
                 } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD) => {
+                    // Alt's own press still reaches the game before this, so Alt+Enter skips
+                    // the intro or a logo. The original does the same: refreshScreen (0x43B580)
+                    // remembers every key press except F12 and Enter with Alt.
                     let window = canvas.window_mut();
                     let fullscreen = window.fullscreen_state() != FullscreenType::Off;
                     window.set_fullscreen(!fullscreen)?;
