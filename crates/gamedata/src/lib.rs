@@ -18,6 +18,7 @@ mod lzw;
 pub mod s3m;
 pub mod track;
 mod validate;
+pub mod xm;
 
 pub use config::{Config, ConfigError, config_path, load_config};
 pub use known_versions::{KNOWN_VERSIONS, KnownFile, KnownVersion, REQUIRED_FILES};
