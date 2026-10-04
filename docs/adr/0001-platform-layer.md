@@ -1,7 +1,7 @@
 # ADR 0001: Platform layer
 
 - **Date:** 2026-10-04
-- **Status:** accepted by the owner on 2026-10-04, with must-items 3 (gamepad) and 6 (CI builds) still to be verified
+- **Status:** accepted by the owner on 2026-10-04; must-item 3 (gamepad) still to be verified
 - **Spec:** `docs/superpowers/specs/2026-10-03-m0-foundations-design.md`, section 7
 
 ## Context
@@ -30,7 +30,7 @@ All on the owner's Linux Mint 22.3 machine (Xeon E5-1680 v2, Radeon HD 7970, RAD
 | 3 | Keyboard by physical key; gamepad stick, 4 buttons, hot-plug | keyboard pass; **gamepad not verified** | keyboard pass; **gamepad not verified** | owner (SDL keys), xdotool (both); no gamepad available |
 | 4 | 5 min audio, no underruns after 1 s, bounded queue | pass | pass | 300 s soak, after the drift fix: 0 underruns after the start, flat queue (25–47 ms vs 49–103 ms); nobody has listened yet |
 | 5 | 70 ticks/s ± 0.1 % over 60 s; capped catch-up | pass (70.010/s) | pass (70.006/s) | soak window t≈60→120 s |
-| 6 | `cargo build --release` on Linux, macOS, Windows CI | Linux pass; **CI not run** | Linux pass; **CI not run** | the build machine has no GitHub access yet |
+| 6 | `cargo build --release` on Linux, macOS, Windows CI | pass (CI run 37183149827, also macOS Intel) | Linux pass; not run in CI (removed before the first push) | GitHub Actions, 2026-10-04 |
 
 ## Measurements (final round)
 
@@ -58,4 +58,4 @@ All on the owner's Linux Mint 22.3 machine (Xeon E5-1680 v2, Radeon HD 7970, RAD
 
 - front-rust was removed from the tree in the commit `refactor: remove the losing frontend` after this decision. Its fixed version stays in history (`git show 76fe556:crates/front-rust/src/present.rs`), so a full-Rust frontend can be revived later. The core has no platform dependencies, which keeps that cheap.
 - SDL3 is compiled from source: building needs cmake everywhere and the X11/Wayland/audio headers on Linux. The binary links only the C runtime; SDL loads display and audio libraries at run time.
-- Still to verify: gamepads, listening on real speakers, the CI builds, and macOS, Windows and Wayland by hand.
+- Still to verify: gamepads, listening on real speakers, and macOS, Windows and Wayland by hand (CI builds for all three are available as artifacts).
