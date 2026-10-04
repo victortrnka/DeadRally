@@ -1,0 +1,9 @@
+# The menu music at two music volumes (spec M1b section 5). Keys skip the intro and both logos,
+# so the menu music plays for about 45 s. Run with --sound twice: as it is (dr.cfg's default
+# music volume, 50 %) and with --cfg and a dr.cfg whose music volume is 100 %; then compare the
+# two recordings with each other. docs/verification/m1b.md says how to make that dr.cfg and
+# what the comparison must show.
+at 3000 key space
+at 3600 key space
+at 4300 key space
+at 50000 shot menu
