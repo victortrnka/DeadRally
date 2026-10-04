@@ -6,6 +6,7 @@
 //! on every OS: parity with the original is impossible otherwise.
 #![forbid(unsafe_code)]
 
+mod audio;
 mod fade;
 mod frame;
 mod game;
@@ -14,6 +15,7 @@ mod input;
 mod startup;
 mod test_scene;
 
+pub use audio::render_effect;
 pub use frame::{Frame, expand_6bit};
 pub use game::Game;
 pub use input::{InputEvent, Key, PadAxis, PadButton};
