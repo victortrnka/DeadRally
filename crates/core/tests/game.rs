@@ -2,7 +2,7 @@
 
 use deadrally_core::{
     AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, AUDIO_SAMPLE_RATE, Game, InputEvent, Key, PadAxis,
-    PadButton, TICKS_PER_SECOND,
+    PadButton,
 };
 
 fn press(game: &mut Game, key: Key) {
@@ -88,18 +88,21 @@ fn same_inputs_give_identical_frames_and_audio() {
 
 #[test]
 fn each_tick_produces_exactly_one_tick_of_stereo_audio() {
-    // Frontends and the WAV capture assume 630 frames per tick; 70 ticks must be exactly one
-    // second at 44.1 kHz or music drifts against the picture.
+    // Frontends and the WAV capture assume 672 frames per 14 ms tick; 1000 ticks must be
+    // exactly 14 seconds at 48 kHz or music drifts against the picture.
     let mut game = Game::new();
     let mut audio = Vec::new();
     game.tick();
     game.take_audio(&mut audio);
     assert_eq!(audio.len(), AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS);
-    for _ in 1..TICKS_PER_SECOND {
+    for _ in 1..1000 {
         game.tick();
     }
     game.take_audio(&mut audio);
-    assert_eq!(audio.len(), AUDIO_SAMPLE_RATE as usize * AUDIO_CHANNELS);
+    assert_eq!(
+        audio.len(),
+        14 * AUDIO_SAMPLE_RATE as usize * AUDIO_CHANNELS
+    );
 }
 
 #[test]

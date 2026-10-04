@@ -19,7 +19,7 @@ impl Game {
         self.scene.input(event);
     }
 
-    /// Advances the simulation by exactly 1/70 s.
+    /// Advances the simulation by exactly one 14 ms tick.
     pub fn tick(&mut self) {
         self.scene.tick();
     }

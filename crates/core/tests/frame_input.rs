@@ -3,13 +3,14 @@
 use deadrally_core::{Frame, Key, PadButton, expand_6bit};
 
 #[test]
-fn six_bit_palette_extremes_map_to_full_black_and_white() {
-    // Fades to black and flashes to white must reach the real extremes on every frontend.
+fn six_bit_palette_values_expand_like_the_windows_version() {
+    // The Windows version shifts by two, so its white is 252; reference screenshots of the
+    // original only match pixel for pixel with the same expansion.
     assert_eq!(expand_6bit(0), 0);
-    assert_eq!(expand_6bit(63), 255);
-    assert_eq!(expand_6bit(32), 130);
+    assert_eq!(expand_6bit(63), 252);
+    assert_eq!(expand_6bit(32), 128);
     // The VGA DAC ignores the top two bits.
-    assert_eq!(expand_6bit(0x40 | 63), 255);
+    assert_eq!(expand_6bit(0x40 | 63), 252);
 }
 
 #[test]
@@ -27,7 +28,7 @@ fn write_rgba_uses_the_palette_for_every_pixel() {
     };
     let mut rgba = [0u8; 12];
     frame.write_rgba(&mut rgba);
-    assert_eq!(rgba, [255, 0, 0, 255, 0, 255, 130, 255, 0, 0, 0, 255]);
+    assert_eq!(rgba, [252, 0, 0, 255, 0, 252, 128, 255, 0, 0, 0, 255]);
 }
 
 #[test]

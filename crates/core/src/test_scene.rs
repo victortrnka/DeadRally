@@ -13,12 +13,12 @@ const PINNED: [[u8; 3]; 4] = [[0, 0, 0], [63, 63, 63], [16, 16, 16], [63, 0, 0]]
 const BAR_WIDTH: u32 = 4;
 const GRID_COLUMNS: u32 = 16;
 
-/// 440 Hz in 32-bit phase units per sample: 440 * 2^32 / 44 100, rounded.
-const TONE_STEP: u32 = 42_852_281;
+/// 440 Hz in 32-bit phase units per sample: 440 * 2^32 / 48 000, rounded.
+const TONE_STEP: u32 = 39_370_534;
 const TONE_AMPLITUDE: i32 = 2_048;
-/// The click is 5 ms (221 frames at 44.1 kHz) of square wave at about 1 kHz.
-const CLICK_FRAMES: u32 = 221;
-const CLICK_HALF_PERIOD: u32 = 22;
+/// The click is 5 ms (240 frames at 48 kHz) of square wave at 1 kHz.
+const CLICK_FRAMES: u32 = 240;
+const CLICK_HALF_PERIOD: u32 = 24;
 const CLICK_AMPLITUDE: i32 = 8_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -2,7 +2,7 @@
 //! letterbox and report in exactly the same way. Nothing here reads a clock: the frontend
 //! measures time and passes it in.
 
-use crate::{AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, AUDIO_SAMPLE_RATE, TICKS_PER_SECOND};
+use crate::{AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, AUDIO_SAMPLE_RATE, TICK_NANOS};
 
 /// The most ticks a frontend runs before presenting a frame. After a stall (a dragged window,
 /// a breakpoint, a laptop waking up) the game skips ahead instead of fast-forwarding.
@@ -17,7 +17,7 @@ pub const AUDIO_MAX_QUEUE_TICKS: usize = 8;
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
 
 /// Ticks after the first one before the audio gate locks onto the queue's settled length.
-const AUDIO_SETTLE_TICKS: u64 = 2 * TICKS_PER_SECOND as u64;
+const AUDIO_SETTLE_TICKS: u64 = 2 * NANOS_PER_SECOND / TICK_NANOS;
 
 /// The queue length is averaged over roughly this many ticks, which smooths out the sawtooth
 /// of a device that takes its audio in large chunks.
@@ -29,8 +29,7 @@ const DRIFT_BAND_FRAMES: i64 = (AUDIO_FRAMES_PER_TICK / 2) as i64;
 /// Turns elapsed wall-clock time into a number of ticks to run.
 #[derive(Debug, Default)]
 pub struct Pacer {
-    /// Time not yet turned into ticks, in units of 1/(70 * 10^9) s, so one tick is exactly
-    /// 10^9 units and no rounding error accumulates.
+    /// Time not yet turned into ticks, in nanoseconds.
     backlog: u64,
     dropped_ticks: u64,
 }
@@ -44,11 +43,9 @@ impl Pacer {
     /// Adds `elapsed_nanos` of wall-clock time and returns how many ticks to run now, at most
     /// [`MAX_CATCH_UP_TICKS`]. Ticks beyond that are dropped and counted.
     pub fn advance(&mut self, elapsed_nanos: u64) -> u32 {
-        self.backlog = self
-            .backlog
-            .saturating_add(elapsed_nanos.saturating_mul(u64::from(TICKS_PER_SECOND)));
-        let due = self.backlog / NANOS_PER_SECOND;
-        self.backlog %= NANOS_PER_SECOND;
+        self.backlog = self.backlog.saturating_add(elapsed_nanos);
+        let due = self.backlog / TICK_NANOS;
+        self.backlog %= TICK_NANOS;
         let max = u64::from(MAX_CATCH_UP_TICKS);
         if due > max {
             self.dropped_ticks += due - max;
@@ -243,7 +240,7 @@ impl RunStats {
     }
 
     /// One cumulative log line, for example
-    /// `t=60.000s ticks=4200 rate=70.00/s frames=3600 dropped_ticks=0 underruns=0 discarded_ticks=0 drift_frames=+3 queue_ms=42 present_avg_us=850 present_p99_us=1200`.
+    /// `t=60.000s ticks=4200 rate=70.00/s frames=3600 dropped_ticks=0 underruns=0 discarded_ticks=0 drift_frames=+3 queue_ms=39 present_avg_us=850 present_p99_us=1200`.
     #[must_use]
     pub fn line(&self, elapsed_nanos: u64, dropped_ticks: u64, audio: AudioReport) -> String {
         let millis = elapsed_nanos / 1_000_000;
@@ -302,21 +299,21 @@ mod tests {
     const FRAME_60HZ_NANOS: u64 = 16_666_667;
 
     #[test]
-    fn pacer_runs_exactly_70_ticks_per_second_at_60_hz() {
+    fn pacer_turns_wall_clock_time_into_14_ms_ticks_without_drift() {
         // Drift here would desynchronise lap times and music over a long race.
         let mut pacer = Pacer::new();
         let ticks: u32 = (0..36_000).map(|_| pacer.advance(FRAME_60HZ_NANOS)).sum();
-        // 36 000 frames of 16 666 667 ns are 600.000012 s: exactly 42 000 ticks.
-        assert_eq!(ticks, 42_000);
+        // 36 000 frames of 16 666 667 ns are 600.000012 s: 42 857 whole ticks of 14 ms.
+        assert_eq!(ticks, 42_857);
         assert_eq!(pacer.dropped_ticks(), 0);
     }
 
     #[test]
     fn pacer_caps_catch_up_after_a_stall_and_counts_the_rest() {
-        // After a one-second stall the game must not fast-forward 70 ticks in one frame.
+        // After a one-second stall the game must not fast-forward 71 ticks in one frame.
         let mut pacer = Pacer::new();
         assert_eq!(pacer.advance(NANOS_PER_SECOND), MAX_CATCH_UP_TICKS);
-        assert_eq!(pacer.dropped_ticks(), 70 - u64::from(MAX_CATCH_UP_TICKS));
+        assert_eq!(pacer.dropped_ticks(), 71 - u64::from(MAX_CATCH_UP_TICKS));
     }
 
     #[test]
@@ -401,7 +398,7 @@ mod tests {
             } else {
                 1_000_000 - ppm
             };
-        let tick_time = |n: u64| n * NANOS_PER_SECOND / u64::from(TICKS_PER_SECOND);
+        let tick_time = |n: u64| n * TICK_NANOS;
         let pull_time = |n: u64| {
             let nanos = u128::from(n) * chunk as u128 * u128::from(NANOS_PER_SECOND) * 1_000_000
                 / card_rate;
@@ -507,7 +504,7 @@ mod tests {
         };
         assert_eq!(
             stats.line(NANOS_PER_SECOND, 3, audio),
-            "t=1.000s ticks=70 rate=70.00/s frames=100 dropped_ticks=3 underruns=1 discarded_ticks=2 drift_frames=-4 queue_ms=42 present_avg_us=50 present_p99_us=99"
+            "t=1.000s ticks=70 rate=70.00/s frames=100 dropped_ticks=3 underruns=1 discarded_ticks=2 drift_frames=-4 queue_ms=39 present_avg_us=50 present_p99_us=99"
         );
     }
 
