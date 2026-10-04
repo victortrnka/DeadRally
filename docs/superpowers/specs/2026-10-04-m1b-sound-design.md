@@ -137,7 +137,7 @@ Parsing only:
 - **`compare-audio ORIGINAL.wav OURS.wav [--min-overlap S]`:**
   - aligns the two by the cross-correlation of their 10 ms loudness envelopes;
   - reports the lag, the duration of the overlap, the loudness difference per second (median and largest, in dB), the difference per octave band (in dB), the tempo difference (the slope of the lag measured in each 10 s piece), the pitch difference (in cents, from the spectra on a logarithmic frequency axis) and the stereo balance difference (left minus right, the largest over 10 s pieces);
-  - exits 0 only within the section 5 tolerances; the overlap must be at least `--min-overlap` seconds (default 25).
+  - exits 0 only within the section 5 tolerances; the overlap must be at least `--min-overlap` seconds (default 25), and a measure that cannot be taken fails (a tempo needs three 10 s pieces that line up, the balance a stereo piece that is not silent).
 
   Sample rates may differ (the original records at 44 100 Hz).
 - `run --ticks N` (the test scene's hashes) is unchanged.
@@ -178,7 +178,7 @@ Scenarios as in M1a. New ones:
   - S3M timing (FMOD's whole ticks at tempo 125 and 141, a new tempo's own tick);
   - each of the 13 commands on a hand-built module, section markers, full-side stereo, and the period and frequency tables at known points;
   - the scene: effects on channels 1–6 in turn, silence after the intro, a key that ends the intro stops the sound;
-  - `compare-audio` on synthetic tones: another rate and delay compare equal; loudness, tempo, pitch and balance differences are reported;
+  - `compare-audio` on synthetic tones: another rate and delay compare equal; loudness, tempo, pitch and balance differences are reported; the exit status fails a quieter render, a short overlap and a tempo it could not measure;
   - determinism of a rendered synthetic module.
 - **With data** (`cargo test-data`):
   - all 16 files decode to their type and parse to the end;
