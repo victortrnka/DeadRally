@@ -3,6 +3,7 @@
 //!
 //! Data files are only ever opened for reading; nothing is written into the data directory.
 
+pub mod assets;
 pub mod bmp;
 pub mod bpa;
 pub mod bpk;

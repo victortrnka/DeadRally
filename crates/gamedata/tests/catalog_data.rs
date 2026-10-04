@@ -143,3 +143,20 @@ fn track_images_match_their_info_files() {
         }
     }
 }
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_startup_assets_load_with_their_documented_shapes() {
+    // The game refuses to start when these fail, so a wrong shape here is a broken start.
+    let dir = data_dir();
+    let validation = deadrally_gamedata::validate(&dir).unwrap();
+    let assets = deadrally_gamedata::assets::Assets::load(&validation)
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(assets.intro.len(), 1626);
+    let size =
+        |picture: &deadrally_gamedata::assets::Picture| (picture.image.width, picture.image.height);
+    assert_eq!(size(&assets.letterbox), (320, 200));
+    assert_eq!(size(&assets.apogee), (640, 480));
+    assert_eq!(size(&assets.remedy), (640, 480));
+    assert_eq!(size(&assets.title), (640, 480));
+}
