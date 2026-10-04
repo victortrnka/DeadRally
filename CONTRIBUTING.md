@@ -34,7 +34,7 @@ Exit status 0 means a known release, 2 an unknown release (usable, but parity ch
 ## Setting up
 
 - **Rust:** install [rustup](https://rustup.rs). The toolchain version is pinned in `rust-toolchain.toml` and installs itself.
-- **Linux (Debian, Ubuntu, Mint):** `scripts/install-linux-deps.sh`; add `--local` for Xvfb and the screenshot tools.
+- **Linux (Debian, Ubuntu, Mint):** `scripts/install-linux-deps.sh`; add `--local` for Xvfb, the screenshot tools and Wine (for reference runs of the original).
 - **macOS:** Xcode command line tools (`xcode-select --install`) and CMake (`brew install cmake`).
 - **Windows:** Visual Studio Build Tools with the "Desktop development with C++" workload, and CMake.
 
@@ -42,14 +42,34 @@ Exit status 0 means a known release, 2 an unknown release (usable, but parity ch
 
 ```
 cargo build --workspace
-cargo run --release -p deadrally -- -window     # the game; M0 shows a test scene
+cargo run --release -p deadrally -- -window     # the game: intro, logos, title (no sound yet)
 cargo test --workspace
 DEADRALLY_DATA=~/games/DeathRally cargo test-data
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-In the game: `-window` starts windowed, Alt+Enter toggles fullscreen, F12 toggles smoothing.
+In the game: `-window` starts windowed, `-testscene` shows the M0 test scene instead (no game data needed), `--data <dir>` names the data directory; Alt+Enter toggles fullscreen, F12 toggles smoothing.
+
+## Looking at the pictures
+
+```
+cargo run --release -p deadrally-headless -- dump-assets    # every image as PNG under dumps/
+```
+
+`dumps/` is ignored by Git. Never commit what is in it.
+
+## Checking against the original
+
+The original `dr.exe` is the reference. On Linux, `scripts/reference-run.sh` runs it under Wine on a virtual display (no window appears, no sound plays), presses keys and takes screenshots as a scenario file says:
+
+```
+scripts/reference-run.sh scripts/reference/startup.scenario captures/startup
+cargo build --release -p deadrally-headless
+target/release/deadrally-headless find captures/startup/*.png
+```
+
+`find` reports, for each screenshot, the ticks of DeadRally's startup sequence that show exactly the same picture. `docs/verification/m1a.md` lists the scenarios and what they must show. Screenshots stay under `captures/`, which Git ignores: they show the original's art.
 
 CI does not run `cargo test-data`, because GitHub has no game data. Run it yourself when you touch data code.
 

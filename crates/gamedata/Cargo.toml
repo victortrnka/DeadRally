@@ -1,6 +1,6 @@
 [package]
 name = "deadrally-gamedata"
-description = "Finds and validates the player's copy of the original Death Rally data."
+description = "Finds, validates and decodes the player's copy of the original Death Rally data."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

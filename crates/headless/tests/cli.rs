@@ -157,3 +157,180 @@ fn check_data_recognises_the_developers_install() {
     assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
     assert!(text(&output.stdout).contains("outcome: known version"));
 }
+
+fn write_png(path: &Path, width: u32, height: u32, rgb: &[u8]) {
+    let file = fs::File::create(path).unwrap();
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(rgb).unwrap();
+    writer.finish().unwrap();
+}
+
+#[test]
+fn compare_succeeds_only_for_identical_pictures() {
+    // The verification scripts rely on the exit status; "close enough" must fail.
+    let home = tempdir().unwrap();
+    let path = |name: &str| home.path().join(name);
+    write_png(&path("a.png"), 2, 1, &[0, 0, 0, 10, 10, 10]);
+    write_png(&path("b.png"), 2, 1, &[0, 0, 0, 10, 11, 10]);
+    write_png(&path("c.png"), 1, 2, &[0, 0, 0, 10, 10, 10]);
+    let compare = |a: &str, b: &str| {
+        run(
+            &home,
+            &[
+                "compare",
+                path(a).to_str().unwrap(),
+                path(b).to_str().unwrap(),
+            ],
+        )
+    };
+
+    let same = compare("a.png", "a.png");
+    assert_eq!(same.status.code(), Some(0));
+    assert!(text(&same.stdout).contains("0 pixels differ"));
+
+    let close = compare("a.png", "b.png");
+    assert_eq!(close.status.code(), Some(1));
+    assert!(
+        text(&close.stdout).contains("1 pixels differ, largest channel difference 1"),
+        "{}",
+        text(&close.stdout)
+    );
+
+    let other_size = compare("a.png", "c.png");
+    assert_eq!(other_size.status.code(), Some(1));
+    assert!(text(&other_size.stdout).contains("sizes differ"));
+}
+
+#[test]
+fn find_rejects_a_screenshot_that_is_not_window_sized() {
+    // A shot of the whole virtual screen or with window decorations can never match; say so
+    // instead of searching for minutes.
+    let home = tempdir().unwrap();
+    let shot = home.path().join("shot.png");
+    write_png(&shot, 2, 1, &[0; 6]);
+    let output = run(&home, &["find", shot.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        text(&output.stderr).contains("the original's window is 640x480"),
+        "{}",
+        text(&output.stderr)
+    );
+}
+
+#[test]
+fn dump_assets_refuses_to_write_into_the_game_data() {
+    // The install must stay exactly as the player's copy is; dumps go elsewhere.
+    let home = tempdir().unwrap();
+    let data = home.path().join("data");
+    fake_install(&data);
+    let out = data.join("dumps");
+    let output = run(
+        &home,
+        &[
+            "dump-assets",
+            "--data",
+            data.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(text(&output.stderr).contains("inside the game data directory"));
+    assert!(!out.exists());
+}
+
+#[test]
+fn dump_assets_refuses_the_steam_folder_above_the_data() {
+    // With Steam's layout the data sits one level down; the folder the player named is still
+    // the game's install and must not fill up with dumps.
+    let home = tempdir().unwrap();
+    let named = home.path().join("Death Rally");
+    fake_install(&named.join("Death Rally"));
+    let out = named.join("dumps");
+    let output = run(
+        &home,
+        &[
+            "dump-assets",
+            "--data",
+            named.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{}", text(&output.stdout));
+    assert!(
+        text(&output.stderr).contains("game's install"),
+        "{}",
+        text(&output.stderr)
+    );
+    assert!(!out.exists());
+}
+
+fn data_env() -> std::ffi::OsString {
+    std::env::var_os("DEADRALLY_DATA")
+        .filter(|value| !value.is_empty())
+        .expect(
+            "DEADRALLY_DATA is not set: point it at your Death Rally data to run `cargo test-data`",
+        )
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn dump_assets_writes_one_png_per_catalogued_image() {
+    let home = tempdir().unwrap();
+    let out = home.path().join("dumps");
+    let output = headless(&home)
+        .args(["dump-assets", "--out", out.to_str().unwrap()])
+        .env("DEADRALLY_DATA", data_env())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    let count = deadrally_gamedata::catalog::IMAGES.len();
+    assert!(text(&output.stdout).contains(&format!("wrote {count} images")));
+    let written = walk_pngs(&out);
+    assert_eq!(written, count);
+    assert!(out.join("MENU/APOGEE.png").is_file());
+}
+
+fn walk_pngs(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .map(|path| {
+            if path.is_dir() {
+                walk_pngs(&path)
+            } else {
+                usize::from(path.extension().is_some_and(|ext| ext == "png"))
+            }
+        })
+        .sum()
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn find_locates_a_rendered_frame_in_the_startup_sequence() {
+    // find is how screenshots of the original are matched; it must at least find our own
+    // frames, at the tick they were rendered.
+    let home = tempdir().unwrap();
+    let shot = home.path().join("tick-1000.png");
+    let render = headless(&home)
+        .args(["render", "--tick", "1000", "--out", shot.to_str().unwrap()])
+        .env("DEADRALLY_DATA", data_env())
+        .output()
+        .unwrap();
+    assert_eq!(render.status.code(), Some(0), "{}", text(&render.stderr));
+    let found = headless(&home)
+        .args(["find", "--ticks", "1100", shot.to_str().unwrap()])
+        .env("DEADRALLY_DATA", data_env())
+        .output()
+        .unwrap();
+    assert_eq!(found.status.code(), Some(0), "{}", text(&found.stdout));
+    let line = text(&found.stdout);
+    let ticks = line.split("ticks ").nth(1).unwrap().trim();
+    let (first, last) = ticks.split_once('-').unwrap_or((ticks, ticks));
+    let (first, last): (u64, u64) = (first.parse().unwrap(), last.parse().unwrap());
+    assert!((first..=last).contains(&1000), "{line}");
+}

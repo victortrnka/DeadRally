@@ -14,8 +14,12 @@ path = "src/main.rs"
 
 [dependencies]
 deadrally-core = { path = "../core" }
+deadrally-gamedata = { path = "../gamedata" }
 # SDL3 is compiled from source and linked statically: one binary, no SDL3.dll to ship.
 sdl3 = { version = "0.20.0", features = ["build-from-source-static"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
 
 [lints]
 workspace = true

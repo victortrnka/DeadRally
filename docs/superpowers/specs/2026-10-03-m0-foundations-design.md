@@ -23,7 +23,7 @@ M0 contains **no game logic and no asset decoding**. The core runs a throwaway t
 |---|---|---|
 | Language | **Rust** (edition 2024) | No implicit integer conversions: the signedness, `sar`/`shr` and int/float traps of brief §8 become explicit in the types. Safe Rust removes the heap overruns that DreeRally hit. Cargo replaces CMake and dependency management on all three OSes. The compiler catches more agent mistakes. The brief's approach is "specify from the oracle, then write fresh", so being far from C matters little. |
 | Platform layer | **Spike two frontends, keep the winner** (section 7) | The owner prefers a pure-Rust stack; SDL3 is the safer bet. Evidence decides; a tie goes to pure Rust. |
-| Oracle tooling on Linux | **Separate sub-project B**, in the DreeRally repo | DreeRally's tooling is macOS-specific (clang-cl + xwin + CrossOver). Porting it to Linux and Wine is real work in another repo. It is needed before the first parity check in M1, not in M0. |
+| Oracle tooling on Linux | **Separate sub-project B**, in the DreeRally repo (dropped on 2026-10-04, see section 19) | DreeRally's tooling is macOS-specific (clang-cl + xwin + CrossOver). Porting it to Linux and Wine is real work in another repo. It is needed before the first parity check in M1, not in M0. |
 | Steam library auto-detection | **Moved to M7** | Developers use an environment variable. Players benefit only once installers exist. |
 
 The brief's sub-project order is therefore: **A = M0** (this spec), **B = oracle on Linux** (DreeRally build, Wine runs of the original and of DreeRally under Xvfb, scripted keys, screenshots, orighook), then M1, M2 and so on. Each one gets its own spec, plan and implementation.
@@ -422,3 +422,13 @@ Facts worth knowing for later milestones:
 - **Overflow checks** slow the test scene's per-pixel loops about 13x (7000 ticks: 0.27 s without, 3.6 s with). Input for the M7 review of `overflow-checks` in release.
 - **SHA-256 without CPU support** (the owner's Xeon E5 v2 has no SHA extensions): `deadrally-headless run --ticks 7000` takes about 35 s locally. CI runners have SHA extensions.
 - **Binary sizes on Linux:** `deadrally-sdl` 4.3 MB (static SDL3, only libc linked dynamically); `deadrally-rust` 13.1 MB (links `libudev` and `libasound` dynamically).
+
+## 19. Amendment: sub-project B dropped (2026-10-04)
+
+The owner decided:
+
+- **DreeRally is read-only documentation.** It is not built, run or developed any further.
+- **There is no macOS or CrossOver tooling.**
+- **The oracle is the original `dr.exe`,** run under Wine without a monitor as a test tool only.
+
+Sub-project B (porting DreeRally's build and runners to Linux) is therefore dropped. A small reference runner for the original is built inside M1, the first time a comparison needs it. The brief (§3, §4, §6, §10, §12) is updated accordingly.

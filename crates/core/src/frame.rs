@@ -36,11 +36,10 @@ impl Frame<'_> {
     }
 }
 
-/// Expands a 6-bit VGA colour component to 8 bits, so 0 maps to 0 and 63 to 255. The top two
-/// bits are ignored, as the VGA DAC ignores them. M2 pins the original's exact formula against
-/// the oracle.
+/// Expands a 6-bit VGA colour component to 8 bits the way the Windows version does: a plain
+/// shift, so 63 becomes 252, not 255 (`setPaletteAndGetValue`, 0x43C0A0). The top two bits are
+/// ignored, as the VGA DAC ignores them.
 #[must_use]
 pub fn expand_6bit(component: u8) -> u8 {
-    let v = component & 0x3F;
-    (v << 2) | (v >> 4)
+    (component & 0x3F) << 2
 }

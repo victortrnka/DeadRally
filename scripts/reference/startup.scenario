@@ -1,0 +1,30 @@
+# The whole startup sequence without keys (spec M1a section 9): eight shots spread over the
+# intro, then one every 500 ms through the logos and the title. Check with
+#   deadrally-headless find captures/startup/*.png
+# Every shot must match. The matched ticks against the shot times also measure the timing:
+# about one tick per 14 ms throughout, the intro included.
+at 5000 shot intro-05s
+at 15000 shot intro-15s
+at 25000 shot intro-25s
+at 35000 shot intro-35s
+at 45000 shot intro-45s
+at 55000 shot intro-55s
+at 65000 shot intro-65s
+at 75000 shot intro-75s
+at 79000 shot after-79000
+at 79500 shot after-79500
+at 80000 shot after-80000
+at 80500 shot after-80500
+at 81000 shot after-81000
+at 81500 shot after-81500
+at 82000 shot after-82000
+at 82500 shot after-82500
+at 83000 shot after-83000
+at 83500 shot after-83500
+at 84000 shot after-84000
+at 84500 shot after-84500
+at 85000 shot after-85000
+at 85500 shot after-85500
+at 86000 shot after-86000
+at 86500 shot after-86500
+at 87000 shot after-87000

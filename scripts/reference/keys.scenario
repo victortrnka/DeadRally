@@ -1,0 +1,87 @@
+# Keys pressed during fades (spec M1a section 9). The original remembers a press until the
+# next hold asks for it. A key skips the intro; one during the Apogee fade-in ends the Apogee
+# hold after one tick; one during the Apogee fade-out ends the Remedy hold after one tick.
+# Every shot must match, with keys at the same stages of our sequence (ticks 15 and 45 lie in
+# our Apogee fade-in and fade-out):
+#   deadrally-headless find --key-at 0 --key-at 15 --key-at 45 --ticks 300 captures/keys/*.png
+# Then neither logo holds: its 96 % picture shows in at most three consecutive shots (the
+# one-tick hold, the 100 % flash, the first fade-out step), not for 2.5 s.
+at 3000 key space
+at 3125 shot keys-3125
+at 3150 shot keys-3150
+at 3175 shot keys-3175
+at 3200 key space
+at 3200 shot keys-3200
+at 3225 shot keys-3225
+at 3250 shot keys-3250
+at 3275 shot keys-3275
+at 3300 shot keys-3300
+at 3325 shot keys-3325
+at 3350 shot keys-3350
+at 3375 shot keys-3375
+at 3400 shot keys-3400
+at 3425 shot keys-3425
+at 3450 shot keys-3450
+at 3475 shot keys-3475
+at 3500 shot keys-3500
+at 3525 shot keys-3525
+at 3550 shot keys-3550
+at 3575 shot keys-3575
+at 3600 key space
+at 3600 shot keys-3600
+at 3625 shot keys-3625
+at 3650 shot keys-3650
+at 3675 shot keys-3675
+at 3700 shot keys-3700
+at 3725 shot keys-3725
+at 3750 shot keys-3750
+at 3775 shot keys-3775
+at 3800 shot keys-3800
+at 3825 shot keys-3825
+at 3850 shot keys-3850
+at 3875 shot keys-3875
+at 3900 shot keys-3900
+at 3925 shot keys-3925
+at 3950 shot keys-3950
+at 3975 shot keys-3975
+at 4000 shot keys-4000
+at 4025 shot keys-4025
+at 4050 shot keys-4050
+at 4075 shot keys-4075
+at 4100 shot keys-4100
+at 4125 shot keys-4125
+at 4150 shot keys-4150
+at 4175 shot keys-4175
+at 4200 shot keys-4200
+at 4225 shot keys-4225
+at 4250 shot keys-4250
+at 4275 shot keys-4275
+at 4300 shot keys-4300
+at 4325 shot keys-4325
+at 4350 shot keys-4350
+at 4375 shot keys-4375
+at 4400 shot keys-4400
+at 4425 shot keys-4425
+at 4450 shot keys-4450
+at 4475 shot keys-4475
+at 4500 shot keys-4500
+at 4525 shot keys-4525
+at 4550 shot keys-4550
+at 4575 shot keys-4575
+at 4600 shot keys-4600
+at 4625 shot keys-4625
+at 4650 shot keys-4650
+at 4675 shot keys-4675
+at 4700 shot keys-4700
+at 4725 shot keys-4725
+at 4750 shot keys-4750
+at 4775 shot keys-4775
+at 4800 shot keys-4800
+at 4825 shot keys-4825
+at 4850 shot keys-4850
+at 4875 shot keys-4875
+at 4900 shot keys-4900
+at 4925 shot keys-4925
+at 4950 shot keys-4950
+at 4975 shot keys-4975
+at 5000 shot keys-5000
