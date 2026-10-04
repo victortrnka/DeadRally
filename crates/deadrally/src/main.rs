@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .open_device_stream(Some(&spec))?;
     stream.resume()?;
 
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     let mut texture_size = (0, 0);
     let mut texture = None;
     let mut rgba = Vec::new();

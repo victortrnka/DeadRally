@@ -6,10 +6,12 @@
 //! on every OS: parity with the original is impossible otherwise.
 #![forbid(unsafe_code)]
 
+mod fade;
 mod frame;
 mod game;
 pub mod host;
 mod input;
+mod startup;
 mod test_scene;
 
 pub use frame::{Frame, expand_6bit};

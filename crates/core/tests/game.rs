@@ -18,7 +18,7 @@ type Recording = (Vec<(Vec<u8>, Vec<[u8; 3]>)>, Vec<i16>);
 
 /// Runs a scripted session from a fresh game.
 fn record(script: &[(u32, InputEvent)], ticks: u32) -> Recording {
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     let mut frames = Vec::new();
     let mut audio = Vec::new();
     for tick in 0..ticks {
@@ -90,7 +90,7 @@ fn same_inputs_give_identical_frames_and_audio() {
 fn each_tick_produces_exactly_one_tick_of_stereo_audio() {
     // Frontends and the WAV capture assume 672 frames per 14 ms tick; 1000 ticks must be
     // exactly 14 seconds at 48 kHz or music drifts against the picture.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     let mut audio = Vec::new();
     game.tick();
     game.take_audio(&mut audio);
@@ -108,7 +108,7 @@ fn each_tick_produces_exactly_one_tick_of_stereo_audio() {
 #[test]
 fn take_audio_returns_each_sample_only_once() {
     // A frontend that queued the same samples twice would play an echo.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     game.tick();
     let mut first = Vec::new();
     game.take_audio(&mut first);
@@ -120,7 +120,7 @@ fn take_audio_returns_each_sample_only_once() {
 #[test]
 fn tab_cycles_the_documented_frame_modes() {
     // The spike checks scaling for each of these sizes and aspects.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     let mut seen = Vec::new();
     for _ in 0..4 {
         let frame = game.frame();
@@ -143,7 +143,7 @@ fn tab_cycles_the_documented_frame_modes() {
 #[test]
 fn palette_changes_every_tick() {
     // Palette effects (fades, flashes) are per tick in the original; frontends must re-upload.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     game.tick();
     let before = *game.frame().palette;
     game.tick();
@@ -153,8 +153,8 @@ fn palette_changes_every_tick() {
 #[test]
 fn a_held_key_is_visible_and_releasing_it_restores_the_picture() {
     // The manual input check relies on this feedback.
-    let mut idle = Game::new();
-    let mut pressed = Game::new();
+    let mut idle = Game::test_scene();
+    let mut pressed = Game::test_scene();
     pressed.input(InputEvent::Key {
         key: Key::Space,
         pressed: true,
@@ -175,7 +175,7 @@ fn a_held_key_is_visible_and_releasing_it_restores_the_picture() {
 #[test]
 fn a_press_clicks_and_t_silences_the_tone() {
     // The latency check listens for the click; T lets the tester hear the click alone.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     press(&mut game, Key::T);
     let mut audio = Vec::new();
     game.tick();
@@ -203,7 +203,7 @@ fn a_press_clicks_and_t_silences_the_tone() {
 #[test]
 fn a_repeated_press_without_release_does_not_click_again() {
     // Frontends should not forward OS key repeat; if one does, it must not machine-gun clicks.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     press(&mut game, Key::T);
     game.tick();
     game.tick();
@@ -227,7 +227,7 @@ fn a_repeated_press_without_release_does_not_click_again() {
 #[test]
 fn stick_extremes_stay_on_screen_in_every_mode() {
     // The dot is drawn with unsigned coordinates; full deflection must not underflow.
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     for _ in 0..3 {
         for (x, y) in [
             (i16::MIN, i16::MIN),
@@ -252,7 +252,7 @@ fn stick_extremes_stay_on_screen_in_every_mode() {
 fn grid_cells_look_square_on_screen_in_every_mode() {
     // Testers judge the aspect ratio by eye from these cells: cells that are not square make
     // correct scaling look stretched (the owner saw rectangles in 16:9).
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     for _ in 0..3 {
         let frame = game.frame();
         let (width, height) = (frame.width as usize, frame.height as usize);

@@ -77,6 +77,9 @@ dependencies = [
 [[package]]
 name = "deadrally-core"
 version = "0.0.0"
+dependencies = [
+ "deadrally-gamedata",
+]
 
 [[package]]
 name = "deadrally-gamedata"

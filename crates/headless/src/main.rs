@@ -75,7 +75,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
 /// aspect terms as little-endian u32, the 768 palette bytes, the pixels; and every audio sample
 /// as little-endian i16.
 fn run(ticks: u64) -> String {
-    let mut game = Game::new();
+    let mut game = Game::test_scene();
     let mut frames = Sha256::new();
     let mut audio = Sha256::new();
     let mut samples = Vec::new();
