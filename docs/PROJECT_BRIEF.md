@@ -107,7 +107,7 @@ tools/      asset dumpers, parity harness, screenshot diff
 ```
 
 Design rules that come from the original:
-- **The simulation runs in fixed ticks of 1/70 s**; lap times are stored in 1/70 s. Rendering is decoupled from it. Keep a deterministic core: no wall-clock reads inside game logic.
+- **The simulation runs in fixed ticks of 14 ms**, as in the Windows version, which counts time as `SDL_GetTicks()/14` for menus and races alike (DOS ran at 70 Hz). Lap times will be checked against the Windows display in M4. Rendering is decoupled from the ticks. Keep a deterministic core: no wall-clock reads inside game logic.
 - **Use a deterministic RNG that reproduces MSVC's `rand()`:** `seed = seed * 214013 + 2531011; return (seed >> 16) & 0x7FFF`. Call it **in the same order as the original**; otherwise parity is impossible, because opponents, tracks and events all depend on it.
 - **Render into indexed 8-bit buffers**, as the original does, so palette effects (fades, flashes, the greyscale race intro) work, and convert to RGBA only at presentation. Menus are 640×480; the race view is 320×200, drawn into a buffer with a row stride of 512.
 - **Physics fields are floats wherever the original uses floats.** Several old bugs came from ints where the original had floats.
@@ -136,7 +136,8 @@ Each milestone ends with a parity check against the oracle.
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | **Repo foundations** | The Cargo workspace builds and tests on Win/macOS/Linux in CI; the core has no platform dependencies and is deterministic across OSes; the asset path is configurable; code style is agreed (rustfmt, clippy); the CLAUDE.md/CONTRIBUTING are written; the game data is detected and validated; the platform layer is chosen (ADR 0001). |
-| M1 | **Assets** | BPA/BPK/palette/HAF/XM loaders. A tool dumps every image to PNG locally (never committed). The intro animation plays. |
+| M1a | **Game data and pictures** | BPA/BPK/palette/BMP/track/HAF loaders and a catalogue of every image. A tool dumps every image to PNG locally (never committed). The game starts like the original without sound: intro, Apogee, Remedy, title, matching the original's screenshots pixel for pixel. |
+| M1b | **Sound** | CMF/S3M/XM music and effects, the mixer, and the intro with its sound. |
 | M2 | **Menus and text** | The main menu, Configure, Define Keyboard/Gamepad and Hall of Fame render glyph-identical to the original. The bottom message panel works. |
 | M3 | **Campaign without racing** | New game, licence, sign-up screen with the same three tracks per seed, shop, Underground Market, loans and sponsors, save/load compatible with `DR.SG0..DR.SG7`. |
 | M4 | **Race: draw and drive** | Tracks, cars, HUD, camera and the race intro/outro. Player physics matches the oracle tick by tick for scripted inputs. |
@@ -172,7 +173,7 @@ From DreeRally's `doc/FINDINGS.md`. Expect them whenever you read decompiled cod
 | Data files | `ENGINE.BPA`, `IBFILES.BPA`, `MENU.BPA`, `MUSICS.BPA`, `TR0.BPA`..`TR9.BPA`, `SANIM.haf`, `ENDANI.haf`, `ENDANI0.HAF`, `end.bmp`, `rmd.bmp` |
 | Saves / config | `DR.SG0`..`DR.SG7` (encrypted; slot 7 = Quicksave), `dr.cfg` |
 | Resolutions | menus 640×480, race view 320×200 (8-bit indexed, VGA-style 6-bit palette) |
-| Time base | 70 ticks per second |
+| Time base | ticks of 14 ms (`SDL_GetTicks()/14`, about 71.4 per second); DOS used 70 Hz |
 | Command line (original) | `-window`, `-nogl`, `-smooth` (F12 toggles), `-nosound`; fullscreen by default, Alt+Enter toggles |
 | Window caption | `DR` |
 | Menu text | one flat table: 50-byte rows, 9 rows per menu; rows are rewritten in place (e.g. "Continue Racing") |
@@ -212,6 +213,7 @@ This setup worked well for DreeRally:
 | Language | **Decided: Rust** (2026-10-03; C++20 and C11 were the alternatives) |
 | Platform layer | **Decided by spike:** see `docs/adr/0001-platform-layer.md` |
 | Renderer | indexed framebuffers, converted to RGBA by the core and uploaded as a texture by the frontend |
+| Tick | **Decided (2026-10-04):** 14 ms, as the Windows version |
 | Music | own XM player matching FMOD, or libxmp, checked against the original's output |
 | Reuse policy | re-implement; copy from dRally (MIT) only with notice; avoid pasting decompiled DreeRally code |
 | Order of work | **Decided:** M0, then M1. The planned sub-project B (building and running DreeRally on Linux) was dropped on 2026-10-04; the reference runner for the original is built inside M1. |
