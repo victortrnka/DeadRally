@@ -6,6 +6,7 @@
 pub mod bmp;
 pub mod bpa;
 pub mod bpk;
+pub mod catalog;
 mod config;
 pub mod haf;
 pub mod image;
