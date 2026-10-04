@@ -153,12 +153,15 @@ fn a_key_ends_the_intro_when_the_next_frame_is_due() {
 #[test]
 fn a_corrupt_intro_frame_ends_the_intro_instead_of_crashing() {
     // Only data of an unknown version can hold one, and the player was warned at start-up;
-    // the game should still reach its menus.
+    // the game should still reach its menus. The broken frame comes first: the last frame is
+    // never decoded, so it could not show the problem.
     let mut record = vec![0u8; 768];
     record.extend([8, 2, 0xFF, 0xFF, 0, 0x3B]);
-    let mut haf = vec![1, 0, 0, 1];
-    haf.extend(u16::try_from(record.len()).unwrap().to_le_bytes());
-    haf.extend(record);
+    let mut haf = vec![2, 0, 0, 0, 1, 1];
+    for _ in 0..2 {
+        haf.extend(u16::try_from(record.len()).unwrap().to_le_bytes());
+        haf.extend(&record);
+    }
     let mut broken = assets();
     broken.intro = Animation::from_bytes(PathBuf::from("BROKEN.HAF"), haf).unwrap();
     assert!(broken.intro.frame(0).is_err());
@@ -229,6 +232,37 @@ fn a_key_during_the_fade_in_ends_the_hold_after_one_tick() {
     assert_eq!(brightness.last(), Some(&60), "one hold tick");
     game.tick();
     assert_eq!(shown(&game), (APOGEE, 63), "the fade-out starts");
+}
+
+#[test]
+fn a_key_during_a_fade_out_ends_the_next_logos_hold_after_one_tick() {
+    // The remembered press survives the change of screen, as in the original: a player who
+    // presses while Apogee fades out sees the Remedy logo for a single hold tick.
+    let mut game = Game::new(assets());
+    run(&mut game, INTRO_END + FADE_IN + HOLD + 10);
+    assert_eq!(shown(&game).0, APOGEE, "Apogee is fading out");
+    press(&mut game);
+    run(&mut game, LOGO - FADE_IN - HOLD - 10 + FADE_IN);
+    assert_eq!(shown(&game), (REMEDY, 60), "Remedy's fade-in is done");
+    game.tick();
+    assert_eq!(shown(&game), (REMEDY, 60), "one hold tick");
+    game.tick();
+    assert_eq!(shown(&game), (REMEDY, 63), "the fade-out starts");
+}
+
+#[test]
+fn a_key_with_the_last_intro_frame_carries_into_the_apogee_hold() {
+    // openAnimation stops after its last frame without checking for a key, so the press waits
+    // for the Apogee hold.
+    let mut game = Game::new(assets());
+    run(&mut game, 7);
+    press(&mut game);
+    run(&mut game, INTRO_END - 7 + FADE_IN);
+    assert_eq!(shown(&game), (APOGEE, 60));
+    game.tick();
+    assert_eq!(shown(&game), (APOGEE, 60), "one hold tick");
+    game.tick();
+    assert_eq!(shown(&game), (APOGEE, 63));
 }
 
 #[test]
