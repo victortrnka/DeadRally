@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis};
 use deadrally_gamedata::assets::Assets;
-use deadrally_gamedata::{DATA_ENV_VAR, Outcome, config_path, locate};
+use deadrally_gamedata::{DATA_ENV_VAR, LocateError, Outcome, config_path, locate};
 use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Gamepad};
@@ -72,8 +72,21 @@ fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, St
 fn load_game(data: Option<&Path>) -> Result<(Game, Option<String>), String> {
     let config = config_path();
     let env = std::env::var_os(DATA_ENV_VAR);
-    let located =
-        locate(data, env.as_deref(), config.as_deref()).map_err(|error| error.to_string())?;
+    let hint = || {
+        let file = config.as_deref().map_or_else(
+            || "the config file".to_owned(),
+            |path| path.display().to_string(),
+        );
+        format!(
+            "Point DeadRally at your copy of Death Rally (the folder that holds MENU.BPA) with \
+             --data <dir>, the {DATA_ENV_VAR} environment variable, or data_path in {file}."
+        )
+    };
+    let located = locate(data, env.as_deref(), config.as_deref()).map_err(|error| match error {
+        // This one already names all three ways.
+        LocateError::NotSpecified { .. } => error.to_string(),
+        _ => format!("{error}\n\n{}", hint()),
+    })?;
     for warning in &located.config_warnings {
         eprintln!("warning: {warning}");
     }
@@ -87,8 +100,13 @@ fn load_game(data: Option<&Path>) -> Result<(Game, Option<String>), String> {
             differing.join(", ")
         )),
     };
-    let assets = Assets::load(&located.validation)
-        .map_err(|error| format!("cannot read the game data in {}: {error}", dir.display()))?;
+    let assets = Assets::load(&located.validation).map_err(|error| {
+        format!(
+            "cannot read the game data in {}: {error}\n\n{}",
+            dir.display(),
+            hint()
+        )
+    })?;
     Ok((Game::new(assets), warning))
 }
 
@@ -339,6 +357,16 @@ mod tests {
         assert!(options.windowed && options.test_scene && options.vsync);
         assert_eq!(options.data, Some(PathBuf::from("/games/dr")));
         assert_eq!(parse(&[]).unwrap().data, None);
+    }
+
+    #[test]
+    fn unusable_data_says_how_to_point_at_other_data() {
+        // A player whose copy is incomplete or damaged must learn how to choose another one.
+        let empty = tempfile::tempdir().unwrap();
+        let message = load_game(Some(empty.path())).expect_err("an empty folder is no game data");
+        for needle in ["--data", "DEADRALLY_DATA", "data_path"] {
+            assert!(message.contains(needle), "{needle} missing in: {message}");
+        }
     }
 
     #[test]
