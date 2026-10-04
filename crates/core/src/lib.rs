@@ -15,7 +15,7 @@ mod input;
 mod startup;
 mod test_scene;
 
-pub use audio::render_effect;
+pub use audio::{render_effect, render_music};
 pub use frame::{Frame, expand_6bit};
 pub use game::Game;
 pub use input::{InputEvent, Key, PadAxis, PadButton};

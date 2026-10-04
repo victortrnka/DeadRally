@@ -56,6 +56,27 @@ pub(crate) fn scale_by_exp2(base_hz: u32, steps: i32) -> u32 {
     u32::try_from(hz).unwrap_or(u32::MAX)
 }
 
+/// Scream Tracker's periods of octave 0, C to B; a higher octave halves them.
+pub(crate) const S3M_PERIODS: [u32; 12] = [
+    1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016, 960, 907,
+];
+
+/// A quarter of a sine wave for vibrato, 0..=255 over 32 steps (ProTracker's table).
+pub(crate) const VIBRATO_SINE: [i32; 32] = [
+    0, 24, 49, 74, 97, 120, 141, 161, 180, 197, 212, 224, 235, 244, 250, 253, 255, 253, 250, 244,
+    235, 224, 212, 197, 180, 161, 141, 120, 97, 74, 49, 24,
+];
+
+/// The vibrato wave at position `0..64`: the table forwards, then negated.
+pub(crate) fn vibrato(position: u8) -> i32 {
+    let index = usize::from(position & 31);
+    if position & 32 == 0 {
+        VIBRATO_SINE[index]
+    } else {
+        -VIBRATO_SINE[index]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,5 +100,13 @@ mod tests {
         assert_eq!(scale_by_exp2(8363, -768), 4181);
         // XM's middle C on a linear table: period 4608 plays at 8363 Hz.
         assert_eq!(scale_by_exp2(8363, 64), 8860, "a semitone above middle C");
+    }
+
+    #[test]
+    fn the_vibrato_wave_is_symmetric() {
+        assert_eq!(vibrato(0), 0);
+        assert_eq!(vibrato(16), 255);
+        assert_eq!(vibrato(48), -255);
+        assert_eq!(vibrato(63), -24);
     }
 }
