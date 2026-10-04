@@ -32,7 +32,7 @@ DeadRally is a clean, native reimplementation of *Death Rally* (Remedy, 2009) in
 | `scripts/reference-run.sh scripts/reference/startup.scenario captures/startup` | screenshots of the original under Wine on a virtual display |
 | `target/release/deadrally-headless find captures/startup/*.png` | the ticks of our startup sequence that match each screenshot exactly |
 | `DEADRALLY_BLESS=1 cargo test-data` | rewrite `crates/gamedata/tests/decoded-images.sha256`, only after checking the pictures again |
-| `scripts/spike-check.sh screens target/release/deadrally captures/x 10` | screenshots and stats without a monitor (Xvfb, null sink) |
+| `scripts/spike-check.sh screens target/release/deadrally captures/x 10` | screenshots and stats without a monitor (Xvfb; sound to a file) |
 | `scripts/fullscreen-check.sh target/release/deadrally captures/fs` | four fullscreen toggles on the real GPU without a monitor (headless Weston) |
 
 ## Tests
