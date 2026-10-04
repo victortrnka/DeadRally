@@ -86,6 +86,7 @@ name = "deadrally"
 version = "0.0.0"
 dependencies = [
  "deadrally-core",
+ "deadrally-gamedata",
  "sdl3",
 ]
 

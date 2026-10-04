@@ -1,46 +1,102 @@
-//! DeadRally: the game's frontend (see docs/adr/0001-platform-layer.md). In M0 it runs the test
-//! scene on SDL3.
+//! DeadRally: the game's frontend (see docs/adr/0001-platform-layer.md). It plays the
+//! original's startup sequence on SDL3, silently until M1b.
 //!
 //! Options: `-window` starts windowed (default: borderless fullscreen at the desktop
-//! resolution); `-novsync` turns vsync off, for measuring present cost. Alt+Enter toggles
-//! fullscreen, F12 toggles bilinear smoothing, closing the window quits. One stats line per
-//! second goes to stdout.
+//! resolution); `-novsync` turns vsync off, for measuring present cost; `-testscene` runs the
+//! M0 test scene, which needs no game data; `--data <dir>` names the game data directory (else
+//! `DEADRALLY_DATA`, else `data_path` in the config file). Alt+Enter toggles fullscreen, F12
+//! toggles bilinear smoothing, closing the window quits. One stats line per second goes to
+//! stdout.
 
 mod keymap;
 
 use std::error::Error;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis};
+use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::{DATA_ENV_VAR, Outcome, config_path, locate};
 use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Gamepad};
 use sdl3::keyboard::{Mod, Scancode};
+use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::render::{FRect, ScaleMode};
 use sdl3::video::FullscreenType;
 
 const BYTES_PER_SAMPLE: usize = 2;
 
+#[derive(Debug, PartialEq, Eq)]
 struct Options {
     windowed: bool,
     vsync: bool,
+    test_scene: bool,
+    data: Option<PathBuf>,
 }
 
-fn parse_options() -> Result<Options, String> {
+fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
     let mut options = Options {
         windowed: false,
         vsync: true,
+        test_scene: false,
+        data: None,
     };
-    for arg in std::env::args().skip(1) {
-        match arg.as_str() {
-            "-window" => options.windowed = true,
-            "-novsync" => options.vsync = false,
-            other => return Err(format!("unknown option {other}; known: -window, -novsync")),
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("-window") => options.windowed = true,
+            Some("-novsync") => options.vsync = false,
+            Some("-testscene") => options.test_scene = true,
+            Some("--data") => {
+                options.data = Some(PathBuf::from(
+                    args.next().ok_or("--data needs a directory")?,
+                ));
+            }
+            _ => {
+                return Err(format!(
+                    "unknown option {}; known: -window, -novsync, -testscene, --data <dir>",
+                    arg.to_string_lossy()
+                ));
+            }
         }
     }
     Ok(options)
+}
+
+/// The startup sequence on the player's data, plus a warning to show when the data is not a
+/// known release.
+fn load_game(data: Option<&Path>) -> Result<(Game, Option<String>), String> {
+    let config = config_path();
+    let env = std::env::var_os(DATA_ENV_VAR);
+    let located =
+        locate(data, env.as_deref(), config.as_deref()).map_err(|error| error.to_string())?;
+    for warning in &located.config_warnings {
+        eprintln!("warning: {warning}");
+    }
+    let dir = &located.validation.dir;
+    let warning = match &located.validation.outcome {
+        Outcome::Known { .. } => None,
+        Outcome::Unknown { closest, differing } => Some(format!(
+            "The game data in {} is not a release DeadRally knows (closest: {closest}; \
+             different: {}). The game starts anyway, but it may not match the original.",
+            dir.display(),
+            differing.join(", ")
+        )),
+    };
+    let assets = Assets::load(&located.validation)
+        .map_err(|error| format!("cannot read the game data in {}: {error}", dir.display()))?;
+    Ok((Game::new(assets), warning))
+}
+
+/// Shows `message` in a dialog as well as on stderr; the dialog is best effort (there may be
+/// no display at all).
+fn tell(flag: MessageBoxFlag, title: &str, message: &str) {
+    eprintln!("{}: {message}", title.to_lowercase());
+    let _ = show_simple_message_box(flag, &format!("DeadRally: {title}"), message, None);
 }
 
 fn nanos(duration: Duration) -> u64 {
@@ -48,7 +104,23 @@ fn nanos(duration: Duration) -> u64 {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let options = parse_options()?;
+    let options = parse_options(std::env::args_os().skip(1))?;
+    let mut game = if options.test_scene {
+        Game::test_scene()
+    } else {
+        match load_game(options.data.as_deref()) {
+            Ok((game, warning)) => {
+                if let Some(warning) = warning {
+                    tell(MessageBoxFlag::WARNING, "Warning", &warning);
+                }
+                game
+            }
+            Err(message) => {
+                tell(MessageBoxFlag::ERROR, "Error", &message);
+                std::process::exit(1);
+            }
+        }
+    };
     sdl3::hint::set("SDL_RENDER_VSYNC", if options.vsync { "1" } else { "0" });
 
     let sdl = sdl3::init()?;
@@ -74,7 +146,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .open_device_stream(Some(&spec))?;
     stream.resume()?;
 
-    let mut game = Game::test_scene();
     let mut texture_size = (0, 0);
     let mut texture = None;
     let mut rgba = Vec::new();
@@ -252,4 +323,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         stats.line(nanos(start.elapsed()), pacer.dropped_ticks(), audio)
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(list: &[&str]) -> Result<Options, String> {
+        parse_options(list.iter().map(OsString::from))
+    }
+
+    #[test]
+    fn options_select_the_scene_and_the_data() {
+        let options = parse(&["-window", "-testscene", "--data", "/games/dr"]).unwrap();
+        assert!(options.windowed && options.test_scene && options.vsync);
+        assert_eq!(options.data, Some(PathBuf::from("/games/dr")));
+        assert_eq!(parse(&[]).unwrap().data, None);
+    }
+
+    #[test]
+    fn unknown_or_incomplete_options_are_errors() {
+        // A typo such as -testcsene must not silently start the real game instead.
+        assert!(parse(&["-testcsene"]).unwrap_err().contains("-testscene"));
+        assert!(parse(&["--data"]).is_err());
+    }
 }
