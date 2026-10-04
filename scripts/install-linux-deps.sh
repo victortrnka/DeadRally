@@ -6,7 +6,8 @@
 #   scripts/install-linux-deps.sh           build dependencies
 #   scripts/install-linux-deps.sh --local   also the tools for checking frontends without a
 #                                           monitor (Xvfb, screenshots, software Vulkan, and
-#                                           headless Weston for scripts/fullscreen-check.sh)
+#                                           headless Weston for scripts/fullscreen-check.sh),
+#                                           and 32-bit Wine for scripts/reference-run.sh
 set -euo pipefail
 
 packages=(
@@ -18,7 +19,12 @@ packages=(
 )
 case "${1:-}" in
     "") ;;
-    --local) packages+=(xvfb imagemagick xdotool x11-apps mesa-vulkan-drivers weston wmctrl) ;;
+    --local)
+        packages+=(xvfb imagemagick xdotool x11-apps mesa-vulkan-drivers weston wmctrl)
+        # The original dr.exe is 32-bit; Wine runs it only as a reference, never DeadRally.
+        packages+=(wine wine32:i386)
+        sudo dpkg --add-architecture i386
+        ;;
     *) echo "usage: $0 [--local]" >&2; exit 1 ;;
 esac
 
