@@ -15,6 +15,7 @@ pub mod image;
 mod known_versions;
 mod locate;
 mod lzw;
+pub mod s3m;
 pub mod track;
 mod validate;
 
