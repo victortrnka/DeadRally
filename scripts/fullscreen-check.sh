@@ -7,6 +7,8 @@
 #
 #   scripts/fullscreen-check.sh <binary> <out-dir>
 #
+# The game loads the original data, so export DEADRALLY_DATA (or set data_path) first.
+#
 # Needs `scripts/install-linux-deps.sh --local` and a running PipeWire or PulseAudio server.
 set -euo pipefail
 
@@ -47,13 +49,13 @@ export DISPLAY=$display
 SDL_AUDIO_DRIVER=pulseaudio PULSE_SINK=deadrally_check ALSA_CONFIG_PATH="$alsa_conf" \
     "$binary" > "$out/stats.log" 2> "$out/stderr.log" &
 app_pid=$!
-window=$(timeout 20 xdotool search --sync --name '^DR$' | head -n 1)
+timeout 20 xdotool search --sync --name '^DR$' > /dev/null || true
 lines() { grep -c '^t=' "$out/stats.log" || true; }
-size() { xdotool getwindowgeometry "$window" | awk '/Geometry/ {print $2}'; }
+size() { xdotool getwindowgeometry "$window" 2>/dev/null | awk '/Geometry/ {print $2}' || true; }
 
 sleep 3
 # SDL replaces its first window while it sets up the renderer; use the one that stayed.
-window=$(xdotool search --name '^DR$' | tail -n 1)
+window=$(xdotool search --name '^DR$' | tail -n 1 || true)
 start=$(size)
 if [ -z "$start" ]; then
     echo "FAIL: no game window; see $out/stderr.log" >&2

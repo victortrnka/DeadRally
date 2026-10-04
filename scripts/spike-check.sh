@@ -2,6 +2,8 @@
 # Platform spike helper (spec section 7). Runs a frontend in a virtual X server with a virtual
 # sound card, so the automated checks need neither a monitor nor speakers.
 #
+# It runs the game's M0 test scene (`-testscene`), so it needs no game data.
+#
 #   scripts/spike-check.sh screens <binary> <out-dir> [soak-seconds]
 #       Windowed at 1280x720 and 1024x768: a screenshot of every test-scene mode and of F12
 #       smoothing, then a soak run (default 300 s). stats.log gets one cumulative line per second.
@@ -41,9 +43,16 @@ sleep 2
 launch() {
     # SDL plays through PulseAudio (PULSE_SINK); cpal plays through ALSA (ALSA_CONFIG_PATH).
     SDL_AUDIO_DRIVER=pulseaudio PULSE_SINK=deadrally_null ALSA_CONFIG_PATH="$alsa_conf" \
-        "$binary" -window "$@" > "$out/stats.log" 2> "$out/stderr.log" &
+        "$binary" -window -testscene "$@" > "$out/stats.log" 2> "$out/stderr.log" &
     app_pid=$!
-    window=$(timeout 20 xdotool search --sync --name '^DR$' | head -n 1)
+    timeout 20 xdotool search --sync --name '^DR$' > /dev/null || true
+    sleep 1
+    # SDL replaces its first window while it sets up the renderer; use the one that stayed.
+    window=$(xdotool search --name '^DR$' | tail -n 1 || true)
+    if [ -z "$window" ]; then
+        echo "FAIL: no game window; see $out/stderr.log" >&2
+        exit 1
+    fi
     xdotool windowfocus --sync "$window"
 }
 resize() { xdotool windowsize --sync "$window" "$1" "$2"; sleep 1; }
