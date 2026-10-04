@@ -1,7 +1,7 @@
 # M1a — Game data and pictures: design
 
 - **Date:** 2026-10-04
-- **Status:** agreed in brainstorming with the owner; this written spec awaits review.
+- **Status:** approved by the owner (2026-10-04). Amended the same day while the implementation plan was verified against the original: sections 3.6, 4.2, 5.2, 6 to 9 now hold what the reference runs established.
 - **Scope:** the first half of milestone M1 in [PROJECT_BRIEF.md](../../PROJECT_BRIEF.md) §7. M1b (sound) gets its own spec.
 - **Builds on:** [M0 foundations](2026-10-03-m0-foundations-design.md) and [ADR 0001](../../adr/0001-platform-layer.md) (SDL3).
 
@@ -107,15 +107,18 @@ From DreeRally `ui/menu.c` (main), `asset/haf.c`, `ui/startGameScreen.c` and `dr
 
 All the images are in `MENU.BPA`.
 
-- **Fades:**
-  - `transitionToCurrentImage` (0x427280) raises the brightness from 0 to 100 in steps of 4, one step per tick (26 ticks).
-  - `transitionToBlack` (0x427300) lowers it from 100 to 0 the same way.
-  - Each component is `(component · 65536/100 · level + 0x8000) >> 16` in the original's fixed point.
-  - DreeRally shows an odd `− 4` on the red component during fade-out. Whether the original does this is checked against it (section 9).
+- **Fades** (verified pixel for pixel against the original, `docs/verification/m1a.md`):
+  - `transitionToCurrentImage` (0x427280) sets brightness 0, 4, ..., 96 %, one step per tick (25 ticks). Its loop stops before 100 %, so faded-in pictures stay at 96 %.
+  - `transitionToBlack` (0x427300) sets 100, 96, ..., 0 % (26 ticks). After a fade-in it starts with a one-tick flash from 96 to 100 %.
+  - Arithmetic: each 6-bit component *v* is stored as `(v << 32) / 6553600` (`colorToPaletteEntry`); at level *L* (`0x40000` per step) the shown component is `(((L · stored) >> 16) + 0x8000) >> 16`. There is no `− 4` on red: DreeRally turned the address offset in `[esi-4]` (the red component of the same entry) into a value.
+  - Each step waits one tick first, then sets the palette; the next wait shows it. The title's last step (96 %) is therefore never shown: the game loads the main menu without presenting another frame, and the title stays at 92 %.
+- **Holds:** `do { wait one tick } while (!eventDetected() && ticks < 180)`: at least 1 and at most 180 ticks.
+- **Keys:** the original keeps the last key press until `eventDetected` (0x417EB0) reads and clears it, even across screens. A press during a fade-in ends the following hold after one tick.
 - **Intro playback** (`openAnimation`, 0x4185B0):
   - Palette entries 0..254 go black. The `FRAMES.BPK` palette is set into entries 0–15 and its 320×200 image drawn.
-  - For each frame: decode it, wait until `delay[i]` ticks after the previous frame, set palette entries 16–255 from the frame, and copy its 320×120 pixels to row 40.
-  - A key press before a frame ends the intro. At the end the palette goes black.
+  - For each frame: check for a key and stop if there is one; decode the frame; wait until `delay[i]` ticks after the previous frame; set palette entries 16–255 from the frame and copy its 320×120 pixels to row 40. The frame is shown by the next iteration's first wait.
+  - So a key ends the intro when the next frame is due, and that frame is never shown. Neither is the last frame: the palette goes black right after it is drawn.
+- **Window:** always 640×480. With `-nogl`, `refreshScreen` (0x43B580) doubles 320×200 screens to 640×400 from row 40, black above and below; the default OpenGL path stretches them over the whole 4:3 window.
 - **Tick:** `SDL_GetTicks()/14` drives the whole Windows version: the same per-tick callback runs menus and races (`setBackgroundRefreshFunction`, `dr.c:10273`).
 
 ## 4. Architecture
@@ -124,7 +127,7 @@ All the images are in `MENU.BPA`.
 
 | Crate | Change in M1a |
 |---|---|
-| `deadrally-gamedata` | New decoders (`bpa`, `bpk`, `palette`, `bmp`, `catalog`, `track`, `haf`) and an `Assets` loader that opens the validated data directory. Stays free of platform code. |
+| `deadrally-gamedata` | New decoders (`bpa`, `bpk`, `image`, `bmp`, `catalog`, `track`, `haf`, with the LZW shared by `bpk` and `haf`) and an `Assets` loader that opens the validated data directory. Stays free of platform code. |
 | `deadrally-core` | Depends on `deadrally-gamedata` (planned since M0). Tick, palette and audio constants change (section 5). New scenes. |
 | `deadrally` (SDL frontend) | Loads the data, reports failures in a dialog, and adds `-testscene`. |
 | `deadrally-headless` | `run` keeps using the test scene; new commands `dump-assets`, `render` and `compare`. |
@@ -133,22 +136,22 @@ All the images are in `MENU.BPA`.
 
 - **`bpa`:**
   - `Archive::open(path)` reads the whole file (the largest archive is 5.7 MB) and validates the header (count ≤ 255, `name[12] = 0`, sizes sum to the file length).
-  - `entry(name) -> Option<&[u8]>` matches case-insensitively.
+  - `get(name) -> Option<&[u8]>` and `read(name) -> Result<&[u8], BpaError>` match case-insensitively.
   - Errors name the archive and the entry.
 - **`bpk`:**
   - `decode(stream) -> Result<Vec<u8>, BpkError>` and `decode_range(stream, skip, len)`.
-  - `split_streams(entry) -> Vec<&[u8]>` splits a multi-frame entry.
+  - `split_streams(entry) -> Result<Vec<&[u8]>, BpkError>` splits a multi-frame entry.
   - Errors: a code beyond the dictionary, or data ending before the end code.
-- **`palette`:** `Palette` from 768 bytes; components above 63 are an error (the data has none).
+- **`image`:** `Palette` from 768 bytes (components above 63 are an error; the data has none) and `Image` (width, height, indexed pixels).
 - **`bmp`:** a minimal reader for 8-bit uncompressed BMPs (header fields, `biClrUsed`, bottom-up rows), returning `Palette` and pixels.
 - **`catalog`:**
   - A static table of every image entry.
-  - Each entry has: archive, entry name, width, height, frame count, layout (`Single` / `Streams` / `Slices { count }` / `Rix3Track` / `PaletteThenImage`), palette (`Named(entry)` / `Embedded` / `FirstBytes`), transparency (colour 0) and a `source` note (the DreeRally function and address the fact comes from).
+  - Each entry has: archive, entry name, width, height, frame count, layout (`Single` / `Streams` / `Slices` / `Rix3Track` / `PaletteThenImage`), palette (`Named { archive, entry }` / `Track` for race graphics / `Embedded` / `Mask` for masks), transparency (colour 0) and a `source` note (the DreeRally function and address the fact comes from).
   - Section 3 lists the facts known now; the remaining entries are filled in during implementation by reading DreeRally.
   - **Completeness rule:** every `.BPK` entry of every archive is either catalogued or listed in `catalog::NOT_IMAGES` with a reason.
 - **`track`:** parses `INF.BIN` into a struct and decodes RIX3 track images, checking the header dimensions against `INF.BIN`.
-- **`haf`:** `Animation::open(path)` reads the header and frame offsets; `frame(i) -> Result<HafFrame { palette, pixels: Box<[u8; 38400]> }>` decodes on demand.
-- **`assets`:** `Assets::load(&Validation)` opens `MENU.BPA`, `SANIM.haf` and `rmd.bmp` and decodes what the startup sequence needs. Other archives open lazily (the dump tool).
+- **`haf`:** `Animation::open(path)` reads the header and frame offsets; `frame(i) -> Result<HafFrame { palette, pixels: Vec<u8> }>` decodes on demand (38400 pixels). `Animation::from_frames(delays, frames)` builds one in memory for tests.
+- **`assets`:** `Assets::load(&Validation)` opens `MENU.BPA`, `SANIM.haf` and `rmd.bmp` and decodes what the startup sequence needs into `Assets { intro, letterbox, apogee, remedy, title }` (each picture an `Image` with its `Palette`). Other archives open lazily (the dump tool).
 
 ## 5. Core changes
 
@@ -172,15 +175,16 @@ The `Game` holds a scene state machine and advances it once per tick. Frames are
 
 | Scene | Frame | Behaviour (ticks of 14 ms) |
 |---|---|---|
-| Intro | 320×200, 4:3 | Starts black with the letterbox (`FRAMES.BPK`, palette entries 0–15). Frame *i* appears `delay[i]` ticks after frame *i − 1* (the first after `delay[0]`), with its palette in 16–255 and its pixels at row 40. A key press ends the intro. The end turns black. |
-| Apogee | 640×480, 4:3 | Fade in (26 ticks: brightness 0, 4, …, 100), hold up to 180 ticks or until a key, fade out (26 ticks). |
+| Intro | 320×200, 4:3 | Starts black with the letterbox (`FRAMES.BPK`, palette entries 0–15). Frame *i* appears `delay[i]` ticks after frame *i − 1* (the first after `delay[0]`), with its palette in 16–255 and its pixels at row 40. A key ends the intro when the next frame is due; that frame and the last frame are never shown. The end turns black. |
+| Apogee | 640×480, 4:3 | Fade in (25 ticks: 0, 4, …, 96 %), hold up to 180 ticks or until a key, fade out (26 ticks: 100, 96, …, 0 %). |
 | Remedy | 640×480, 4:3 | As Apogee, with `rmd.bmp`. |
-| Title | 640×480, 4:3 | Fade in (26 ticks), then stays. M2 continues from here. |
+| Title | 640×480, 4:3 | Fade in to 92 % (24 ticks), then stays. M2 continues from here. |
 
 - **API:**
-  - `Game::new(&Assets)` starts the sequence.
+  - `Game::new(assets: Assets)` starts the sequence; the game owns its assets.
   - `Game::test_scene()` gives the M0 scene, for `-testscene`, headless runs without data, and CI.
-- **Keys:** "a key" means any key or pad button press forwarded by the frontend. Whether a press during a fade-in skips the following hold is decided by the reference check (section 9). The scene code isolates that rule in one place.
+- **Keys:** "a key" means any key or pad button press forwarded by the frontend. One remembered press, as in the original (section 3.6): the intro reads it once per frame, each hold once per tick.
+- **A corrupt intro frame** (possible only with data of an unknown version, which the player was warned about) ends the intro; an intro without frames is skipped, as `openAnimation` does.
 - **No decoding at tick time beyond one HAF frame per shown frame.** Decoding a frame takes well under a tick.
 
 ## 6. Frontend
@@ -190,20 +194,19 @@ The `Game` holds a scene state machine and advances it once per tick. Frames are
   - If no source is given, the data is unusable, or a decoder fails, the game shows an SDL message box and writes the same text to stderr, then exits with status 1.
   - The message says where it looked, what is missing or broken, and how to set the path.
   - An unknown data version shows a warning dialog, and the game then starts.
-- **Flags:** `-window`, `-novsync` and `-testscene`. Unknown flags are an error, as in M0.
+- **Flags:** `-window`, `-novsync`, `-testscene` and `--data <dir>`. Unknown flags are an error, as in M0.
 
 ## 7. Headless
 
 - **`run --ticks N`:** unchanged; it uses the test scene, so CI's cross-OS determinism job keeps working without game data.
-- **`dump-assets [--data PATH] --out DIR`:**
-  - Writes every catalogued image as PNG, with its palette expanded `v << 2`.
-  - Multi-frame and sliced images become one PNG with the frames side by side; track images are written whole.
+- **`dump-assets [--data PATH] [--out DIR]`:**
+  - Writes every catalogued image as `DIR/<archive>/<entry>.png`, with its palette expanded `v << 2`.
+  - Multi-frame and sliced images become one PNG with the frames side by side; track images are written whole. Race graphics use track 1's palette; masks show 0 as black and anything else as white.
   - It refuses to write inside the game data directory.
   - The default `DIR` is `dumps/` in the working directory, which `.gitignore` covers.
-- **`render [--data PATH] --tick T --out FILE.png`:** runs the startup sequence for `T` ticks without input and writes that frame. `--key-at TICK` (repeatable) injects key presses.
-- **`compare A.png B.png`:**
-  - Reports the size, the number of differing pixels and the largest channel difference. It exits 0 only for identical images.
-  - `--search` takes a set of candidate frames instead (all intro frames, or all 26 fade levels) and reports which one matches exactly.
+- **`render [--data PATH] --tick T [--key-at T]... --out FILE.png`:** runs the startup sequence for `T` ticks and writes that frame as the original's `-nogl` window shows it (640×480). `--key-at K` presses and releases a key after `K` ticks.
+- **`compare A.png B.png`:** reports the size, the number of differing pixels and the largest channel difference. It exits 0 only for identical images.
+- **`find [--data PATH] [--key-at T]... [--ticks N] SHOT.png...`:** plays the startup sequence (7000 ticks by default) and reports, for each screenshot of the original, the ticks whose window picture equals it exactly, or the closest tick if none does. It exits 0 only when every screenshot has a match. This replaces the planned `compare --search`: since every intro frame and fade level occurs somewhere in the sequence, searching the sequence covers both.
 - **New dependency:** the `png` crate, in `deadrally-headless` only. `core` stays free of image formats.
 
 ## 8. Reference runner (the oracle)
@@ -213,7 +216,7 @@ The `Game` holds a scene state machine and advances it once per tick. Frames are
 1. **Copies the validated game files** into `~/.cache/deadrally/reference/run/`. The original writes `dr.cfg` next to itself, so the install is never used directly.
 2. **Creates once a 32-bit Wine prefix** at `~/.cache/deadrally/reference/wineprefix` (`WINEARCH=win32`, `WINEDLLOVERRIDES="mscoree,mshtml="` so Wine does not ask for Mono or Gecko). The prefix only hosts the 32-bit original; DeadRally itself is 64-bit native.
 3. **Starts the original:** Xvfb on a free display (`-displayfd`), then `dr.exe -window -nogl -nosound`. Software rendering gives exact pixels, and nothing reaches the speakers.
-4. **Runs the scenario:** a text file with lines `at <ms> key <name>` and `at <ms> shot <label>`. Keys go through xdotool and shots through `import -window`.
+4. **Runs the scenario:** a text file with lines `at <ms> key <name>` and `at <ms> shot <label>`, in time order (the runner refuses others). Keys go through xdotool; shots are taken with `xwd` (fast enough for a shot every 25 ms) and converted to PNG after the run.
 5. **Writes** the PNGs and a log to `<out-dir>`, which lives under `captures/` (ignored by Git). Screenshots of original art are never committed.
 
 Scenarios live in `scripts/reference/*.scenario`. The tools come from `scripts/install-linux-deps.sh --local` (Wine 9 with `wine32`, Xvfb, xdotool, ImageMagick).
@@ -224,15 +227,15 @@ Because the original's timing under Wine jitters, comparisons **search for a mat
 
 | Check | How | Passes when |
 |---|---|---|
-| Intro frames (HAF decoder, palettes, letterbox) | about 8 screenshots spread over the intro; `compare --search` over all 1626 of our rendered intro frames | each screenshot equals one of our frames exactly |
+| Intro frames (HAF decoder, palettes, letterbox) | 8 screenshots spread over the intro; `find` | each screenshot equals one of our frames exactly |
 | Apogee, Remedy, title (BPK, BMP, palettes) | screenshots during the holds and after the title fade | pixel-identical to our render |
-| Fade formula, including the red `− 4` question | screenshots during a fade-in and a fade-out; `--search` over all 26 levels | an exact match at some level; otherwise the formula is corrected until it matches |
+| Fade formula, including the red `− 4` question | bursts of screenshots every 25 ms during fades; `find` | every screenshot equals one of our fade levels exactly |
 | Key during fade-in | a scenario presses a key during the Apogee fade-in | our rule reproduces whether the hold was skipped |
 | Timing | a screenshot every 200 ms; intro length and hold lengths measured from frame changes | within ±5 % of `Σ delay × 14 ms` and `(26 + 180 + 26) × 14 ms` |
 
-- **First unknown to settle:** how the original shows a 320×200 screen in a 640×480 window (for example doubled to 640×400 and centred). `compare` takes an `--scale` and offset once this is known.
+- **Presentation:** the original's `-nogl` window doubles 320×200 screens to 640×400 from row 40 (section 3.6); `render` and `find` reproduce that, so no scale or offset option is needed.
 - **Records:** `docs/verification/m1a.md` keeps the results (pass/fail, which frame or level matched, image hashes) and the scenario files used, never the images.
-- **Regression manifest:** after the visual checks pass, a SHA-256 manifest of every decoded catalogue image is committed (`crates/gamedata/tests/decoded-images.sha256`). Hashes are facts about the data, not the data.
+- **Regression manifest:** after the visual checks pass, a SHA-256 manifest of every decoded catalogue image, the three animations and the two BMPs is committed (`crates/gamedata/tests/decoded-images.sha256`; `DEADRALLY_BLESS=1 cargo test-data` rewrites it). Hashes are facts about the data, not the data.
 
 ## 10. Tests
 
@@ -240,7 +243,7 @@ Because the original's timing under Wine jitters, comparisons **search for a mat
   - hand-built bit streams for both LZW variants (clear, end, KwKwK, a code beyond the dictionary, truncated input, width growth to 12, the HAF stop rule);
   - synthetic BPA archives (name codec, count > 255, `name[12] ≠ 0`, sizes not summing);
   - a synthetic BMP (bottom-up rows, a short palette);
-  - the scene timeline on synthetic assets (fade levels per tick, a hold ended by a key, intro frame timing from delays);
+  - the scene timeline on synthetic assets (fade levels per tick, a hold ended by a key, a key during a fade-in, intro frame timing from delays, the unshown last intro frame, the title at 92 %);
   - the pacer at 14 ms and the 6-bit expansion `v << 2`.
 - **With data** (`cargo test-data`):
   - entry counts and size sums for every archive;
@@ -248,7 +251,7 @@ Because the original's timing under Wine jitters, comparisons **search for a mat
   - every catalogued image decodes to exactly `w × h × frames` bytes;
   - multi-frame splits give the documented frame counts (ENGIx 24, TIREx 12, ARMORx 16, CONTANI 23, REPAANI 24, car spinners 64);
   - RIX3 headers match `INF.BIN` on all ten tracks;
-  - the HAF frame counts and delay sums of 3.5;
+  - the HAF frame counts and delay sums of 3.5 (every frame decoding is covered by the manifest);
   - the decoded-images manifest.
 - **Tests encode why** (owner rule 9). The name or a comment says what a player would see go wrong.
 
@@ -256,7 +259,7 @@ Because the original's timing under Wine jitters, comparisons **search for a mat
 
 Done in M1a's documentation task:
 
-- **§5:** the design rule "fixed ticks of 1/70 s" becomes "fixed ticks of 14 ms, as the Windows version (`SDL_GetTicks()/14`); DOS used 70 Hz". Note that lap times will be checked against the Windows display in M4.
+- **§5:** the design rule "fixed ticks of 1/70 s" becomes "fixed ticks of 14 ms, as the Windows version (`SDL_GetTicks()/14`); DOS used 70 Hz". Note that lap times will be checked against the Windows display in M4. §9's "Time base" row changes to match.
 - **§7:** M1 is split into M1a (this spec) and M1b (sound).
 - **§12:** "Tick" is recorded as decided. The "Music" row stays open for M1b.
 
@@ -273,7 +276,7 @@ Done in M1a's documentation task:
 
 | Risk | Mitigation |
 |---|---|
-| The 320×200 presentation in the original's window is unknown | the first verification task measures it; `compare` takes a scale and offset |
+| The 320×200 presentation in the original's window is unknown | settled: read from `refreshScreen` and confirmed by the intro screenshots (section 3.6) |
 | The original under Wine behaves differently from Windows (timing, rendering) | software rendering (`-nogl`) for pixels; ±5 % tolerance for timing; anything odd is recorded |
 | Catalogue facts are wrong (dimensions come from code) | the completeness and size tests catch wrong products of `w × h`; the PNG dump and the reference screenshots catch wrong `w` with the right product |
 | Wine prompts or crashes on first start | a prefix created once with prompts disabled; the runner reports a failed start loudly |
