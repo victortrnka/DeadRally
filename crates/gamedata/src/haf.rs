@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::image::{PALETTE_BYTES, Palette, PaletteError};
-use crate::lzw::{self, LzwError};
+use crate::lzw;
 
 pub const FRAME_WIDTH: u32 = 320;
 pub const FRAME_HEIGHT: u32 = 120;
@@ -22,7 +22,6 @@ pub struct HafFrame {
 }
 
 /// An animation. Frames from a file are decoded on request: the intro is 21 MB.
-#[derive(Debug)]
 pub struct Animation {
     path: PathBuf,
     /// Effect to trigger with each frame (0 = none); played from M1b on.
@@ -32,7 +31,6 @@ pub struct Animation {
     frames: Frames,
 }
 
-#[derive(Debug)]
 enum Frames {
     /// The file's bytes and each frame record's byte range.
     Encoded {
@@ -90,6 +88,16 @@ impl std::error::Error for HafError {
             HafError::Read { source, .. } => Some(source),
             HafError::Malformed { .. } | HafError::Frame { .. } => None,
         }
+    }
+}
+
+/// The path and the frame count, not megabytes of frame data.
+impl fmt::Debug for Animation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Animation")
+            .field("path", &self.path)
+            .field("frames", &self.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -241,12 +249,10 @@ fn decode_frame(record: &[u8]) -> Result<HafFrame, String> {
         return Err("missing the 0x3B trailer".into());
     }
     let mut pixels = Vec::with_capacity(FRAME_PIXELS);
+    // Decoding stops at 38400 pixels, before the next code is read, as the original's does:
+    // ENDANI.haf frame 200 writes its end code at the wrong width after a complete picture.
     match lzw::decode(&stream, lzw::GIF, FRAME_PIXELS, &mut pixels) {
-        // ENDANI.haf frame 200 writes its end code at the wrong width; the frame is complete
-        // anyway, and the original stops there too.
-        Ok(_) | Err(LzwError::UnexpectedEnd) if pixels.len() == FRAME_PIXELS => {
-            Ok(HafFrame { palette, pixels })
-        }
+        Ok(_) if pixels.len() == FRAME_PIXELS => Ok(HafFrame { palette, pixels }),
         Ok(_) => Err(format!(
             "{} pixels, a frame has {FRAME_PIXELS}",
             pixels.len()
@@ -307,6 +313,19 @@ mod tests {
 
     fn parse(data: Vec<u8>) -> Result<Animation, HafError> {
         Animation::from_bytes(PathBuf::from("TEST.HAF"), data)
+    }
+
+    #[test]
+    fn debug_output_names_the_animation_instead_of_dumping_it() {
+        // A failing assertion that prints the game's assets must stay readable: the intro is
+        // 21 MB.
+        let anim = parse(animation(&[frame_record(17, FRAME_PIXELS)], &[4])).unwrap();
+        let debug = format!("{anim:?}");
+        assert!(
+            debug.contains("TEST.HAF") && debug.contains("frames: 1"),
+            "{debug}"
+        );
+        assert!(debug.len() < 200, "{} characters", debug.len());
     }
 
     #[test]

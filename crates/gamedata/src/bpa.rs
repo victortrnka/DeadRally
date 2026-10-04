@@ -12,11 +12,20 @@ const DIRECTORY_ENTRY_BYTES: usize = NAME_BYTES + 4;
 pub const DATA_START: usize = 4 + DIRECTORY_ENTRIES * DIRECTORY_ENTRY_BYTES;
 
 /// A whole archive in memory (the largest original archive is 5.7 MB).
-#[derive(Debug)]
 pub struct Archive {
     path: PathBuf,
     data: Vec<u8>,
     entries: Vec<Entry>,
+}
+
+/// The path and the entry count, not megabytes of data.
+impl fmt::Debug for Archive {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Archive")
+            .field("path", &self.path)
+            .field("entries", &self.entries.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug)]
@@ -213,6 +222,18 @@ mod tests {
 
     fn open(data: Vec<u8>) -> Result<Archive, BpaError> {
         Archive::from_bytes(PathBuf::from("TEST.BPA"), data)
+    }
+
+    #[test]
+    fn debug_output_names_the_archive_instead_of_dumping_it() {
+        // A failing assertion that prints an archive must stay readable: MENU.BPA is 3 MB.
+        let archive = open(build(&[("A.BPK", &[7; 5000])])).unwrap();
+        let debug = format!("{archive:?}");
+        assert!(
+            debug.contains("TEST.BPA") && debug.contains("entries: 1"),
+            "{debug}"
+        );
+        assert!(debug.len() < 200, "{} characters", debug.len());
     }
 
     #[test]
