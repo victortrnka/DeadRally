@@ -2,13 +2,15 @@
 //! `cargo test-data`; the tests read DEADRALLY_DATA and fail (never pass silently) when it is
 //! unset.
 
-use std::path::PathBuf;
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 
 use deadrally_gamedata::bpa::Archive;
 use deadrally_gamedata::catalog::{self, Layout};
-use deadrally_gamedata::haf::Animation;
+use deadrally_gamedata::haf::{Animation, FRAME_HEIGHT, FRAME_WIDTH};
 use deadrally_gamedata::track::TrackInfo;
-use deadrally_gamedata::{DATA_ENV_VAR, locate};
+use deadrally_gamedata::{DATA_ENV_VAR, bmp, locate};
+use sha2::{Digest, Sha256};
 
 const ARCHIVES: [&str; 13] = [
     "ENGINE.BPA",
@@ -159,4 +161,87 @@ fn the_startup_assets_load_with_their_documented_shapes() {
     assert_eq!(size(&assets.apogee), (640, 480));
     assert_eq!(size(&assets.remedy), (640, 480));
     assert_eq!(size(&assets.title), (640, 480));
+}
+
+/// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the
+/// file stores them), its name and its shape as width x height x frames. The shape is part of
+/// the picture: the same bytes at another width draw a skewed sprite.
+fn manifest(dir: &Path) -> String {
+    let mut lines = String::new();
+    let mut line = |name: &str, shape: (u32, u32, usize), hasher: Sha256| {
+        let hash: String = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let (width, height, frames) = shape;
+        writeln!(lines, "{hash}  {name} {width}x{height}x{frames}").unwrap();
+    };
+    for name in ARCHIVES {
+        let archive = archive(name);
+        for entry in catalog::IMAGES.iter().filter(|entry| entry.archive == name) {
+            let bytes = archive.read(entry.name).unwrap();
+            let mut hasher = Sha256::new();
+            if let Some(palette) = entry.embedded_palette(bytes).unwrap() {
+                hasher.update(palette.0.as_flattened());
+            }
+            let frames = entry.decode(bytes).unwrap();
+            for frame in &frames {
+                hasher.update(&frame.pixels);
+            }
+            let shape = (frames[0].width, frames[0].height, frames.len());
+            line(&format!("{name}/{}", entry.name), shape, hasher);
+        }
+    }
+    for name in ["SANIM.haf", "ENDANI.haf", "ENDANI0.HAF"] {
+        let animation = Animation::open(&dir.join(name)).unwrap();
+        let mut hasher = Sha256::new();
+        for index in 0..animation.len() {
+            let frame = animation
+                .frame(index)
+                .unwrap_or_else(|error| panic!("{error}"));
+            hasher.update(frame.palette.0.as_flattened());
+            hasher.update(&frame.pixels);
+        }
+        line(name, (FRAME_WIDTH, FRAME_HEIGHT, animation.len()), hasher);
+    }
+    for name in ["rmd.bmp", "end.bmp"] {
+        let (image, palette) = bmp::decode(&std::fs::read(dir.join(name)).unwrap()).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(palette.0.as_flattened());
+        hasher.update(&image.pixels);
+        line(name, (image.width, image.height, 1), hasher);
+    }
+    lines
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn decoded_pictures_match_the_committed_manifest() {
+    // The manifest was written after the pictures were checked by eye and against the original
+    // (docs/verification/m1a.md); a decoder change must not alter any of them unnoticed.
+    let actual = manifest(&data_dir());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/decoded-images.sha256");
+    if std::env::var_os("DEADRALLY_BLESS").is_some() {
+        std::fs::write(&path, &actual).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(&path).unwrap_or_default();
+    let only_in = |these: &str, those: &str| -> Vec<String> {
+        these
+            .lines()
+            .filter(|line| !those.lines().any(|other| other == *line))
+            .map(str::to_owned)
+            .collect()
+    };
+    let (new, gone) = (only_in(&actual, &expected), only_in(&expected, &actual));
+    assert!(
+        new.is_empty() && gone.is_empty(),
+        "decoded pictures differ from {}:\ndecoded now:\n{}\nin the manifest:\n{}\nIf the \
+         change is intended, check the pictures again and rewrite the manifest with \
+         DEADRALLY_BLESS=1 cargo test-data",
+        path.display(),
+        new.join("\n"),
+        gone.join("\n")
+    );
 }
