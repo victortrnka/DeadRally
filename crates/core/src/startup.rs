@@ -1,5 +1,6 @@
 //! The original's startup sequence: the intro, the Apogee and Remedy logos and the title screen
-//! (spec M1a §3.6 and §5.2). Silent until M1b.
+//! (spec M1a §3.6 and §5.2), with the intro's music and effects and then the menu music
+//! (spec M1b §4.3).
 //!
 //! Each step follows the Windows version's loops tick for tick, so a screenshot of the original
 //! can be found in our timeline: `openAnimation` (0x4185B0), `apogeeScreen` (0x427380) and
@@ -9,8 +10,9 @@ use deadrally_gamedata::assets::{Assets, Picture};
 use deadrally_gamedata::haf::FRAME_PIXELS;
 use deadrally_gamedata::image::Palette;
 
+use crate::audio::{DEFAULT_MUSIC_VOLUME, FULL_VOLUME, Sound};
 use crate::fade::{FADE_FULL, FADE_STEP, fade};
-use crate::{AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, Frame, InputEvent};
+use crate::{AUDIO_FRAMES_PER_TICK, Frame, InputEvent};
 
 /// The intro's screen: 320x200, with the animation's 320x120 frames from row 40.
 const INTRO_WIDTH: u32 = 320;
@@ -18,6 +20,10 @@ const INTRO_HEIGHT: u32 = 200;
 const INTRO_FIRST_ROW: usize = 40;
 /// The letterbox owns palette entries 0..=15, the animation frames the rest.
 const LETTERBOX_COLOURS: usize = 16;
+/// The intro's effects take channels 1..=6 in turn.
+const INTRO_EFFECT_CHANNELS: usize = 6;
+/// The menu music starts at this order (`musicSetOrder(0x2D00)` in `mainMenu`, 0x43A0C5).
+const MENU_MUSIC_ORDER: usize = 45;
 
 /// Fade-in ticks: brightness 0, 4, ..., 96 %. The original's loop stops before 100 %.
 const FADE_IN_TICKS: u32 = 25;
@@ -69,7 +75,11 @@ pub(crate) struct Startup {
     /// 0x417EB0, reads and clears it), so a press during a fade-in ends the following hold
     /// after one tick.
     key: bool,
-    silent_ticks: usize,
+    sound: Sound,
+    /// The channel the intro's next effect plays on.
+    effect_channel: usize,
+    /// Samples rendered since the last `take_audio`.
+    audio: Vec<i16>,
 }
 
 impl Startup {
@@ -82,13 +92,21 @@ impl Startup {
             pixels: Vec::new(),
             palette: Palette::BLACK,
             key: false,
-            silent_ticks: 0,
+            sound: Sound::default(),
+            effect_channel: 1,
+            audio: Vec::new(),
         };
         if startup.assets.intro.is_empty() {
             // `openAnimation` plays nothing when the file has no frames.
-            startup.stage = startup.show(Screen::Apogee);
+            startup.stage = startup.end_intro();
         } else {
             startup.show_letterbox();
+            // `openAnimation` loads the music and the effects and starts the music just before
+            // the first frame, at full volume: `dr.cfg`'s volumes apply only after the intro.
+            startup
+                .sound
+                .play_music(&startup.assets.intro_music, 0, FULL_VOLUME);
+            startup.sound.load_effects(&startup.assets.intro_effects);
         }
         startup
     }
@@ -102,8 +120,12 @@ impl Startup {
     }
 
     pub(crate) fn tick(&mut self) {
-        self.silent_ticks += 1;
-        self.stage = match self.stage {
+        self.stage = self.next_stage();
+        self.sound.render(AUDIO_FRAMES_PER_TICK, &mut self.audio);
+    }
+
+    fn next_stage(&mut self) -> Stage {
+        match self.stage {
             Stage::Intro { next, waited } => self.tick_intro(next, waited + 1),
             // The title's last step is set but never shown: the original goes on to load the
             // main menu without presenting another frame, so the title stays at 92 %.
@@ -151,7 +173,7 @@ impl Startup {
                 }
             }
             Stage::Title => Stage::Title,
-        };
+        }
     }
 
     /// One tick of `openAnimation`: when frame `next` is due it replaces the previous one, then
@@ -169,7 +191,15 @@ impl Startup {
             next += 1;
             waited = 0;
             if next == intro.len() || std::mem::take(&mut self.key) {
-                return self.show(Screen::Apogee);
+                // The frame ending the intro is never shown, and its effect, which the
+                // original starts and cuts at once, never sounds.
+                return self.end_intro();
+            }
+            // The original triggers a frame's effect right after drawing it.
+            let effect = intro.effects[next - 1];
+            if effect != 0 {
+                self.sound.trigger(self.effect_channel, effect);
+                self.effect_channel = self.effect_channel % INTRO_EFFECT_CHANNELS + 1;
             }
         }
         if let Some(index) = due {
@@ -182,10 +212,22 @@ impl Startup {
                 }
                 // Only data of an unknown version can get here (the known version's frames are
                 // all tested), and the player was warned about it at start-up.
-                Err(_) => return self.show(Screen::Apogee),
+                Err(_) => return self.end_intro(),
             }
         }
         Stage::Intro { next, waited }
+    }
+
+    /// The intro's sound stops (`openAnimation`, `checkAndOpenAnimation`); `mainMenu` then
+    /// starts the menu music at the configured volume and shows the logos.
+    fn end_intro(&mut self) -> Stage {
+        self.sound.stop();
+        self.sound.play_music(
+            &self.assets.menu_music,
+            MENU_MUSIC_ORDER,
+            DEFAULT_MUSIC_VOLUME,
+        );
+        self.show(Screen::Apogee)
     }
 
     /// Black screen with the letterbox's colours set, as `openAnimation` starts.
@@ -225,11 +267,9 @@ impl Startup {
         }
     }
 
-    /// Silence until M1b brings the intro music and effects.
+    /// The intro's music and effects; silence once it has ended.
     pub(crate) fn take_audio(&mut self, out: &mut Vec<i16>) {
-        let samples =
-            std::mem::take(&mut self.silent_ticks) * AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS;
-        out.resize(out.len() + samples, 0);
+        out.append(&mut self.audio);
     }
 }
 

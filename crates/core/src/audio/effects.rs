@@ -91,6 +91,20 @@ impl Effects {
         self.channels[slot] = Some(voice);
     }
 
+    /// Silences `channel` (1-based) with a short fade.
+    pub(crate) fn stop(&mut self, channel: usize) {
+        if let Some(mut voice) = self.channels[channel - 1].take() {
+            voice.release();
+            self.fading.push(voice);
+        }
+    }
+
+    pub(crate) fn stop_all(&mut self) {
+        for channel in 1..=CHANNELS {
+            self.stop(channel);
+        }
+    }
+
     /// Adds every playing effect to `out` (interleaved stereo).
     pub(crate) fn mix_into(&mut self, out: &mut [i64]) {
         for slot in &mut self.channels {
@@ -205,5 +219,17 @@ mod tests {
         let mut out = vec![0i64; 2 * 1000];
         effects.mix_into(&mut out);
         assert!(out.iter().all(|&sample| sample == 0));
+    }
+
+    #[test]
+    fn stopping_all_channels_silences_everything() {
+        // The intro's end stops channels 1-6; a sound that kept playing would bleed into the logos.
+        let mut effects = Effects::new(&bank(0, 128));
+        effects.trigger(1, 2, FULL, FULL);
+        effects.trigger(6, 2, FULL, FULL);
+        effects.stop_all();
+        let mut out = vec![0i64; 2 * 1000];
+        effects.mix_into(&mut out);
+        assert_eq!(out[1998], 0);
     }
 }

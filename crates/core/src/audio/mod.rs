@@ -20,6 +20,10 @@ pub(crate) fn music_master(volume: u32) -> i64 {
     (255 * i64::from(volume >> 8)) >> 9
 }
 
+/// The music volume the intro plays at, whatever `dr.cfg` says: the game's volume globals
+/// start at 255 and take `dr.cfg`'s values only when the menu music starts.
+pub(crate) const FULL_VOLUME: u32 = 0xFF00;
+
 /// `dr.cfg`'s default music volume, 50 % (`defaultConfig`, 0x426700). The menus play at it
 /// until M2's Configure menu can change it.
 pub(crate) const DEFAULT_MUSIC_VOLUME: u32 = 0x8000;
@@ -59,6 +63,16 @@ impl Sound {
     pub(crate) fn trigger(&mut self, channel: usize, effect: u8) {
         if let Some(effects) = &mut self.effects {
             effects.trigger(channel, effect, effects::FULL, effects::FULL);
+        }
+    }
+
+    /// Stops the music and every effect, with a short fade so nothing clicks.
+    pub(crate) fn stop(&mut self) {
+        if let Some(music) = &mut self.music {
+            music.stop();
+        }
+        if let Some(effects) = &mut self.effects {
+            effects.stop_all();
         }
     }
 
@@ -183,12 +197,12 @@ mod tests {
         let mut silent = loud.clone();
         silent.orders.clear();
         let mut sound = Sound::default();
-        sound.play_music(&loud, 0, DEFAULT_MUSIC_VOLUME);
+        sound.play_music(&loud, 0, FULL_VOLUME);
         let mut out = Vec::new();
         sound.render(1000, &mut out);
         let before = out[2 * 999];
         assert!(before > 0);
-        sound.play_music(&silent, 0, DEFAULT_MUSIC_VOLUME);
+        sound.play_music(&silent, 0, FULL_VOLUME);
         out.clear();
         sound.render(1000, &mut out);
         assert!(
@@ -202,8 +216,20 @@ mod tests {
     #[test]
     fn the_configured_music_volume_sets_fmods_master_volume() {
         // musicSetmusicVolume (0x43C280): 255 * (volume >> 8) >> 9.
+        assert_eq!(music_master(FULL_VOLUME), 127);
         assert_eq!(music_master(DEFAULT_MUSIC_VOLUME), 63);
         assert_eq!(music_master(0x1_0000), 127);
         assert_eq!(music_master(0), 0);
+    }
+
+    #[test]
+    fn stopping_fades_everything_out() {
+        let mut sound = Sound::default();
+        sound.load_effects(&bank());
+        sound.trigger(1, 1);
+        sound.stop();
+        let mut out = Vec::new();
+        sound.render(1000, &mut out);
+        assert_eq!(out[2 * 999], 0);
     }
 }
