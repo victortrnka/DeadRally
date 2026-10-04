@@ -1,4 +1,4 @@
-//! The decoded data the startup sequence needs (spec M1a §4.2).
+//! The decoded data the startup sequence needs (spec M1a §4.2, M1b §4.1).
 
 use std::fmt;
 use std::path::PathBuf;
@@ -8,7 +8,10 @@ use crate::bpa::{Archive, BpaError};
 use crate::catalog::{self, CatalogError};
 use crate::haf::{Animation, HafError};
 use crate::image::{Image, Palette, PaletteError};
+use crate::s3m::Module;
+use crate::sound::{self, SoundError};
 use crate::validate::Validation;
+use crate::xm::Bank;
 
 /// An image with the palette it is shown with.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +33,12 @@ pub struct Assets {
     pub remedy: Picture,
     /// `STARTSCR.BPK` with `STARTSCR.PAL`.
     pub title: Picture,
+    /// `TR0-MUS.CMF`: the music under the intro.
+    pub intro_music: Module,
+    /// `SANIM-E.CMF`: the intro's effects, numbered as in `SANIM.haf`'s table.
+    pub intro_effects: Bank,
+    /// `MEN-MUS.CMF`: the music that starts when the intro ends and goes on into the menus.
+    pub menu_music: Module,
 }
 
 #[derive(Debug)]
@@ -52,6 +61,7 @@ pub enum AssetError {
         source: std::io::Error,
     },
     Animation(HafError),
+    Sound(SoundError),
 }
 
 impl fmt::Display for AssetError {
@@ -65,6 +75,7 @@ impl fmt::Display for AssetError {
                 write!(f, "cannot read {}: {source}", path.display())
             }
             AssetError::Animation(error) => write!(f, "{error}"),
+            AssetError::Sound(error) => write!(f, "{error}"),
         }
     }
 }
@@ -93,6 +104,7 @@ impl Assets {
                 .unwrap_or_else(|| panic!("{name} is a required file, so validation found it"))
         };
         let menu = Archive::open(&path("MENU.BPA"))?;
+        let musics = Archive::open(&path(sound::ARCHIVE))?;
         let remedy_path = path("RMD.BMP");
         let remedy_bytes = std::fs::read(&remedy_path).map_err(|source| AssetError::Read {
             path: remedy_path.clone(),
@@ -108,6 +120,10 @@ impl Assets {
             apogee: picture(&menu, "APOGEE.BPK", "APOGEE.PAL")?,
             remedy: Picture { image, palette },
             title: picture(&menu, "STARTSCR.BPK", "STARTSCR.PAL")?,
+            intro_music: sound::load_music(&musics, "TR0-MUS.CMF").map_err(AssetError::Sound)?,
+            intro_effects: sound::load_effects(&musics, "SANIM-E.CMF")
+                .map_err(AssetError::Sound)?,
+            menu_music: sound::load_music(&musics, "MEN-MUS.CMF").map_err(AssetError::Sound)?,
         })
     }
 }

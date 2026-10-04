@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 use deadrally_gamedata::haf::{Animation, FRAME_PIXELS, HafFrame};
 use deadrally_gamedata::image::{Image, Palette};
+use deadrally_gamedata::s3m::{self, Cell, Module, Sample};
+use deadrally_gamedata::xm::{Bank, Instrument, Looping};
 
 /// Intro delays: frame 0 at tick 4, frame 1 at tick 6, the last frame at tick 9.
 const DELAYS: [u8; 3] = [4, 2, 3];
@@ -59,6 +61,66 @@ fn assets() -> Assets {
         apogee: picture(APOGEE, [63, 0, 0]),
         remedy: picture(REMEDY, [0, 63, 0]),
         title: picture(TITLE, [0, 0, 63]),
+        intro_music: music(false),
+        intro_effects: effects(),
+        menu_music: music(false),
+    }
+}
+
+/// A module that is silent, or plays one endless tone from its first row.
+fn music(tone: bool) -> Module {
+    let mut channels = [s3m::Channel::default(); s3m::CHANNELS];
+    channels[0] = s3m::Channel {
+        enabled: true,
+        pan: 3,
+    };
+    let mut pattern = s3m::Pattern {
+        rows: vec![[Cell::default(); s3m::CHANNELS]; s3m::ROWS],
+    };
+    pattern.rows[0][0] = Cell {
+        note: 0x40,
+        instrument: 1,
+        volume: Some(64),
+        command: 0,
+        info: 0,
+    };
+    Module {
+        title: "Tone".into(),
+        orders: if tone { vec![0] } else { Vec::new() },
+        initial_speed: 6,
+        initial_tempo: 125,
+        global_volume: 64,
+        master_volume: 48,
+        stereo: false,
+        channels,
+        samples: vec![Sample {
+            name: "Tone".into(),
+            c2spd: 8363,
+            volume: 64,
+            looped: Some((0, 1000)),
+            data: vec![4000; 1000],
+        }],
+        patterns: vec![pattern],
+    }
+}
+
+/// Effect 1 is an endless constant tone.
+fn effects() -> Bank {
+    Bank {
+        linear_frequencies: true,
+        instruments: vec![Some(Instrument {
+            name: "Hum".into(),
+            data: vec![1000; 1000],
+            looping: Looping::Forward {
+                start: 0,
+                length: 1000,
+            },
+            volume: 64,
+            finetune: 0,
+            relative_note: 0,
+            panning: 128,
+            fadeout: 0,
+        })],
     }
 }
 

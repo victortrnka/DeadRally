@@ -16,6 +16,7 @@ mod known_versions;
 mod locate;
 mod lzw;
 pub mod s3m;
+pub mod sound;
 pub mod track;
 mod validate;
 pub mod xm;
