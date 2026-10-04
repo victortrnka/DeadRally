@@ -1,0 +1,21 @@
+[package]
+name = "deadrally"
+description = "DeadRally: the game's window, input and sound around deadrally-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "deadrally"
+path = "src/main.rs"
+
+[dependencies]
+deadrally-core = { path = "../core" }
+# SDL3 is compiled from source and linked statically: one binary, no SDL3.dll to ship.
+sdl3 = { version = "0.20.0", features = ["build-from-source-static"] }
+
+[lints]
+workspace = true

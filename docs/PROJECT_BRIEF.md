@@ -97,7 +97,7 @@ How it works in practice:
 
 ## 5. Architecture sketch (proposal, owner decides)
 
-Language and libraries are open decisions (section 11). The recommendation is **C++20, SDL3 and CMake**: SDL covers window, input, gamepad and audio on all three platforms, and C++ allows clean types while staying close to the reference C code.
+**Decided in M0:** Rust (edition 2024) in a Cargo workspace; the platform layer was chosen by a spike recorded in `docs/adr/0001-platform-layer.md`. The modules below map onto crates: `deadrally-core` holds the deterministic game (the gfx, ui, game, race and audio logic) and has no platform dependencies; `deadrally-gamedata` reads the original data (assets); `deadrally` is the frontend (platform); `deadrally-headless` and future tools cover the rest (tools).
 
 ```
 platform/   window, fullscreen toggle, input (keyboard/gamepad), timing, file paths
@@ -142,7 +142,7 @@ Each milestone ends with a parity check against the oracle.
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | **Repo foundations** | CMake builds on Win/macOS/Linux in CI; the asset path is configurable; code style is agreed; the CLAUDE.md/CONTRIBUTING are written; the game data is detected and validated. |
+| M0 | **Repo foundations** | The Cargo workspace builds and tests on Win/macOS/Linux in CI; the core has no platform dependencies and is deterministic across OSes; the asset path is configurable; code style is agreed (rustfmt, clippy); the CLAUDE.md/CONTRIBUTING are written; the game data is detected and validated; the platform layer is chosen (ADR 0001). |
 | M1 | **Assets** | BPA/BPK/palette/HAF/XM loaders. A tool dumps every image to PNG locally (never committed). The intro animation plays. |
 | M2 | **Menus and text** | The main menu, Configure, Define Keyboard/Gamepad and Hall of Fame render glyph-identical to the original. The bottom message panel works. |
 | M3 | **Campaign without racing** | New game, licence, sign-up screen with the same three tracks per seed, shop, Underground Market, loans and sponsors, save/load compatible with `DR.SG0..DR.SG7`. |
@@ -167,7 +167,7 @@ From DreeRally's `doc/FINDINGS.md`. Expect them whenever you read decompiled cod
 - **Code the previous port author commented out or "tuned":** volume shifts, frequency factors, clamps, skipped calls. Compare with the original before keeping anything that looks odd.
 - **The random sequence matters:** one extra or missing `rand()` changes tracks and opponents.
 - **Wrong per-car stride or wrong car index:** a corner computed with the *player's* Y put every AI car's smoke hundreds of pixels off.
-- **Restored `free()` calls exposed old heap overruns:** an XM loader that loaded two instruments too many. Run memory checks (ASan/UBSan) from day one.
+- **Restored `free()` calls exposed old heap overruns:** an XM loader that loaded two instruments too many. In Rust, safe code rules out this class of bug: keep `unsafe` forbidden and overflow checks on.
 
 ---
 
@@ -195,7 +195,7 @@ Exact addresses for all of these are in the DreeRally source and docs.
 1. Get the game: install *Death Rally (Classic)* from Steam, or Remedy's 2009 freeware. Play a few races of the original.
 2. Clone **DreeRally** and build and run it (see its `doc/DEVELOPMENT.md`). Read `FINDINGS.md` and `KNOWN-ISSUES.md`.
 3. Clone **dRally**. Skim `drally_structs_fixed.h` and its asset loaders.
-4. Set up the DeadRally skeleton for M0: CMake, SDL, CI matrix (windows-latest, macos-latest, ubuntu-latest), formatting/lint, ASan/UBSan in debug, an asset-path setting, and a `CLAUDE.md` / `CONTRIBUTING.md` with the rules from section 2.
+4. Set up the DeadRally skeleton for M0: a Cargo workspace, the platform spike (ADR 0001), CI matrix (windows-latest, macos-latest, ubuntu-latest), rustfmt and clippy, overflow checks, an asset-path setting, and a `CLAUDE.md` / `CONTRIBUTING.md` with the rules from section 2. Done; see `docs/superpowers/specs/2026-10-03-m0-foundations-design.md`.
 5. Write the BPA reader and an asset dump tool (M1) and check the output against DreeRally's loaders (`asset/bpaUtil.c`, `decryptTexture`).
 6. Open a GitHub issue per milestone, then split each into module issues.
 
@@ -214,13 +214,14 @@ This setup worked well for DreeRally:
 
 ## 12. Decisions for the owner
 
-| Decision | Recommendation |
+| Decision | Recommendation or decision |
 |---|---|
-| Language | C++20 (alternatives: C11, closest to the references; Rust, safest but furthest away) |
-| Platform layer | SDL3 (SDL2 if older Linux distros matter) |
-| Renderer | indexed framebuffers uploaded as textures through SDL's GPU renderer |
+| Language | **Decided: Rust** (2026-10-03; C++20 and C11 were the alternatives) |
+| Platform layer | **Decided by spike:** see `docs/adr/0001-platform-layer.md` |
+| Renderer | indexed framebuffers, converted to RGBA by the core and uploaded as a texture by the frontend |
 | Music | own XM player matching FMOD, or libxmp, checked against the original's output |
 | Reuse policy | re-implement; copy from dRally (MIT) only with notice; avoid pasting decompiled DreeRally code |
+| Order of work | **Decided:** M0, then sub-project B (DreeRally build and Wine runs of the oracle on Linux), then M1 |
 | Name and branding | "Death Rally" is Remedy's; check the project name and logo use before any public release |
 | Contact Remedy? | optional, but goodwill helps a public fan project |
 
