@@ -21,6 +21,12 @@ pub(crate) const BPK: Codes = Codes {
     end: 256,
 };
 
+/// HAF frames: GIF's assignment.
+pub(crate) const GIF: Codes = Codes {
+    clear: 256,
+    end: 257,
+};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LzwError {
     /// A code that is neither a literal, a dictionary entry nor the next free code.
@@ -194,6 +200,13 @@ mod tests {
         // "AAA": A, then 258 before it exists (= "A" + "A").
         let (out, _) = run(&[(257, 9), (65, 9), (258, 9), (256, 9)], BPK).unwrap();
         assert_eq!(out, b"AAA");
+    }
+
+    #[test]
+    fn gif_codes_swap_clear_and_end() {
+        let (out, decoded) = run(&[(256, 9), (65, 9), (257, 9)], GIF).unwrap();
+        assert_eq!(out, b"A");
+        assert!(decoded.ended);
     }
 
     #[test]

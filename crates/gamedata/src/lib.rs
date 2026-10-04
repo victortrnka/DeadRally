@@ -7,6 +7,7 @@ pub mod bmp;
 pub mod bpa;
 pub mod bpk;
 mod config;
+pub mod haf;
 pub mod image;
 mod known_versions;
 mod locate;
