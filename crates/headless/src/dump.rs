@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::Path;
 
-use deadrally_gamedata::Validation;
 use deadrally_gamedata::bpa::Archive;
 use deadrally_gamedata::catalog::{self, ImageEntry, PaletteSource};
 use deadrally_gamedata::image::Palette;
+use deadrally_gamedata::{STEAM_SUBDIR, Validation};
 
 use crate::rgb::Rgb;
 
@@ -21,6 +21,21 @@ pub fn dump_assets(validation: &Validation, out: &Path) -> Result<usize, String>
         return Err(format!(
             "{} is inside the game data directory, which is never written to",
             out.display()
+        ));
+    }
+    // With Steam's layout the data sits in a "Death Rally" folder inside the install, and the
+    // folder around it is the game's install too.
+    if let Some(install) = validation.dir.parent().filter(|_| {
+        validation
+            .dir
+            .file_name()
+            .is_some_and(|name| name == STEAM_SUBDIR)
+    }) && is_inside(out, install)?
+    {
+        return Err(format!(
+            "{} is inside the game's install ({}), which is never written to",
+            out.display(),
+            install.display()
         ));
     }
     let mut archives = Archives {

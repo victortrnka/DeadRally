@@ -242,6 +242,33 @@ fn dump_assets_refuses_to_write_into_the_game_data() {
     assert!(!out.exists());
 }
 
+#[test]
+fn dump_assets_refuses_the_steam_folder_above_the_data() {
+    // With Steam's layout the data sits one level down; the folder the player named is still
+    // the game's install and must not fill up with dumps.
+    let home = tempdir().unwrap();
+    let named = home.path().join("Death Rally");
+    fake_install(&named.join("Death Rally"));
+    let out = named.join("dumps");
+    let output = run(
+        &home,
+        &[
+            "dump-assets",
+            "--data",
+            named.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{}", text(&output.stdout));
+    assert!(
+        text(&output.stderr).contains("game's install"),
+        "{}",
+        text(&output.stderr)
+    );
+    assert!(!out.exists());
+}
+
 fn data_env() -> std::ffi::OsString {
     std::env::var_os("DEADRALLY_DATA")
         .filter(|value| !value.is_empty())
