@@ -29,6 +29,7 @@ DeadRally is a clean, native reimplementation of *Death Rally* (Remedy, 2009) in
 | `cargo run --release -p deadrally-headless -- run --ticks 7000` | determinism hashes; CI compares them across OSes |
 | `cargo run --release -p deadrally -- -window` | the game (M0: the test scene) |
 | `scripts/spike-check.sh screens target/release/deadrally captures/x 10` | screenshots and stats without a monitor (Xvfb, null sink) |
+| `scripts/fullscreen-check.sh target/release/deadrally captures/fs` | four fullscreen toggles on the real GPU without a monitor (headless Weston) |
 
 ## Tests
 
