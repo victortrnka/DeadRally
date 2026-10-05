@@ -1,0 +1,37 @@
+# The idle main menu (spec M2a section 5): its pulsing highlights and creeping background rows
+# over 13 s. No keys. Compare with
+#   deadrally-headless find --ticks 7400 captures/menu-explore/*.png
+at 88000 shot t88000
+at 88250 shot t88250
+at 88500 shot t88500
+at 88750 shot t88750
+at 89000 shot t89000
+at 89250 shot t89250
+at 89500 shot t89500
+at 89750 shot t89750
+at 90000 shot t90000
+at 90250 shot t90250
+at 90500 shot t90500
+at 90750 shot t90750
+at 91000 shot t91000
+at 91250 shot t91250
+at 91500 shot t91500
+at 91750 shot t91750
+at 92000 shot t92000
+at 92250 shot t92250
+at 92500 shot t92500
+at 92750 shot t92750
+at 93000 shot t93000
+at 95000 shot t95000
+at 95500 shot t95500
+at 96000 shot t96000
+at 96500 shot t96500
+at 97000 shot t97000
+at 97500 shot t97500
+at 98000 shot t98000
+at 98500 shot t98500
+at 99000 shot t99000
+at 99500 shot t99500
+at 100000 shot t100000
+at 100500 shot t100500
+at 101000 shot t101000

@@ -3,10 +3,10 @@
 //! `run --ticks N` hashes every frame and every audio sample, so two runs, or the same run on
 //! two operating systems, can be compared with one line. `check-data` reports where the game
 //! data was found and whether it is a known release. `dump-assets` writes every catalogued
-//! image as a PNG. `render`, `compare` and `find` check the startup sequence against
-//! screenshots of the original (scripts/reference-run.sh). `render-audio` writes what the game
-//! plays as a WAV, and `compare-audio` checks it against a recording of the original (spec M1b
-//! sections 4.4 and 5).
+//! image as a PNG. `render`, `compare` and `find` check the startup sequence and the menus
+//! against screenshots of the original (scripts/reference-run.sh). `render-audio` writes what
+//! the game plays as a WAV, and `compare-audio` checks it against a recording of the original
+//! (spec M1b sections 4.4 and 5).
 
 mod audio_compare;
 mod dump;
@@ -34,10 +34,10 @@ const USAGE: &str = "usage:
   deadrally-headless run --ticks N
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
-  deadrally-headless render [--data PATH] --tick T [--key-at T]... --out FILE.png
+  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY]]... --out FILE.png
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T]... [--ticks N] SHOT.png...
-  deadrally-headless render-audio [--data PATH] --startup [--key-at T]... [--seconds S] --out FILE.wav
+  deadrally-headless find [--data PATH] [--key-at T[:KEY]]... [--ticks N] SHOT.png...
+  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY]]... [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
   deadrally-headless compare-audio ORIGINAL.wav OURS.wav [--min-overlap S]";
@@ -82,7 +82,7 @@ enum Command {
     Render {
         data: Option<PathBuf>,
         tick: u64,
-        keys: Vec<u64>,
+        keys: Vec<Press>,
         out: PathBuf,
     },
     Compare {
@@ -91,14 +91,14 @@ enum Command {
     },
     Find {
         data: Option<PathBuf>,
-        keys: Vec<u64>,
+        keys: Vec<Press>,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
     RenderAudio {
         data: Option<PathBuf>,
         source: AudioSource,
-        keys: Vec<u64>,
+        keys: Vec<Press>,
         seconds: Option<u64>,
         out: PathBuf,
     },
@@ -216,7 +216,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 "--out" => out = Some(PathBuf::from(value)),
                 "--ticks" => ticks = Some(number()?),
                 "--tick" => tick = Some(number()?),
-                "--key-at" => keys.push(number()?),
+                "--key-at" => keys.push(press(&value.to_string_lossy())?),
                 "--music" => music = Some(value.to_string_lossy().into_owned()),
                 "--effect" => effect = Some(value.to_string_lossy().into_owned()),
                 "--number" => {
@@ -384,25 +384,63 @@ fn locate_data(cli: Option<&Path>) -> Result<Located, String> {
     Ok(located)
 }
 
-/// Runs `ticks` ticks, pressing and releasing a key after each tick count in `keys` (0: before
-/// the first tick), and calls `each` with the tick count and the game after every tick.
-fn play(game: &mut Game, ticks: u64, keys: &[u64], mut each: impl FnMut(u64, &Game)) {
-    for done in 0..ticks {
-        if keys.contains(&done) {
-            for pressed in [true, false] {
-                game.input(InputEvent::Key {
-                    key: Key::Space,
-                    pressed,
-                });
-            }
+/// A key pressed and released after a number of ticks (0: before the first tick).
+type Press = (u64, Key);
+
+/// The keys `--key-at T:KEY` can name; `T` alone presses Space.
+const KEY_NAMES: [(&str, Key); 9] = [
+    ("space", Key::Space),
+    ("enter", Key::Enter),
+    ("escape", Key::Escape),
+    ("up", Key::Up),
+    ("down", Key::Down),
+    ("left", Key::Left),
+    ("right", Key::Right),
+    ("y", Key::Y),
+    ("n", Key::N),
+];
+
+/// Parses `T` or `T:KEY`.
+fn press(text: &str) -> Result<Press, String> {
+    let (tick, name) = text.split_once(':').unwrap_or((text, "space"));
+    let tick = tick
+        .parse()
+        .map_err(|_| format!("--key-at: not a number: {tick}"))?;
+    let key = KEY_NAMES
+        .iter()
+        .find(|(known, _)| known.eq_ignore_ascii_case(name))
+        .map(|&(_, key)| key)
+        .ok_or_else(|| {
+            let names: Vec<&str> = KEY_NAMES.iter().map(|(known, _)| *known).collect();
+            format!(
+                "--key-at: unknown key {name}; known keys: {}",
+                names.join(", ")
+            )
+        })?;
+    Ok((tick, key))
+}
+
+/// Presses and releases the keys due before tick `done + 1`, in the order given.
+fn press_due(game: &mut Game, keys: &[Press], done: u64) {
+    for &(_, key) in keys.iter().filter(|(tick, _)| *tick == done) {
+        for pressed in [true, false] {
+            game.input(InputEvent::Key { key, pressed });
         }
+    }
+}
+
+/// Runs `ticks` ticks, pressing and releasing the keys in `keys`, and calls `each` with the tick
+/// count and the game after every tick.
+fn play(game: &mut Game, ticks: u64, keys: &[Press], mut each: impl FnMut(u64, &Game)) {
+    for done in 0..ticks {
+        press_due(game, keys, done);
         game.tick();
         each(done + 1, game);
     }
 }
 
 /// Writes the frame after `tick` ticks as the original's window would show it.
-fn render(data: Option<&Path>, tick: u64, keys: &[u64], out: &Path) -> Result<(), String> {
+fn render(data: Option<&Path>, tick: u64, keys: &[Press], out: &Path) -> Result<(), String> {
     let located = locate_data(data)?;
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let mut game = Game::new(assets);
@@ -435,7 +473,7 @@ fn compare(a: &Path, b: &Path) -> Result<ExitCode, String> {
 /// the same picture. Exit status 0 only when every screenshot has a match.
 fn find(
     data: Option<&Path>,
-    keys: &[u64],
+    keys: &[Press],
     ticks: u64,
     shots: &[PathBuf],
 ) -> Result<ExitCode, String> {
@@ -510,7 +548,7 @@ fn find(
 /// previous picture, so callers can skip work on those.
 fn timeline(
     located: &Located,
-    keys: &[u64],
+    keys: &[Press],
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
@@ -558,7 +596,7 @@ fn sound_entry(name: &str) -> String {
 fn render_audio(
     data: Option<&Path>,
     source: &AudioSource,
-    keys: &[u64],
+    keys: &[Press],
     seconds: Option<u64>,
     out: &Path,
 ) -> Result<(), String> {
@@ -590,14 +628,7 @@ fn render_audio(
             let mut game = Game::new(assets);
             let mut audio = Vec::new();
             for done in 0..ticks {
-                if keys.contains(&done) {
-                    for pressed in [true, false] {
-                        game.input(InputEvent::Key {
-                            key: Key::Space,
-                            pressed,
-                        });
-                    }
-                }
+                press_due(&mut game, keys, done);
                 game.tick();
                 game.take_audio(&mut audio);
             }
@@ -769,6 +800,18 @@ mod tests {
     }
 
     #[test]
+    fn a_key_name_the_scenarios_do_not_use_is_an_error_that_lists_the_known_ones() {
+        // A typo would otherwise press nothing, and a shot taken after it would match the
+        // wrong frame.
+        let error = parse(&args(&[
+            "render", "--tick", "3", "--key-at", "2:enetr", "--out", "a.png",
+        ]))
+        .unwrap_err();
+        assert!(error.contains("unknown key enetr"), "{error}");
+        assert!(error.contains("escape"), "{error}");
+    }
+
+    #[test]
     fn parses_the_asset_commands() {
         assert_eq!(
             parse(&args(&["dump-assets"])),
@@ -779,12 +822,13 @@ mod tests {
         );
         assert_eq!(
             parse(&args(&[
-                "render", "--tick", "300", "--key-at", "10", "--key-at", "20", "--out", "a.png"
+                "render", "--tick", "300", "--key-at", "10", "--key-at", "20:Down", "--out",
+                "a.png"
             ])),
             Ok(Command::Render {
                 data: None,
                 tick: 300,
-                keys: vec![10, 20],
+                keys: vec![(10, Key::Space), (20, Key::Down)],
                 out: PathBuf::from("a.png")
             })
         );
