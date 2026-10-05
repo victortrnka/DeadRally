@@ -7,9 +7,11 @@ use std::path::PathBuf;
 use crate::bmp::{self, BmpError};
 use crate::bpa::{Archive, BpaError};
 use crate::catalog::{self, CatalogError};
+use crate::dr_cfg::DrCfg;
 use crate::exe::{Exe, ExeError};
 use crate::haf::{Animation, HafError};
 use crate::image::{Image, Palette, PaletteError};
+use crate::machine::MachineError;
 use crate::s3m::Module;
 use crate::sound::{self, SoundError};
 use crate::text::{TextError, Texts};
@@ -79,6 +81,11 @@ pub struct MenuAssets {
     pub effects: Bank,
     /// The strings and font metrics in `dr.exe`.
     pub texts: Texts,
+    /// `SLIDMUS2.BPK` and `VOLCUR2.BPK`: the volume popups' slider and its knob.
+    pub slider: Image,
+    pub knob: Image,
+    /// The `dr.cfg` the original writes when it has none, from `dr.exe`'s `defaultConfig`.
+    pub default_config: DrCfg,
 }
 
 #[derive(Debug)]
@@ -103,6 +110,7 @@ pub enum AssetError {
     Animation(HafError),
     Sound(SoundError),
     Exe(ExeError),
+    Machine(MachineError),
     Text(TextError),
     Size {
         name: &'static str,
@@ -124,6 +132,7 @@ impl fmt::Display for AssetError {
             AssetError::Animation(error) => write!(f, "{error}"),
             AssetError::Sound(error) => write!(f, "{error}"),
             AssetError::Exe(error) => write!(f, "dr.exe: {error}"),
+            AssetError::Machine(error) => write!(f, "{error}"),
             AssetError::Text(error) => write!(f, "{error}"),
             AssetError::Size {
                 name,
@@ -269,6 +278,9 @@ fn menu_assets(
         end: full_screen(bmp_picture(end)?, end)?,
         effects: sound::load_effects(musics, "MEN-SAM.CMF").map_err(AssetError::Sound)?,
         texts: Texts::read(&exe).map_err(AssetError::Text)?,
+        slider: frames(menu, "SLIDMUS2.BPK")?.remove(0),
+        knob: frames(menu, "VOLCUR2.BPK")?.remove(0),
+        default_config: DrCfg::defaults(&exe).map_err(AssetError::Machine)?,
     })
 }
 

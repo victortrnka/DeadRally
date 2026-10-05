@@ -196,6 +196,30 @@ fn the_startup_assets_load_with_their_documented_shapes() {
     assert_eq!((rows(0), rows(1)), (6, 6));
     assert_eq!(menu.texts.panel.len(), 4);
     assert_eq!((menu.texts.big.width, menu.texts.small.height), (32, 16));
+    assert_eq!((menu.slider.width, menu.slider.height), (172, 24));
+    assert_eq!((menu.knob.width, menu.knob.height), (10, 24));
+    let configure = &menu.texts.configure;
+    assert_eq!(
+        (configure.key_names.len(), configure.pad_names.len()),
+        (256, 9)
+    );
+    // The defaults dr.exe's defaultConfig writes, as a fresh dr.cfg of the original holds
+    // them (docs/verification/m2b.md): A, Z, the arrows, left shift, left control, left alt
+    // and space; button 1, down, left, right, buttons 2 to 4; gamepad off.
+    let defaults = &menu.default_config;
+    assert_eq!(
+        (defaults.music_volume(), defaults.effects_volume()),
+        (0x8000, 0xC000)
+    );
+    assert_eq!(
+        (0..8).map(|c| defaults.key(c)).collect::<Vec<_>>(),
+        [0x1E, 0x2C, 0xCB, 0xCD, 0x2A, 0x1D, 0x38, 0x39]
+    );
+    assert_eq!(
+        (0..7).map(|c| defaults.pad(c)).collect::<Vec<_>>(),
+        [5, 4, 1, 2, 6, 7, 8]
+    );
+    assert_eq!((defaults.use_joystick(), defaults.times_played()), (0, 0));
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

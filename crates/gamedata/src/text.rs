@@ -34,6 +34,38 @@ const MEDIUM_SIZE: (u8, u8) = (9, 12);
 const SHOWN_MENUS: usize = 2;
 const SHOWN_ROWS: usize = 6;
 
+/// Configure's popups (spec M2b §3.2): the volume captions, the gamepad switch's two texts and
+/// the popup when no gamepad is found.
+const ADJUST_MUSIC: u32 = 0x44_3F90;
+const ADJUST_EFFECTS: u32 = 0x44_3F6C;
+const GAMEPAD_ON: u32 = 0x44_3F50;
+const GAMEPAD_OFF: u32 = 0x44_3F34;
+const NOT_DETECTED: u32 = 0x44_3170;
+const PRESS_ANY_KEY: u32 = 0x44_29A4;
+/// The eight controls' names (accelerate, brake, left, right, turbo, gun, mine, horn), with
+/// the prompts for a key and, but for the horn, for a gamepad input.
+const CONTROLS: [u32; 8] = [
+    0x44_2AD0, 0x44_2A60, 0x44_2A4C, 0x44_2A34, 0x44_2A18, 0x44_29FC, 0x44_29E0, 0x44_29C0,
+];
+const KEY_PROMPTS: [u32; 8] = [
+    0x44_3E34, 0x44_3E18, 0x44_3DF8, 0x44_3DD8, 0x44_3DB8, 0x44_3D98, 0x44_3D78, 0x44_3D60,
+];
+const PAD_PROMPTS: [u32; 7] = [
+    0x44_3F14, 0x44_3EF8, 0x44_3ED8, 0x44_3EB8, 0x44_3E98, 0x44_3E74, 0x44_3E54,
+];
+/// The names of the gamepad inputs 0 (none) to 8, 16 bytes apart going down.
+const PAD_NAMES: u32 = 0x44_3160;
+pub const PAD_INPUTS: usize = 9;
+/// Key names, 16 bytes apart going down from here in scancode order: 0x01..=0x54, then
+/// `MORE_NAMED_KEYS`; one slot after 0xCB's holds a control's name. Other keys are
+/// "unavailable".
+const KEY_NAMES: u32 = 0x44_30C0;
+const MORE_NAMED_KEYS: [u8; 17] = [
+    0x57, 0x58, 0x9C, 0x9D, 0xB5, 0xB7, 0xB8, 0xC7, 0xC8, 0xC9, 0xCB, 0xCD, 0xCF, 0xD0, 0xD1, 0xD2,
+    0xD3,
+];
+const UNAVAILABLE_KEY: u32 = 0x44_30D0;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
     Exe(ExeError),
@@ -71,6 +103,39 @@ impl From<ExeError> for TextError {
     }
 }
 
+/// The address of scancode `code`'s name.
+fn key_name(code: u8) -> u32 {
+    match code {
+        0x01..=0x54 => KEY_NAMES - 16 * (u32::from(code) - 1),
+        _ => match MORE_NAMED_KEYS.iter().position(|&named| named == code) {
+            Some(k) => {
+                let skip = if code > 0xCB { 16 } else { 0 };
+                KEY_NAMES - 16 * (0x54 + k as u32) - skip
+            }
+            None => UNAVAILABLE_KEY,
+        },
+    }
+}
+
+/// Configure's texts (spec M2b §3.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConfigureTexts {
+    pub adjust_music: Vec<u8>,
+    pub adjust_effects: Vec<u8>,
+    pub gamepad_on: Vec<u8>,
+    pub gamepad_off: Vec<u8>,
+    pub not_detected: Vec<u8>,
+    pub press_any_key: Vec<u8>,
+    /// The eight controls, each padded so its key's name lines up.
+    pub controls: Vec<Vec<u8>>,
+    pub key_prompts: Vec<Vec<u8>>,
+    pub pad_prompts: Vec<Vec<u8>>,
+    /// `key_names[scancode]`, all 256.
+    pub key_names: Vec<Vec<u8>>,
+    /// `pad_names[input]`, 0 (none) to 8.
+    pub pad_names: Vec<Vec<u8>>,
+}
+
 /// A font's cell size and the pen advance of each glyph, character 32 first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Metrics {
@@ -92,6 +157,7 @@ pub struct Texts {
     pub big: Metrics,
     pub small: Metrics,
     pub medium: Metrics,
+    pub configure: ConfigureTexts,
 }
 
 impl Texts {
@@ -116,6 +182,12 @@ impl Texts {
             } else {
                 Ok(bytes)
             }
+        };
+        let all = |addresses: &[u32]| -> Result<Vec<Vec<u8>>, TextError> {
+            addresses
+                .iter()
+                .map(|&address| shown(address, MAX_LINE))
+                .collect()
         };
         let menus = (0..MENUS)
             .map(|menu| {
@@ -151,6 +223,23 @@ impl Texts {
             exit_question: shown(EXIT_QUESTION, MAX_LINE)?,
             yes: shown(YES, MAX_LINE)?,
             no: shown(NO, MAX_LINE)?,
+            configure: ConfigureTexts {
+                adjust_music: shown(ADJUST_MUSIC, MAX_LINE)?,
+                adjust_effects: shown(ADJUST_EFFECTS, MAX_LINE)?,
+                gamepad_on: shown(GAMEPAD_ON, MAX_LINE)?,
+                gamepad_off: shown(GAMEPAD_OFF, MAX_LINE)?,
+                not_detected: shown(NOT_DETECTED, MAX_LINE)?,
+                press_any_key: shown(PRESS_ANY_KEY, MAX_LINE)?,
+                controls: all(&CONTROLS)?,
+                key_prompts: all(&KEY_PROMPTS)?,
+                pad_prompts: all(&PAD_PROMPTS)?,
+                key_names: (0..=255)
+                    .map(|code| shown(key_name(code), MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                pad_names: (0..PAD_INPUTS as u32)
+                    .map(|input| shown(PAD_NAMES - 16 * input, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+            },
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
             small: metrics(SMALL_METRICS, 96, SMALL_SIZE)?,
             medium: metrics(MEDIUM_METRICS, 62, MEDIUM_SIZE)?,
@@ -164,12 +253,12 @@ mod tests {
 
     use crate::exe::tests::{build, build_at};
 
-    /// A section from 0x443000 to 0x448000 with every string and table where the known release
-    /// keeps it: menu `m` row `r` reads "m.r", the other strings their address's last digit.
+    /// A section from 0x442000 to 0x448000 with every string and table where the known release
+    /// keeps it: menu `m` row `r` reads "m.r", the other strings made-up words.
     fn known_layout() -> Vec<u8> {
-        let mut data = vec![0u8; 0x5000];
+        let mut data = vec![0u8; 0x6000];
         let mut put = |address: u32, bytes: &[u8]| {
-            let at = (address - 0x44_3000) as usize;
+            let at = (address - 0x44_2000) as usize;
             data[at..at + bytes.len()].copy_from_slice(bytes);
         };
         for menu in 0..MENUS as u32 {
@@ -187,7 +276,26 @@ mod tests {
         put(BIG_METRICS, &[32, 32, 20, 9]);
         put(SMALL_METRICS, &[16, 16, 10, 5]);
         put(MEDIUM_METRICS, &[9, 12, 9, 9]);
-        build_at(0x4_3000, 0x5000, &data)
+        for address in [
+            ADJUST_MUSIC,
+            ADJUST_EFFECTS,
+            GAMEPAD_ON,
+            GAMEPAD_OFF,
+            NOT_DETECTED,
+            PRESS_ANY_KEY,
+        ] {
+            put(address, format!("text {address:x}").as_bytes());
+        }
+        for address in CONTROLS.iter().chain(&KEY_PROMPTS).chain(&PAD_PROMPTS) {
+            put(*address, format!("text {address:x}").as_bytes());
+        }
+        for code in 0..=255 {
+            put(key_name(code), format!("key {code:02x}").as_bytes());
+        }
+        for input in 0..PAD_INPUTS as u32 {
+            put(PAD_NAMES - 16 * input, format!("pad {input}").as_bytes());
+        }
+        build_at(0x4_2000, 0x6000, &data)
     }
 
     #[test]
@@ -217,7 +325,7 @@ mod tests {
     #[test]
     fn a_byte_the_original_never_uses_is_refused_with_its_address() {
         let mut bytes = known_layout();
-        let at = bytes.len() - 0x5000 + (YES - 0x44_3000) as usize;
+        let at = offset(&bytes, YES);
         bytes[at] = 0x01;
         assert_eq!(
             Texts::read(&Exe::parse(bytes).unwrap()),
@@ -225,9 +333,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn each_key_has_its_name_and_keys_without_one_are_unavailable() {
+        // Define Keyboard shows these names; one slot off names every key after it wrongly.
+        // The slot after 0xCB's holds the accelerate control's name, so 0xCD skips it.
+        assert_eq!(key_name(0x01), 0x44_30C0);
+        assert_eq!(key_name(0x54), 0x44_30C0 - 16 * 0x53);
+        assert_eq!(key_name(0x57), 0x44_2B80);
+        assert_eq!(key_name(0xCB), 0x44_2AE0);
+        assert_eq!(key_name(0xCD), 0x44_2AC0);
+        assert_eq!(key_name(0xD3), 0x44_2A70);
+        for code in [0x00, 0x55, 0x56, 0x59, 0xCC, 0xD4, 0xFF] {
+            assert_eq!(key_name(code), UNAVAILABLE_KEY, "{code:#x}");
+        }
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        assert_eq!(texts.configure.key_names[0x1E], b"key 1e");
+        assert_eq!(texts.configure.pad_names[8], b"pad 8");
+        assert_eq!(texts.configure.controls.len(), 8);
+        assert_eq!(texts.configure.pad_prompts.len(), 7);
+    }
+
     /// Where `address` lies in the bytes of [`known_layout`]'s file.
     fn offset(bytes: &[u8], address: u32) -> usize {
-        bytes.len() - 0x5000 + (address - 0x44_3000) as usize
+        bytes.len() - 0x6000 + (address - 0x44_2000) as usize
     }
 
     #[test]
@@ -237,7 +365,7 @@ mod tests {
         // and the menus would show fragments: the rows the menus show and the fonts' sizes
         // must be where the known release keeps them.
         let mut moved = known_layout();
-        let start = offset(&moved, 0x44_3000);
+        let start = offset(&moved, 0x44_2000);
         moved[start..].rotate_right(3);
         let error = Texts::read(&Exe::parse(moved).unwrap()).unwrap_err();
         assert!(matches!(error, TextError::Unexpected { .. }), "{error}");

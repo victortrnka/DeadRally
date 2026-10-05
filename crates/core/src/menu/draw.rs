@@ -356,6 +356,25 @@ pub(crate) mod tests {
             big: metrics.clone(),
             small: metrics.clone(),
             medium: metrics,
+            configure: configure_texts(),
+        }
+    }
+
+    /// Configure's texts: one letter each, `k` for key and pad names.
+    pub(crate) fn configure_texts() -> deadrally_gamedata::text::ConfigureTexts {
+        let one = |c: u8| vec![c];
+        deadrally_gamedata::text::ConfigureTexts {
+            adjust_music: one(b'm'),
+            adjust_effects: one(b'e'),
+            gamepad_on: one(b'+'),
+            gamepad_off: one(b'-'),
+            not_detected: one(b'!'),
+            press_any_key: one(b'.'),
+            controls: (0..8).map(|i| one(b'0' + i)).collect(),
+            key_prompts: (0..8).map(|_| one(b'k')).collect(),
+            pad_prompts: (0..7).map(|_| one(b'p')).collect(),
+            key_names: (0..256).map(|_| one(b'k')).collect(),
+            pad_names: (0..9).map(|_| one(b'p')).collect(),
         }
     }
 
