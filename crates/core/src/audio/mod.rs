@@ -105,6 +105,18 @@ impl Sound {
         self.apply_music_gain();
     }
 
+    /// The music's order (0 without music).
+    pub(crate) fn music_order(&self) -> usize {
+        self.music.as_ref().map_or(0, Music::order)
+    }
+
+    /// The music on to order `order` at its first row.
+    pub(crate) fn set_music_order(&mut self, order: usize) {
+        if let Some(music) = &mut self.music {
+            music.set_order(order);
+        }
+    }
+
     fn apply_music_gain(&mut self) {
         let gain = self.music_gain();
         if let Some(music) = &mut self.music {

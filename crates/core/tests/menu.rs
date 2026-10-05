@@ -4,7 +4,10 @@
 
 mod common;
 
-use common::{BACKGROUND, BIG_A, BIG_B, BIG_D, CREDITS, CURSOR, END, KNOB, SLIDER, SMALL};
+use common::{
+    ARROW, BACKGROUND, BIG_A, BIG_B, BIG_D, CREDITS, CURSOR, END, FAME_TITLE, KNOB, MEDIUM,
+    RECORDS_TITLE, SLIDER, SMALL, SNAPSHOT,
+};
 use deadrally_core::{Game, InputEvent, Key, PadAxis, PadButton};
 use deadrally_gamedata::assets::{Assets, Picture};
 use deadrally_gamedata::dr_cfg::DrCfg;
@@ -724,4 +727,144 @@ fn a_corrupt_volume_in_dr_cfg_opens_the_popup_at_full_instead_of_crashing() {
     let mut game = in_configure(config);
     step(&mut game, Key::Enter);
     assert_eq!(pixel(&game, knob_at(128)), KNOB);
+}
+
+/// The wipe takes 43 ticks.
+const WIPE: u32 = 43;
+
+/// A game showing the best ten, its wipe over.
+fn in_hall_of_fame(assets: Assets) -> Game {
+    let mut game = in_menu(assets);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    press(&mut game, Key::Enter);
+    run(&mut game, 2 + WIPE);
+    game
+}
+
+/// The last left sample of the next tick.
+fn level(game: &mut Game) -> i16 {
+    game.take_audio(&mut Vec::new());
+    game.tick();
+    let mut audio = Vec::new();
+    game.take_audio(&mut audio);
+    audio[audio.len() - 2]
+}
+
+#[test]
+fn the_best_ten_wipe_in_from_the_left() {
+    // The band of masks moves 15 pixels a tick from the left edge.
+    let mut game = in_menu(assets());
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    press(&mut game, Key::Enter);
+    run(&mut game, 2 + 20);
+    assert_eq!(pixel(&game, (5, 90)), FAME_TITLE, "covered on the left");
+    assert_ne!(pixel(&game, (600, 90)), FAME_TITLE, "not yet on the right");
+    run(&mut game, WIPE - 20);
+    assert_eq!(pixel(&game, (600, 90)), FAME_TITLE);
+    assert_eq!(pixel(&game, (38, 146)), MEDIUM, "rank 1");
+    assert_eq!(pixel(&game, (30, 344)), MEDIUM, "rank 10, further left");
+}
+
+#[test]
+fn the_hall_of_fame_plays_its_own_music_and_the_menu_music_comes_back() {
+    // The music falls with the wipe and comes back at full mask; back in the menu it starts
+    // again at the order it had (45, the tone).
+    let mut with_music = assets();
+    with_music.menu_music = music(true);
+    // Every order plays the tone, so whichever order the music is at when it starts again
+    // sounds.
+    with_music.menu_music.orders = vec![0; 94];
+    let mut game = in_menu(with_music);
+    let before = level(&mut game);
+    assert!(before > 0);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    press(&mut game, Key::Enter);
+    run(&mut game, 2 + 30);
+    let falling = level(&mut game);
+    assert!(falling < before / 2, "{falling} vs {before}");
+    run(&mut game, 30);
+    assert!(level(&mut game) > falling, "the mask back at 0x10000");
+    press(&mut game, Key::Space);
+    run(&mut game, 2 + WIPE);
+    press(&mut game, Key::Escape);
+    run(&mut game, 2 + WIPE + 10);
+    let after = level(&mut game);
+    assert!(
+        i32::from(after) * 10 >= i32::from(before) * 9,
+        "the menu music again at full mask: {after} vs {before}"
+    );
+}
+
+#[test]
+fn the_records_step_through_the_circuits_in_the_originals_order() {
+    let mut game = in_hall_of_fame(assets());
+    press(&mut game, Key::Space);
+    run(&mut game, 2 + WIPE);
+    assert_eq!(pixel(&game, (5, 95)), RECORDS_TITLE);
+    let snapshot = |game: &Game| pixel(game, (45, 220));
+    assert_eq!(snapshot(&game), SNAPSHOT, "circuit 0 first");
+    press(&mut game, Key::Right);
+    run(&mut game, 2);
+    assert_eq!(snapshot(&game), SNAPSHOT + 7, "then circuit 7");
+    assert_eq!(pixel(&game, (170, 230)), ARROW + 3, "the right arrow lit");
+    run(&mut game, 5);
+    assert_eq!(pixel(&game, (170, 230)), ARROW + 3, "for 8 waits");
+    run(&mut game, 4);
+    assert_eq!(
+        pixel(&game, (170, 230)),
+        ARROW + 1,
+        "and dark after 8 waits"
+    );
+    for _ in 0..2 {
+        press(&mut game, Key::Left);
+        run(&mut game, 12);
+    }
+    assert_eq!(
+        snapshot(&game),
+        SNAPSHOT + 15,
+        "Left wraps to the last, circuit 15"
+    );
+}
+
+#[test]
+fn leaving_the_records_wipes_the_main_menu_back_with_its_row_kept() {
+    let mut game = in_hall_of_fame(assets());
+    press(&mut game, Key::Space);
+    run(&mut game, 2 + WIPE);
+    assert_eq!(
+        sound_after(&mut game, Key::Up),
+        SILENT,
+        "Up does nothing here"
+    );
+    press(&mut game, Key::Escape);
+    run(&mut game, 2 + WIPE);
+    assert_eq!(selected(&game), 3);
+    step(&mut game, Key::Down);
+    assert_eq!(selected(&game), 4, "the menu works again");
+}
+
+#[test]
+fn the_best_tens_names_are_written_upper_case_once_shown() {
+    // seeHallOfFame upper-cases them in the configuration itself.
+    let mut config = common::config();
+    let mut bytes = config.to_bytes();
+    bytes[8 + 0xA6E..8 + 0xA6E + 3].copy_from_slice(b"ann");
+    config = DrCfg::parse(&bytes).unwrap();
+    let mut game = in_menu_with(assets(), config);
+    game.take_config();
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    press(&mut game, Key::Enter);
+    run(&mut game, 2 + WIPE);
+    press(&mut game, Key::Space);
+    run(&mut game, 2 + WIPE);
+    press(&mut game, Key::Escape);
+    run(&mut game, 2 + WIPE);
+    step(&mut game, Key::Up);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Escape);
+    assert_eq!(written(&mut game).unwrap().hall_of_fame(0).0, b"ANN");
 }
