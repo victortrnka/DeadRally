@@ -26,12 +26,23 @@ const SMALL_METRICS: u32 = 0x44_58B0;
 const MEDIUM_METRICS: u32 = 0x44_5928;
 /// The longest string read anywhere but the menu table.
 const MAX_LINE: usize = 150;
+/// The fonts' cell sizes in the known release: big, small and medium.
+const BIG_SIZE: (u8, u8) = (32, 32);
+const SMALL_SIZE: (u8, u8) = (16, 16);
+const MEDIUM_SIZE: (u8, u8) = (9, 12);
+/// The main menu (0) and the start submenu (1) show six rows each, all of them text.
+const SHOWN_MENUS: usize = 2;
+const SHOWN_ROWS: usize = 6;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
     Exe(ExeError),
     /// A byte that is neither printable ASCII nor the gap.
     Unprintable {
+        address: u32,
+    },
+    /// An empty string where the menus show text, or a font of another size.
+    Unexpected {
         address: u32,
     },
 }
@@ -43,6 +54,10 @@ impl fmt::Display for TextError {
             TextError::Unprintable { address } => write!(
                 f,
                 "dr.exe: the text at address {address:#x} is not the original's; is this the known release?"
+            ),
+            TextError::Unexpected { address } => write!(
+                f,
+                "dr.exe: the data at address {address:#x} is not where the known release keeps it; is this the known release?"
             ),
         }
     }
@@ -83,7 +98,8 @@ impl Texts {
     /// # Errors
     ///
     /// [`TextError`] when a string is missing, does not end, or holds a byte the original's
-    /// strings never do: the executable is not the known release.
+    /// strings never do, when a string the menus show is empty, or when a font's size is not
+    /// the known release's: the executable is not the known release.
     pub fn read(exe: &Exe) -> Result<Texts, TextError> {
         let text = |address: u32, max: usize| -> Result<Vec<u8>, TextError> {
             let bytes = exe.string_at(address, max)?;
@@ -93,18 +109,33 @@ impl Texts {
                 Err(TextError::Unprintable { address })
             }
         };
-        let menus = (0..MENUS as u32)
+        let shown = |address: u32, max: usize| -> Result<Vec<u8>, TextError> {
+            let bytes = text(address, max)?;
+            if bytes.is_empty() {
+                Err(TextError::Unexpected { address })
+            } else {
+                Ok(bytes)
+            }
+        };
+        let menus = (0..MENUS)
             .map(|menu| {
-                (0..MENU_ROWS as u32)
+                (0..MENU_ROWS)
                     .map(|row| {
-                        let address = MENU_TABLE + MENU_ROW_BYTES * (MENU_ROWS as u32 * menu + row);
-                        text(address, MENU_ROW_BYTES as usize - 1)
+                        let address = MENU_TABLE + MENU_ROW_BYTES * (MENU_ROWS * menu + row) as u32;
+                        if menu < SHOWN_MENUS && row < SHOWN_ROWS {
+                            shown(address, MENU_ROW_BYTES as usize - 1)
+                        } else {
+                            text(address, MENU_ROW_BYTES as usize - 1)
+                        }
                     })
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let metrics = |address: u32, glyphs: usize| -> Result<Metrics, TextError> {
+        let metrics = |address: u32, glyphs: usize, size: (u8, u8)| -> Result<Metrics, TextError> {
             let bytes = exe.bytes_at(address, 2 + glyphs)?;
+            if (bytes[0], bytes[1]) != size {
+                return Err(TextError::Unexpected { address });
+            }
             Ok(Metrics {
                 width: bytes[0],
                 height: bytes[1],
@@ -115,14 +146,14 @@ impl Texts {
             menus,
             panel: PANEL_LINES
                 .iter()
-                .map(|&address| text(address, MAX_LINE))
+                .map(|&address| shown(address, MAX_LINE))
                 .collect::<Result<Vec<_>, _>>()?,
-            exit_question: text(EXIT_QUESTION, MAX_LINE)?,
-            yes: text(YES, MAX_LINE)?,
-            no: text(NO, MAX_LINE)?,
-            big: metrics(BIG_METRICS, 96)?,
-            small: metrics(SMALL_METRICS, 96)?,
-            medium: metrics(MEDIUM_METRICS, 62)?,
+            exit_question: shown(EXIT_QUESTION, MAX_LINE)?,
+            yes: shown(YES, MAX_LINE)?,
+            no: shown(NO, MAX_LINE)?,
+            big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
+            small: metrics(SMALL_METRICS, 96, SMALL_SIZE)?,
+            medium: metrics(MEDIUM_METRICS, 62, MEDIUM_SIZE)?,
         })
     }
 }
@@ -191,6 +222,53 @@ mod tests {
         assert_eq!(
             Texts::read(&Exe::parse(bytes).unwrap()),
             Err(TextError::Unprintable { address: YES })
+        );
+    }
+
+    /// Where `address` lies in the bytes of [`known_layout`]'s file.
+    fn offset(bytes: &[u8], address: u32) -> usize {
+        bytes.len() - 0x5000 + (address - 0x44_3000) as usize
+    }
+
+    #[test]
+    fn a_layout_moved_by_a_few_bytes_is_refused() {
+        // Another build of dr.exe may keep the same strings a little further on. Every read
+        // would then land on blanks, other strings' tails or other bytes that pass as text,
+        // and the menus would show fragments: the rows the menus show and the fonts' sizes
+        // must be where the known release keeps them.
+        let mut moved = known_layout();
+        let start = offset(&moved, 0x44_3000);
+        moved[start..].rotate_right(3);
+        let error = Texts::read(&Exe::parse(moved).unwrap()).unwrap_err();
+        assert!(matches!(error, TextError::Unexpected { .. }), "{error}");
+    }
+
+    #[test]
+    fn an_empty_shown_string_or_another_font_size_is_refused_with_its_address() {
+        let mut no_yes = known_layout();
+        let at = offset(&no_yes, YES);
+        no_yes[at] = 0;
+        assert_eq!(
+            Texts::read(&Exe::parse(no_yes).unwrap()),
+            Err(TextError::Unexpected { address: YES })
+        );
+        let mut empty_row = known_layout();
+        let row = MENU_TABLE + MENU_ROW_BYTES * (MENU_ROWS as u32 + 5);
+        let at = offset(&empty_row, row);
+        empty_row[at] = 0;
+        assert_eq!(
+            Texts::read(&Exe::parse(empty_row).unwrap()),
+            Err(TextError::Unexpected { address: row }),
+            "the start submenu's last row"
+        );
+        let mut narrow = known_layout();
+        let at = offset(&narrow, SMALL_METRICS);
+        narrow[at] = 15;
+        assert_eq!(
+            Texts::read(&Exe::parse(narrow).unwrap()),
+            Err(TextError::Unexpected {
+                address: SMALL_METRICS
+            })
         );
     }
 
