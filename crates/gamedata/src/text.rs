@@ -57,14 +57,14 @@ const PAD_PROMPTS: [u32; 7] = [
 const PAD_NAMES: u32 = 0x44_3160;
 pub const PAD_INPUTS: usize = 9;
 /// Key names, 16 bytes apart going down from here in scancode order: 0x01..=0x54, then
-/// `MORE_NAMED_KEYS`; one slot after 0xCB's holds a control's name. Other keys are
-/// "unavailable".
+/// `MORE_NAMED_KEYS`; one slot after 0xCB's holds a control's name. Other keys share one
+/// fallback name.
 const KEY_NAMES: u32 = 0x44_30C0;
 const MORE_NAMED_KEYS: [u8; 17] = [
     0x57, 0x58, 0x9C, 0x9D, 0xB5, 0xB7, 0xB8, 0xC7, 0xC8, 0xC9, 0xCB, 0xCD, 0xCF, 0xD0, 0xD1, 0xD2,
     0xD3,
 ];
-const UNAVAILABLE_KEY: u32 = 0x44_30D0;
+const NAMELESS_KEY: u32 = 0x44_30D0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
@@ -112,7 +112,7 @@ fn key_name(code: u8) -> u32 {
                 let skip = if code > 0xCB { 16 } else { 0 };
                 KEY_NAMES - 16 * (0x54 + k as u32) - skip
             }
-            None => UNAVAILABLE_KEY,
+            None => NAMELESS_KEY,
         },
     }
 }
@@ -334,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn each_key_has_its_name_and_keys_without_one_are_unavailable() {
+    fn each_key_has_its_name_and_keys_without_one_share_a_fallback() {
         // Define Keyboard shows these names; one slot off names every key after it wrongly.
         // The slot after 0xCB's holds the accelerate control's name, so 0xCD skips it.
         assert_eq!(key_name(0x01), 0x44_30C0);
@@ -344,7 +344,7 @@ mod tests {
         assert_eq!(key_name(0xCD), 0x44_2AC0);
         assert_eq!(key_name(0xD3), 0x44_2A70);
         for code in [0x00, 0x55, 0x56, 0x59, 0xCC, 0xD4, 0xFF] {
-            assert_eq!(key_name(code), UNAVAILABLE_KEY, "{code:#x}");
+            assert_eq!(key_name(code), NAMELESS_KEY, "{code:#x}");
         }
         let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
         assert_eq!(texts.configure.key_names[0x1E], b"key 1e");

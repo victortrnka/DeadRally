@@ -715,3 +715,13 @@ fn dr_cfg_is_written_after_the_end_screen() {
     assert!(game.quit_requested());
     assert!(game.take_config().is_some());
 }
+
+#[test]
+fn a_corrupt_volume_in_dr_cfg_opens_the_popup_at_full_instead_of_crashing() {
+    // A damaged or hand-edited file can hold any number; the slider shows the most it can.
+    let mut config = common::config();
+    config.set_music_volume(0xFB1B_6C00);
+    let mut game = in_configure(config);
+    step(&mut game, Key::Enter);
+    assert_eq!(pixel(&game, knob_at(128)), KNOB);
+}

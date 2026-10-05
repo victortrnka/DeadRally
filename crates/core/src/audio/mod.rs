@@ -15,9 +15,10 @@ use crate::AUDIO_CHANNELS;
 
 /// FMOD's master volume for music, 0..=256, at a music volume of the game's configuration
 /// (0..=0x10000): `mask * (volume >> 8) >> 9`, as `musicSetmusicVolume` (0x43C280) sets it,
-/// with the game's volume mask (0x456A34) at 255 unless the end screen lowers it.
+/// with the game's volume mask (0x456A34) at 255 unless the end screen lowers it. A volume
+/// past full, from a damaged `dr.cfg`, counts as full.
 fn music_master(volume: u32, mask: u32) -> i64 {
-    (i64::from(mask) * i64::from(volume >> 8)) >> 9
+    (i64::from(mask) * i64::from(volume.min(effects::FULL) >> 8)) >> 9
 }
 
 /// The volume mask's normal value.
@@ -82,7 +83,8 @@ impl Sound {
     /// The effects stream's share: `mask * (volume >> 8) >> 8` of 255 (`musicSetVolume`,
     /// 0x43C250), 254 of 255 while the intro plays.
     fn effects_gain(&self) -> i64 {
-        UNITY * ((i64::from(self.mask) * i64::from(self.effects_volume >> 8)) >> 8) / 255
+        let volume = self.effects_volume.min(effects::FULL);
+        UNITY * ((i64::from(self.mask) * i64::from(volume >> 8)) >> 8) / 255
     }
 
     /// The configured effects volume (0..=0x10000) for the effects stream.
@@ -404,6 +406,23 @@ mod tests {
             (full * 63 - half * 127).abs() <= 127 * 2,
             "{half} vs {full}"
         );
+    }
+
+    #[test]
+    fn a_volume_beyond_full_plays_at_full() {
+        // dr.cfg can hold any number; the music and the effects must not blare at many times
+        // full volume from the moment the menu music starts.
+        let level = |volume: u32| {
+            let mut sound = Sound::default();
+            sound.play_music(&loud(), 0, volume);
+            sound.load_effects(&bank());
+            sound.set_effects_volume(volume);
+            sound.trigger(1, 1);
+            let mut out = Vec::new();
+            sound.render(2000, &mut out);
+            out[2 * 1999]
+        };
+        assert_eq!(level(0xFFFF_FFFF), level(0x1_0000));
     }
 
     #[test]

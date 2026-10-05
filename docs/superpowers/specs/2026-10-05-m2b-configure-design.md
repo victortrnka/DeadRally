@@ -36,7 +36,7 @@ From the Windows `dr.exe` (DreeRally `config.c`, `ui/menu.c`; read-only) and the
 - **Define Gamepad (menu 8):** 8 rows at (50, 113), 532 × 250; the same popup; after 15 polls the stick direction or button 1–4 held, or Enter or Escape for "none". While it waits, key reads leave the gamepad alone (0x456B00), so a button is an input, not Enter or Escape.
 - **The gamepad switch:** on → off; off → on if a gamepad is connected, else effect 29 and the popup (28, 198, 595 × 86) "not detected", until a key.
 - **Leaving:** Escape returns to the main menu with the Configure row kept; "previous menu" also sets the selection back to its first row. Both write `dr.cfg`.
-- The names of keys, controls and gamepad inputs, the prompts and the popups' texts are strings of `dr.exe` at fixed addresses (key names 16 bytes apart from 0x442A70; "unavailable" for keys without a name).
+- The names of keys, controls and gamepad inputs, the prompts and the popups' texts are strings of `dr.exe` at fixed addresses (key names 16 bytes apart from 0x442A70; one fallback name for keys without their own).
 
 ## 4. Architecture
 

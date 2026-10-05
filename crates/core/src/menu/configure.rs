@@ -171,6 +171,9 @@ impl Menu {
         } else {
             self.config.effects_volume()
         };
+        // A level past 128 only comes from a damaged file; the original's would draw outside
+        // the screen.
+        let volume = volume.min((LEVEL_TOP * LEVEL_UNIT) as u32);
         self.volume_turn(music, volume as i32 / LEVEL_UNIT)
     }
 
