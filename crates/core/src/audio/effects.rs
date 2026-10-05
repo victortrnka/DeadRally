@@ -105,6 +105,12 @@ impl Effects {
         }
     }
 
+    /// Fades every effect out and hands the fading voices over, for a bank being replaced.
+    pub(crate) fn into_fading(mut self) -> Vec<Voice> {
+        self.stop_all();
+        self.fading
+    }
+
     /// Adds every playing effect to `out` (interleaved stereo).
     pub(crate) fn mix_into(&mut self, out: &mut [i64]) {
         for slot in &mut self.channels {

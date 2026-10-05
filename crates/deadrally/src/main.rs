@@ -289,6 +289,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         stats.add_ticks(ticks);
+        if game.quit_requested() {
+            break 'running;
+        }
 
         let present_start = Instant::now();
         let frame = game.frame();

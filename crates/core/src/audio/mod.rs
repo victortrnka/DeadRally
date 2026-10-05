@@ -14,11 +14,17 @@ use self::music::Music;
 use crate::AUDIO_CHANNELS;
 
 /// FMOD's master volume for music, 0..=256, at a music volume of the game's configuration
-/// (0..=0x10000): `255 * (volume >> 8) >> 9`, as `musicSetmusicVolume` (0x43C280) sets it with
-/// the game's volume mask at 255.
-pub(crate) fn music_master(volume: u32) -> i64 {
-    (255 * i64::from(volume >> 8)) >> 9
+/// (0..=0x10000): `mask * (volume >> 8) >> 9`, as `musicSetmusicVolume` (0x43C280) sets it,
+/// with the game's volume mask (0x456A34) at 255 unless the end screen lowers it.
+fn music_master(volume: u32, mask: u32) -> i64 {
+    (i64::from(mask) * i64::from(volume >> 8)) >> 9
 }
+
+/// The volume mask's normal value.
+const FULL_MASK: u32 = 255;
+
+/// `dr.cfg`'s default effects volume, 75 % (`defaultConfig`, 0x426700).
+pub(crate) const DEFAULT_EFFECTS_VOLUME: u32 = 0xC000;
 
 /// The music volume the intro plays at, whatever `dr.cfg` says: the game's volume globals
 /// start at 255 and take `dr.cfg`'s values only when the menu music starts.
@@ -28,19 +34,37 @@ pub(crate) const FULL_VOLUME: u32 = 0xFF00;
 /// until M2's Configure menu can change it.
 pub(crate) const DEFAULT_MUSIC_VOLUME: u32 = 0x8000;
 
-/// The effects' share: the volume of the stream minifmod mixes into while the intro plays,
-/// 254 of 255 (`255 * 255 >> 8`).
-pub(crate) const EFFECTS_GAIN: i64 = UNITY * 254 / 255;
-
 /// Everything audible: one piece of music and one bank of effects at a time, as in the
 /// original.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Sound {
     music: Option<Music>,
     /// Voices of music that newer music replaced, fading out.
     fading: Vec<Voice>,
     effects: Option<Effects>,
+    /// Voices of a bank that a newer bank replaced, fading out.
+    fading_effects: Vec<Voice>,
     mix: Vec<i64>,
+    /// The original's volume globals: the mask (0x456A34), the music's (0x456A30) and the
+    /// effects' (0x456A2C) volumes as `dr.cfg` gives them; all full until the intro ends.
+    mask: u32,
+    music_volume: u32,
+    effects_volume: u32,
+}
+
+impl Default for Sound {
+    fn default() -> Sound {
+        Sound {
+            music: None,
+            fading: Vec::new(),
+            effects: None,
+            fading_effects: Vec::new(),
+            mix: Vec::new(),
+            mask: FULL_MASK,
+            music_volume: FULL_VOLUME,
+            effects_volume: FULL_VOLUME,
+        }
+    }
 }
 
 impl Sound {
@@ -50,19 +74,53 @@ impl Sound {
         if let Some(old) = self.music.take() {
             self.fading.extend(old.into_fading());
         }
-        let gain = UNITY * music_master(volume) / 256;
-        self.music = Some(Music::new(module, gain, first_order));
+        self.music_volume = volume;
+        self.music = Some(Music::new(module, self.music_gain(), first_order));
     }
 
-    /// Makes `bank` the source of [`Sound::trigger`], silencing the old bank's effects.
+    fn music_gain(&self) -> i64 {
+        UNITY * music_master(self.music_volume, self.mask) / 256
+    }
+
+    /// The effects stream's share: `mask * (volume >> 8) >> 8` of 255 (`musicSetVolume`,
+    /// 0x43C250), 254 of 255 while the intro plays.
+    fn effects_gain(&self) -> i64 {
+        UNITY * ((i64::from(self.mask) * i64::from(self.effects_volume >> 8)) >> 8) / 255
+    }
+
+    /// The configured effects volume (0..=0x10000) for the effects stream.
+    pub(crate) fn set_effects_volume(&mut self, volume: u32) {
+        self.effects_volume = volume;
+    }
+
+    /// The volume mask (`setMusicVolume`, 0x43C2B0): 0..=255 over music and effects alike.
+    pub(crate) fn set_mask(&mut self, mask: u32) {
+        self.mask = mask;
+        let gain = self.music_gain();
+        if let Some(music) = &mut self.music {
+            music.set_gain(gain);
+        }
+    }
+
+    /// Makes `bank` the source of [`Sound::trigger`]; the old bank's effects fade out.
     pub(crate) fn load_effects(&mut self, bank: &Bank) {
+        if let Some(old) = self.effects.take() {
+            self.fading_effects.extend(old.into_fading());
+        }
         self.effects = Some(Effects::new(bank));
     }
 
-    /// Plays effect `effect` of the loaded bank on `channel` (both 1-based).
+    /// Plays effect `effect` of the loaded bank on `channel` (both 1-based) at full volume and
+    /// normal pitch, as the intro does.
     pub(crate) fn trigger(&mut self, channel: usize, effect: u8) {
+        self.trigger_at(channel, effect, effects::FULL, effects::FULL);
+    }
+
+    /// Plays effect `effect` on `channel` at `volume` and `pitch` (16.16, 0x10000 full and
+    /// normal), as `loadMenuSoundEffect` (0x43C380) does.
+    pub(crate) fn trigger_at(&mut self, channel: usize, effect: u8, volume: u32, pitch: u32) {
         if let Some(effects) = &mut self.effects {
-            effects.trigger(channel, effect, effects::FULL, effects::FULL);
+            effects.trigger(channel, effect, volume, pitch);
         }
     }
 
@@ -87,12 +145,17 @@ impl Sound {
             voice.mix_into(&mut self.mix);
         }
         self.fading.retain(|voice| !voice.finished());
+        let mut part = vec![0; self.mix.len()];
         if let Some(effects) = &mut self.effects {
-            let mut part = vec![0; self.mix.len()];
             effects.mix_into(&mut part);
-            for (sum, effect) in self.mix.iter_mut().zip(part) {
-                *sum += (effect * EFFECTS_GAIN) >> 16;
-            }
+        }
+        for voice in &mut self.fading_effects {
+            voice.mix_into(&mut part);
+        }
+        self.fading_effects.retain(|voice| !voice.finished());
+        let gain = self.effects_gain();
+        for (sum, effect) in self.mix.iter_mut().zip(part) {
+            *sum += (effect * gain) >> 16;
         }
         out.extend(self.mix.iter().map(|&value| clip(value)));
     }
@@ -216,10 +279,98 @@ mod tests {
     #[test]
     fn the_configured_music_volume_sets_fmods_master_volume() {
         // musicSetmusicVolume (0x43C280): 255 * (volume >> 8) >> 9.
-        assert_eq!(music_master(FULL_VOLUME), 127);
-        assert_eq!(music_master(DEFAULT_MUSIC_VOLUME), 63);
-        assert_eq!(music_master(0x1_0000), 127);
-        assert_eq!(music_master(0), 0);
+        assert_eq!(music_master(FULL_VOLUME, FULL_MASK), 127);
+        assert_eq!(music_master(DEFAULT_MUSIC_VOLUME, FULL_MASK), 63);
+        assert_eq!(music_master(0x1_0000, FULL_MASK), 127);
+        assert_eq!(music_master(0, FULL_MASK), 0);
+    }
+
+    #[test]
+    fn a_new_bank_lets_the_old_banks_effects_fade_out() {
+        // The intro's effects stop as the menu's bank is loaded; cutting them at full level
+        // would click.
+        let mut sound = Sound::default();
+        sound.load_effects(&bank());
+        sound.trigger(1, 1);
+        let mut out = Vec::new();
+        sound.render(1000, &mut out);
+        let before = out[2 * 999];
+        sound.stop();
+        sound.load_effects(&bank());
+        out.clear();
+        sound.render(1000, &mut out);
+        assert!(
+            (out[0] - before).abs() < before / 10,
+            "{} after {before}",
+            out[0]
+        );
+        assert_eq!(out[2 * 999], 0, "faded out");
+    }
+
+    #[test]
+    fn the_effects_volume_and_the_mask_scale_the_effects_stream() {
+        // The menus play effects at dr.cfg's 75 %: the stream at 255 * 192 >> 8 = 191 of 255
+        // instead of the intro's 254. The end screen's mask lowers everything.
+        let level = |sound: &mut Sound| {
+            sound.load_effects(&bank());
+            sound.trigger(1, 1);
+            let mut out = Vec::new();
+            sound.render(1000, &mut out);
+            i64::from(out[2 * 999])
+        };
+        let full = level(&mut Sound::default());
+        let mut menu = Sound::default();
+        menu.set_effects_volume(DEFAULT_EFFECTS_VOLUME);
+        let at_75 = level(&mut menu);
+        assert!(
+            (at_75 * 254 - full * 191).abs() <= 254 * 2,
+            "{at_75} vs {full}"
+        );
+        let mut quiet = Sound::default();
+        quiet.set_mask(0);
+        assert_eq!(level(&mut quiet), 0);
+    }
+
+    #[test]
+    fn the_mask_scales_the_music_while_it_plays() {
+        // The end screen fades the music out through the mask, 255 down to 0.
+        let mut loud = Module {
+            title: String::new(),
+            orders: vec![0],
+            initial_speed: 6,
+            initial_tempo: 125,
+            global_volume: 64,
+            master_volume: 64,
+            stereo: false,
+            channels: [Channel::default(); s3m::CHANNELS],
+            samples: vec![Sample {
+                name: String::new(),
+                c2spd: 8363,
+                volume: 64,
+                looped: Some((0, 100)),
+                data: vec![20_000; 100],
+            }],
+            patterns: vec![Pattern {
+                rows: vec![[Cell::default(); s3m::CHANNELS]; s3m::ROWS],
+            }],
+        };
+        loud.channels[0].enabled = true;
+        loud.patterns[0].rows[0][0].note = 0x40;
+        loud.patterns[0].rows[0][0].instrument = 1;
+        let mut sound = Sound::default();
+        sound.play_music(&loud, 0, FULL_VOLUME);
+        let mut out = Vec::new();
+        sound.render(2000, &mut out);
+        let full = i64::from(out[2 * 1999]);
+        sound.set_mask(0x80);
+        out.clear();
+        sound.render(2000, &mut out);
+        // 255 * 255 >> 9 = 127 against 128 * 255 >> 9 = 63.
+        assert!(
+            (i64::from(out[2 * 1999]) * 127 - full * 63).abs() <= 127 * 2,
+            "{} vs {full}",
+            out[2 * 1999]
+        );
     }
 
     #[test]

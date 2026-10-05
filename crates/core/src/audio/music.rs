@@ -77,6 +77,8 @@ pub(crate) struct Music {
     jump: Option<(usize, usize)>,
     /// Gain applied to every channel, in 16.16 (the original's master volume).
     gain: i64,
+    /// The module's own share of it: its master volume, doubled for a stereo module.
+    module_gain: i64,
 }
 
 impl Music {
@@ -86,8 +88,8 @@ impl Music {
     /// `master / 64` (the game's music has 48, 2.5 dB below full), and a stereo module plays
     /// at twice a mono module's level.
     pub(crate) fn new(module: &Module, gain: i64, first_order: usize) -> Music {
-        let stereo = if module.stereo { 2 } else { 1 };
-        let gain = gain * i64::from(module.master_volume) * stereo / 64;
+        let module_gain = i64::from(module.master_volume) * if module.stereo { 2 } else { 1 };
+        let gain = gain * module_gain / 64;
         let samples = module
             .samples
             .iter()
@@ -133,6 +135,7 @@ impl Music {
             remainder: 0,
             jump: None,
             gain,
+            module_gain,
         };
         music.skip_marker_orders();
         music
@@ -147,6 +150,11 @@ impl Music {
             }
         }
         self.orders.clear();
+    }
+
+    /// A new master volume for the song (`FMUSIC_SetMasterVolume`), as [`Music::new`]'s `gain`.
+    pub(crate) fn set_gain(&mut self, gain: i64) {
+        self.gain = gain * self.module_gain / 64;
     }
 
     /// Fades every channel out and hands the fading voices over, for music being replaced.

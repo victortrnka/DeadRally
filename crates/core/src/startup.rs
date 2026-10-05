@@ -10,8 +10,10 @@ use deadrally_gamedata::assets::{Assets, Picture};
 use deadrally_gamedata::haf::FRAME_PIXELS;
 use deadrally_gamedata::image::Palette;
 
-use crate::audio::{DEFAULT_MUSIC_VOLUME, FULL_VOLUME, Sound};
+use crate::audio::{DEFAULT_EFFECTS_VOLUME, DEFAULT_MUSIC_VOLUME, FULL_VOLUME, Sound};
 use crate::fade::{FADE_FULL, FADE_STEP, fade};
+use crate::keys::Keys;
+use crate::menu::Menu;
 use crate::{AUDIO_FRAMES_PER_TICK, Frame, InputEvent};
 
 /// The intro's screen: 320x200, with the animation's 320x120 frames from row 40.
@@ -59,8 +61,8 @@ enum Stage {
         screen: Screen,
         ticks: u32,
     },
-    /// The title after its fade-in, while the original loads the main menu (M2).
-    Title,
+    /// The title has faded in; the main menu takes over (`mainMenu` goes on to load it).
+    Done,
 }
 
 #[derive(Debug)]
@@ -74,7 +76,7 @@ pub(crate) struct Startup {
     /// The original keeps the last key press until something asks for it (`eventDetected`,
     /// 0x417EB0, reads and clears it), so a press during a fade-in ends the following hold
     /// after one tick.
-    key: bool,
+    keys: Keys,
     sound: Sound,
     /// The channel the intro's next effect plays on.
     effect_channel: usize,
@@ -91,7 +93,7 @@ impl Startup {
             height: 0,
             pixels: Vec::new(),
             palette: Palette::BLACK,
-            key: false,
+            keys: Keys::default(),
             sound: Sound::default(),
             effect_channel: 1,
             audio: Vec::new(),
@@ -112,14 +114,27 @@ impl Startup {
     }
 
     pub(crate) fn input(&mut self, event: InputEvent) {
-        if let InputEvent::Key { pressed: true, .. } | InputEvent::PadButton { pressed: true, .. } =
-            event
-        {
-            self.key = true;
-        }
+        self.keys.event(event);
+    }
+
+    /// The title has faded in and the main menu should take over.
+    pub(crate) fn finished(&self) -> bool {
+        self.stage == Stage::Done
+    }
+
+    /// The main menu, taking over the data, the sound and the remembered key.
+    pub(crate) fn into_menu(self) -> Menu {
+        Menu::new(
+            self.assets,
+            self.sound,
+            self.keys,
+            self.audio,
+            &self.palette,
+        )
     }
 
     pub(crate) fn tick(&mut self) {
+        self.keys.tick();
         self.stage = self.next_stage();
         self.sound.render(AUDIO_FRAMES_PER_TICK, &mut self.audio);
     }
@@ -127,12 +142,16 @@ impl Startup {
     fn next_stage(&mut self) -> Stage {
         match self.stage {
             Stage::Intro { next, waited } => self.tick_intro(next, waited + 1),
-            // The title's last step is set but never shown: the original goes on to load the
-            // main menu without presenting another frame, so the title stays at 92 %.
+            // After the title's last step the original loads the main menu without presenting
+            // a frame; the menu's first wait shows this step (spec M2a decision 5: loading takes
+            // no time here).
             Stage::FadeIn {
                 screen: Screen::Title,
                 ticks,
-            } if ticks + 1 == FADE_IN_TICKS => Stage::Title,
+            } if ticks + 1 == FADE_IN_TICKS => {
+                self.palette = fade(&self.assets.title.palette, i64::from(ticks) * FADE_STEP);
+                Stage::Done
+            }
             Stage::FadeIn { screen, ticks } => {
                 let level = i64::from(ticks) * FADE_STEP;
                 self.palette = fade(&picture(&self.assets, screen).palette, level);
@@ -148,7 +167,7 @@ impl Startup {
             Stage::Hold { screen, ticks } => {
                 // `do { wait } while (!eventDetected() && ticks < 180)`: the key is read first,
                 // so even the last hold tick consumes a pending press.
-                if std::mem::take(&mut self.key) || ticks + 1 >= HOLD_TICKS {
+                if self.keys.take() != 0 || ticks + 1 >= HOLD_TICKS {
                     Stage::FadeOut { screen, ticks: 0 }
                 } else {
                     Stage::Hold {
@@ -172,7 +191,7 @@ impl Startup {
                     })
                 }
             }
-            Stage::Title => Stage::Title,
+            Stage::Done => Stage::Done,
         }
     }
 
@@ -190,7 +209,7 @@ impl Startup {
             due = Some(next);
             next += 1;
             waited = 0;
-            if next == intro.len() || std::mem::take(&mut self.key) {
+            if next == intro.len() || self.keys.take() != 0 {
                 // The frame ending the intro is never shown, and its effect, which the
                 // original starts and cuts at once, never sounds.
                 return self.end_intro();
@@ -227,6 +246,8 @@ impl Startup {
             MENU_MUSIC_ORDER,
             DEFAULT_MUSIC_VOLUME,
         );
+        self.sound.load_effects(&self.assets.menu.effects);
+        self.sound.set_effects_volume(DEFAULT_EFFECTS_VOLUME);
         self.show(Screen::Apogee)
     }
 
