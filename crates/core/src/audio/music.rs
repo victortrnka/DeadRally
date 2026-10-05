@@ -306,6 +306,9 @@ impl Music {
                     channel.vibrato_position = 0;
                     channel.retrigger_count = 0;
                 }
+            } else if instrument != 0 && !(tone_porta && self.channels[index].voice.is_some()) {
+                // FMOD plays a note of an empty sample slot as silence: the note sounding stops.
+                self.cut(index);
             }
         }
         if let Some(volume) = cell.volume {
@@ -929,6 +932,26 @@ mod tests {
             music.channels[0].period, 1712,
             "the note itself does not move"
         );
+    }
+
+    #[test]
+    fn a_note_of_an_empty_sample_slot_silences_the_channel() {
+        // The menu music's order 47 starts with notes of a sample slot its author emptied;
+        // FMOD plays them as silence. Ignoring them left the channel's looping note playing,
+        // brought back up by their volume: a stray tone in the menu.
+        let mut emptied = module(
+            &[
+                (0, 0, cell(C4, 1, Some(64), ' ', 0)),
+                (1, 0, cell(C4, 2, Some(32), ' ', 0)),
+            ],
+            1,
+            125,
+        );
+        emptied.samples.push(Sample::default());
+        let mut music = Music::new(&emptied, UNITY, 0);
+        play(&mut music, 960);
+        let out = play(&mut music, 960);
+        assert!(out[2 * 900..].iter().all(|&sample| sample == 0));
     }
 
     #[test]
