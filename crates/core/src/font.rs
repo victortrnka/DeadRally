@@ -43,6 +43,14 @@ impl Font {
         }
         pen
     }
+
+    /// How far `text` moves the pen (`getBoxBigTextOffset`, 0x41C9F0, for the big font): the
+    /// sum of its advances, which right-aligns text.
+    pub(crate) fn width(&self, text: &[u8]) -> usize {
+        text.iter()
+            .filter_map(|&c| self.glyph(c).map(|(_, advance)| advance))
+            .sum()
+    }
 }
 
 #[cfg(test)]
@@ -86,6 +94,13 @@ pub(crate) mod tests {
         let end = font().draw(&mut canvas, &[GAP, b' '], at(0, 0));
         assert_eq!(end, 4);
         assert_eq!(&canvas.pixels()[..3], [0, 1, 1]);
+    }
+
+    #[test]
+    fn a_texts_width_is_the_sum_of_its_advances() {
+        // Configure's percentages are right-aligned by it; another width moves them.
+        assert_eq!(font().width(b" !\""), 9);
+        assert_eq!(font().width(&[7, b' ']), 3, "no glyph, no advance");
     }
 
     #[test]

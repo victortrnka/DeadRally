@@ -30,6 +30,14 @@ pub const CHOOSE_SOUND: usize = 28;
 pub const SLIDER: u8 = 70;
 pub const KNOB: u8 = 71;
 
+/// A `dr.cfg` with the original's default volumes, gamepad off.
+pub fn config() -> DrCfg {
+    let mut config = DrCfg::parse(&[0; HEADER_BYTES + PAYLOAD_BYTES]).unwrap();
+    config.set_music_volume(0x8000);
+    config.set_effects_volume(0xC000);
+    config
+}
+
 fn solid(width: u32, height: u32, colour: u8) -> Image {
     Image::new(width, height, vec![colour; (width * height) as usize])
 }
@@ -136,6 +144,6 @@ pub fn menu_assets() -> MenuAssets {
         texts: texts(),
         slider: solid(172, 24, SLIDER),
         knob: solid(10, 24, KNOB),
-        default_config: DrCfg::parse(&[0; HEADER_BYTES + PAYLOAD_BYTES]).unwrap(),
+        default_config: config(),
     }
 }

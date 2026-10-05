@@ -110,6 +110,7 @@ impl TestScene {
             InputEvent::PadAxis { axis, value } => {
                 self.stick[axis as usize] = value;
             }
+            InputEvent::PadConnected { .. } => {}
         }
     }
 

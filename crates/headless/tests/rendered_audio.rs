@@ -32,7 +32,8 @@ fn manifest(located: &Located) -> String {
         .map(|&delay| u32::from(delay))
         .sum::<u32>()
         + MENU_MUSIC_TICKS;
-    let mut game = Game::new(assets);
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::new(assets, config);
     let mut audio = Vec::new();
     for _ in 0..ticks {
         game.tick();

@@ -148,6 +148,11 @@ pub(crate) struct Keys {
     pad_pushed_ms: Option<i64>,
     pad_called_ms: Option<i64>,
     hold_off_until_ms: i64,
+    /// `dr.cfg`'s gamepad switch (0x45EA00): the joystick path runs only when it is on.
+    pad_on: bool,
+    pad_connected: bool,
+    /// 0x456B00: set while Define Gamepad waits, so `eventDetected` leaves the gamepad to it.
+    calibrating: bool,
 }
 
 impl Keys {
@@ -182,7 +187,43 @@ impl Keys {
             InputEvent::PadAxis { axis, value } => {
                 self.stick[usize::from(axis == PadAxis::StickY)] = i32::from(value) / 256;
             }
+            InputEvent::PadConnected { connected } => self.pad_connected = connected,
         }
+    }
+
+    pub(crate) fn set_pad_on(&mut self, on: bool) {
+        self.pad_on = on;
+    }
+
+    pub(crate) fn set_calibrating(&mut self, calibrating: bool) {
+        self.calibrating = calibrating;
+    }
+
+    pub(crate) fn pad_connected(&self) -> bool {
+        self.pad_connected
+    }
+
+    /// The gamepad input Define Gamepad takes (0x42CBF0), later checks winning: the stick's
+    /// left, right, up, down (1–4), then buttons 1–4 (5–8); 0 for none.
+    pub(crate) fn pad_input(&self) -> u8 {
+        let [x, y] = self.stick;
+        let mut input = 0;
+        for (pushed, code) in [
+            (x < -STICK_THRESHOLD, 1),
+            (x > STICK_THRESHOLD, 2),
+            (y < -STICK_THRESHOLD, 3),
+            (y > STICK_THRESHOLD, 4),
+        ] {
+            if pushed {
+                input = code;
+            }
+        }
+        for (button, code) in self.buttons.iter().zip(5..) {
+            if *button {
+                input = code;
+            }
+        }
+        input
     }
 
     /// One poll of the event loop, once per tick: SDL 1.2 repeats the held key.
@@ -205,6 +246,9 @@ impl Keys {
     /// `eventDetected`: the remembered key, cleared, unless the joystick says something.
     pub(crate) fn take(&mut self) -> u8 {
         let key = std::mem::take(&mut self.remembered);
+        if !self.pad_on {
+            return key;
+        }
         let now = TICK_MS * self.ticks;
         let pushed = self.pad_pushed_ms.unwrap_or(now - UNSET_MS);
         let called = *self.pad_called_ms.get_or_insert(now - UNSET_MS);
@@ -233,6 +277,9 @@ impl Keys {
     /// The joystick's code, later checks winning as in the original: buttons over the stick,
     /// the vertical axis over the horizontal one.
     fn pad_code(&self) -> u8 {
+        if self.calibrating {
+            return 0;
+        }
         let [x, y] = self.stick;
         let mut code = 0;
         if x < -STICK_THRESHOLD {
@@ -320,6 +367,7 @@ mod tests {
         // The menus read every 2 ticks: a held push moves once, waits 700 ms, then moves on
         // every read.
         let mut keys = Keys::default();
+        keys.set_pad_on(true);
         let reads: Vec<u8> = (0..60)
             .map(|read| {
                 if read == 1 {
@@ -346,6 +394,7 @@ mod tests {
     fn pad_buttons_confirm_and_go_back() {
         // Buttons 0 and 2 answer like Enter, 1 and 3 like Escape.
         let mut keys = Keys::default();
+        keys.set_pad_on(true);
         let push = |keys: &mut Keys, button, pressed| {
             keys.event(InputEvent::PadButton { button, pressed });
         };
@@ -357,5 +406,43 @@ mod tests {
         push(&mut keys, PadButton::B, true);
         keys.tick();
         assert_eq!(keys.take(), ESCAPE);
+    }
+
+    #[test]
+    fn the_gamepad_counts_only_when_dr_cfg_switches_it_on() {
+        // A fresh dr.cfg has it off, as the original's: a pad does nothing until the player
+        // switches it on in Configure.
+        let mut keys = Keys::default();
+        keys.event(InputEvent::PadButton {
+            button: PadButton::A,
+            pressed: true,
+        });
+        assert_eq!(keys.take(), 0);
+        keys.set_pad_on(true);
+        assert_eq!(keys.take(), ENTER);
+    }
+
+    #[test]
+    fn define_gamepad_takes_buttons_over_the_stick_and_the_last_button() {
+        // 0x42CBF0 checks the stick, then buttons 1 to 4, each later one winning.
+        let mut keys = Keys::default();
+        assert_eq!(keys.pad_input(), 0);
+        keys.event(InputEvent::PadAxis {
+            axis: PadAxis::StickX,
+            value: -20_000,
+        });
+        assert_eq!(keys.pad_input(), 1, "left");
+        keys.event(InputEvent::PadAxis {
+            axis: PadAxis::StickY,
+            value: 20_000,
+        });
+        assert_eq!(keys.pad_input(), 4, "down over left");
+        for (button, input) in [(PadButton::B, 6), (PadButton::Y, 8)] {
+            keys.event(InputEvent::PadButton {
+                button,
+                pressed: true,
+            });
+            assert_eq!(keys.pad_input(), input);
+        }
     }
 }

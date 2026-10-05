@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis};
 use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::dr_cfg;
 use deadrally_gamedata::{DATA_ENV_VAR, LocateError, Outcome, config_path, locate};
 use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
@@ -67,9 +68,11 @@ fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, St
     Ok(options)
 }
 
-/// The startup sequence on the player's data, plus a warning to show when the data is not a
-/// known release.
-fn load_game(data: Option<&Path>) -> Result<(Game, Option<String>), String> {
+/// The startup sequence on the player's data and `dr.cfg`, a warning to show when the data is
+/// not a known release, and where DeadRally keeps its `dr.cfg`.
+type Loaded = (Game, Option<String>, Option<PathBuf>);
+
+fn load_game(data: Option<&Path>) -> Result<Loaded, String> {
     let config = config_path();
     let env = std::env::var_os(DATA_ENV_VAR);
     let hint = || {
@@ -107,7 +110,10 @@ fn load_game(data: Option<&Path>) -> Result<(Game, Option<String>), String> {
             hint()
         )
     })?;
-    Ok((Game::new(assets), warning))
+    let own = dr_cfg::own_path();
+    let config = dr_cfg::load(own.as_deref(), dir, &assets.menu.default_config)
+        .map_err(|error| format!("cannot read dr.cfg: {error}"))?;
+    Ok((Game::new(assets, config), warning, own))
 }
 
 /// Shows `message` in a dialog as well as on stderr; the dialog is best effort (there may be
@@ -123,15 +129,15 @@ fn nanos(duration: Duration) -> u64 {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let options = parse_options(std::env::args_os().skip(1))?;
-    let mut game = if options.test_scene {
-        Game::test_scene()
+    let (mut game, dr_cfg_path) = if options.test_scene {
+        (Game::test_scene(), None)
     } else {
         match load_game(options.data.as_deref()) {
-            Ok((game, warning)) => {
+            Ok((game, warning, own)) => {
                 if let Some(warning) = warning {
                     tell(MessageBoxFlag::WARNING, "Warning", &warning);
                 }
-                game
+                (game, own)
             }
             Err(message) => {
                 tell(MessageBoxFlag::ERROR, "Error", &message);
@@ -226,12 +232,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         });
                     }
                 }
-                Event::GamepadAdded { which, .. } => match gamepads.open(which) {
-                    Ok(pad) => open_pads.push(pad),
-                    Err(error) => eprintln!("cannot open gamepad: {error}"),
-                },
+                Event::GamepadAdded { which, .. } => {
+                    match gamepads.open(which) {
+                        Ok(pad) => open_pads.push(pad),
+                        Err(error) => eprintln!("cannot open gamepad: {error}"),
+                    }
+                    game.input(InputEvent::PadConnected {
+                        connected: !open_pads.is_empty(),
+                    });
+                }
                 Event::GamepadRemoved { which, .. } => {
-                    open_pads.retain(|pad| pad.id().ok() != Some(which))
+                    open_pads.retain(|pad| pad.id().ok() != Some(which));
+                    game.input(InputEvent::PadConnected {
+                        connected: !open_pads.is_empty(),
+                    });
                 }
                 Event::GamepadButtonDown { button, .. } => {
                     if let Some(button) = keymap::pad_button(button) {
@@ -289,6 +303,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         stats.add_ticks(ticks);
+        if let (Some(bytes), Some(path)) = (game.take_config(), &dr_cfg_path)
+            && let Err(error) = dr_cfg::save(path, &bytes)
+        {
+            eprintln!("warning: cannot write {}: {error}", path.display());
+        }
         if game.quit_requested() {
             break 'running;
         }

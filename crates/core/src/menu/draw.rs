@@ -62,6 +62,46 @@ pub(crate) const START_MENU: MenuTable = MenuTable {
     active: [true, false, false, true, false, true, false, false, false],
 };
 
+/// Configure (menu 3): music volume, effect volume, define keyboard, define gamepad, the
+/// gamepad switch, previous menu.
+pub(crate) const CONFIGURE_MENU: MenuTable = MenuTable {
+    text: 3,
+    rows: 6,
+    x: 95,
+    y: 146,
+    row_height: 28,
+    width: 485,
+    height: 192,
+    selected: 0,
+    active: [true, true, true, true, true, true, false, false, false],
+};
+
+/// Define Keyboard (menu 6): the eight controls and previous menu.
+pub(crate) const KEYBOARD_MENU: MenuTable = MenuTable {
+    text: 6,
+    rows: 9,
+    x: 50,
+    y: 93,
+    row_height: 28,
+    width: 532,
+    height: 278,
+    selected: 0,
+    active: [true; 9],
+};
+
+/// Define Gamepad (menu 8): seven controls (no horn) and previous menu.
+pub(crate) const PAD_MENU: MenuTable = MenuTable {
+    text: 8,
+    rows: 8,
+    x: 50,
+    y: 113,
+    row_height: 28,
+    width: 532,
+    height: 250,
+    selected: 0,
+    active: [true, true, true, true, true, true, true, true, false],
+};
+
 /// How a menu is drawn: unfocused (mode 0) or focused (mode 1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Focus {
@@ -81,8 +121,12 @@ pub(crate) struct Graphics {
     pub(crate) big_b: Font,
     pub(crate) big_d: Font,
     pub(crate) small: [Font; 3],
-    /// `dr.exe`'s menu text table: `menus[m][r]` is row `r` of menu `m`.
+    /// `dr.exe`'s menu text table: `menus[m][r]` is row `r` of menu `m`. The original rewrites
+    /// some rows as settings change.
     menus: Vec<Vec<Vec<u8>>>,
+    /// The volume popups' slider and its knob.
+    pub(crate) slider: Image,
+    pub(crate) knob: Image,
 }
 
 impl Graphics {
@@ -103,7 +147,15 @@ impl Graphics {
                 Font::new(assets.small_c.clone(), &texts.small),
             ],
             menus: texts.menus.clone(),
+            slider: assets.slider.clone(),
+            knob: assets.knob.clone(),
         }
+    }
+
+    /// Rewrites row `row` of menu `menu`, as the original copies a setting's text into its
+    /// table.
+    pub(crate) fn set_row(&mut self, menu: usize, row: usize, text: Vec<u8>) {
+        self.menus[menu][row] = text;
     }
 
     pub(crate) fn cursor(&self, frame: usize) -> &Image {
@@ -326,6 +378,8 @@ pub(crate) mod tests {
                 Font::new(glyphs(16, 62), &metrics(16)),
             ],
             menus: texts().menus,
+            slider: solid(172, 24, 70),
+            knob: solid(10, 24, 71),
         }
     }
 

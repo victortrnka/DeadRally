@@ -23,9 +23,6 @@ fn music_master(volume: u32, mask: u32) -> i64 {
 /// The volume mask's normal value.
 const FULL_MASK: u32 = 255;
 
-/// `dr.cfg`'s default effects volume, 75 % (`defaultConfig`, 0x426700).
-pub(crate) const DEFAULT_EFFECTS_VOLUME: u32 = 0xC000;
-
 /// The music volume the intro plays at, whatever `dr.cfg` says: the game's volume globals
 /// start at 255 and take `dr.cfg`'s values only when the menu music starts.
 pub(crate) const FULL_VOLUME: u32 = 0xFF00;
@@ -96,6 +93,17 @@ impl Sound {
     /// The volume mask (`setMusicVolume`, 0x43C2B0): 0..=255 over music and effects alike.
     pub(crate) fn set_mask(&mut self, mask: u32) {
         self.mask = mask;
+        self.apply_music_gain();
+    }
+
+    /// The configured music volume (0..=0x10000) for the music playing, as Configure's popup
+    /// sets it (`musicSetmusicVolume`, 0x43C280).
+    pub(crate) fn set_music_volume(&mut self, volume: u32) {
+        self.music_volume = volume;
+        self.apply_music_gain();
+    }
+
+    fn apply_music_gain(&mut self) {
         let gain = self.music_gain();
         if let Some(music) = &mut self.music {
             music.set_gain(gain);
@@ -320,7 +328,7 @@ mod tests {
         };
         let full = level(&mut Sound::default());
         let mut menu = Sound::default();
-        menu.set_effects_volume(DEFAULT_EFFECTS_VOLUME);
+        menu.set_effects_volume(0xC000);
         let at_75 = level(&mut menu);
         assert!(
             (at_75 * 254 - full * 191).abs() <= 254 * 2,
@@ -331,9 +339,8 @@ mod tests {
         assert_eq!(level(&mut quiet), 0);
     }
 
-    #[test]
-    fn the_mask_scales_the_music_while_it_plays() {
-        // The end screen fades the music out through the mask, 255 down to 0.
+    /// One endless loud note on the first channel.
+    fn loud() -> Module {
         let mut loud = Module {
             title: String::new(),
             orders: vec![0],
@@ -357,6 +364,13 @@ mod tests {
         loud.channels[0].enabled = true;
         loud.patterns[0].rows[0][0].note = 0x40;
         loud.patterns[0].rows[0][0].instrument = 1;
+        loud
+    }
+
+    #[test]
+    fn the_mask_scales_the_music_while_it_plays() {
+        // The end screen fades the music out through the mask, 255 down to 0.
+        let loud = loud();
         let mut sound = Sound::default();
         sound.play_music(&loud, 0, FULL_VOLUME);
         let mut out = Vec::new();
@@ -370,6 +384,25 @@ mod tests {
             (i64::from(out[2 * 1999]) * 127 - full * 63).abs() <= 127 * 2,
             "{} vs {full}",
             out[2 * 1999]
+        );
+    }
+
+    #[test]
+    fn the_music_volume_changes_the_music_while_it_plays() {
+        // Configure's popup applies each step at once (`musicSetmusicVolume`): 50 % plays at
+        // master volume 63, 100 % at 127.
+        let mut sound = Sound::default();
+        sound.play_music(&loud(), 0, DEFAULT_MUSIC_VOLUME);
+        let mut out = Vec::new();
+        sound.render(2000, &mut out);
+        let half = i64::from(out[2 * 1999]);
+        sound.set_music_volume(0x1_0000);
+        out.clear();
+        sound.render(2000, &mut out);
+        let full = i64::from(out[2 * 1999]);
+        assert!(
+            (full * 63 - half * 127).abs() <= 127 * 2,
+            "{half} vs {full}"
         );
     }
 

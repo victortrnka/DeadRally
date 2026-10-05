@@ -1,20 +1,24 @@
-//! The main menu (spec M2a §3.2–§3.5), from the title's fade to black to the end screen.
+//! The main menu (spec M2a §3.2–§3.5, M2b §3.2), from the title's fade to black to the end
+//! screen, with Configure.
 //!
 //! The original runs this as straight code with waits in it (`waitWithRefresh`, 0x43D870); the
 //! screen shown during a tick is what the shown buffer and the palette hold when that tick's
 //! wait starts. Here [`State`] names the wait the menu stands at, and [`Menu::tick`] runs the
 //! code from it to the next one.
 
+mod configure;
 pub(crate) mod draw;
 pub(crate) mod palette;
 
 use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::dr_cfg::DrCfg;
 
 use self::draw::{
-    CURSOR_FRAMES, Focus, Graphics, MAIN_MENU, MenuTable, POPUP_FILL, Panel, START_MENU,
+    CONFIGURE_MENU, CURSOR_FRAMES, Focus, Graphics, KEYBOARD_MENU, MAIN_MENU, MenuTable, PAD_MENU,
+    POPUP_FILL, Panel, START_MENU,
 };
 use self::palette::MenuPalette;
-use crate::audio::{DEFAULT_EFFECTS_VOLUME, Sound};
+use crate::audio::Sound;
 use crate::canvas::{Canvas, HEIGHT, WIDTH, at};
 use crate::keys::{self, Keys};
 use crate::{AUDIO_FRAMES_PER_TICK, Frame};
@@ -29,8 +33,9 @@ const CHOOSE_SOUND: u8 = 28;
 
 /// The player's colour at the first start: driver 19's, 0 until a game sets it.
 const PLAYER_COLOUR: usize = 0;
-/// The main menu's rows: 0 start, 4 credits, 5 exit.
+/// The main menu's rows: 0 start, 2 configure, 4 credits, 5 exit.
 const START_ROW: usize = 0;
+const CONFIGURE_ROW: usize = 2;
 const CREDITS_ROW: usize = 4;
 const EXIT_ROW: usize = 5;
 /// The start submenu's last row returns to the main menu.
@@ -61,14 +66,33 @@ enum State {
     FadeIn {
         step: u32,
     },
-    /// `readEventInMenu`: the first or second wait of a pass, in the main menu or the start
-    /// submenu.
+    /// `readEventInMenu`: the first or second wait of a pass, in the main menu or a submenu.
     Main {
         second: bool,
     },
-    Start {
+    Submenu {
+        menu: Submenu,
         second: bool,
     },
+    /// A volume popup's loop (`showAdjustOptions`, 0x4309A0): the level 0..=128 and the key
+    /// read last.
+    Volume {
+        music: bool,
+        level: i32,
+        last: u8,
+    },
+    /// Define Keyboard waiting for control `control`'s key; `key` is the one read last.
+    KeyWait {
+        control: usize,
+        key: u8,
+    },
+    /// Define Gamepad waiting for control `control`'s input (0x42CBF0): the polls so far.
+    PadWait {
+        control: usize,
+        polls: u32,
+    },
+    /// The popup when the gamepad switch finds no gamepad (0x41E3B0), until a key.
+    NotDetected,
     /// `drawYesNoMenu` for the exit question; `yes` is the side selected.
     Exit {
         second: bool,
@@ -110,6 +134,15 @@ enum State {
     },
 }
 
+/// The menus below the main menu, each read by `readEventInMenu`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Submenu {
+    Start,
+    Configure,
+    Keyboard,
+    Pad,
+}
+
 #[derive(Debug)]
 pub(crate) struct Menu {
     assets: Assets,
@@ -123,8 +156,12 @@ pub(crate) struct Menu {
     sound: Sound,
     audio: Vec<i16>,
     main: MenuTable,
-    start: MenuTable,
+    /// Start, Configure, Define Keyboard, Define Gamepad, by [`Submenu`].
+    submenus: [MenuTable; 4],
     panel: Panel,
+    /// The player's `dr.cfg`, and whether the original would write it now.
+    config: DrCfg,
+    save: bool,
     /// The cursor's frame (0x45FBF8).
     cursor: usize,
     state: State,
@@ -139,13 +176,19 @@ impl Menu {
         keys: Keys,
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
+        (config, save): (DrCfg, bool),
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
         let mut palette =
             MenuPalette::new(&menu_assets.palette, colour, &menu_assets.background_copper);
         palette.show(title_shown, 100);
-        let graphics = Graphics::new(menu_assets);
+        let mut graphics = Graphics::new(menu_assets);
+        graphics.set_row(
+            CONFIGURE_MENU.text,
+            configure::SWITCH_ROW,
+            configure::switch_text(&menu_assets.texts.configure, &config),
+        );
         let panel = Panel::startup(&menu_assets.texts);
         let mut shown = Canvas::default();
         shown.copy_all(&assets.title.image);
@@ -159,8 +202,10 @@ impl Menu {
             sound,
             audio,
             main: MAIN_MENU,
-            start: START_MENU,
+            submenus: [START_MENU, CONFIGURE_MENU, KEYBOARD_MENU, PAD_MENU],
             panel,
+            config,
+            save,
             cursor: 0,
             state: State::TitleToBlack { step: 0 },
             assets,
@@ -228,21 +273,28 @@ impl Menu {
                 self.update_cursor_main();
                 self.main_key()
             }
-            State::Start { second: false } => {
+            State::Submenu {
+                menu,
+                second: false,
+            } => {
                 self.palette.after_wait();
-                State::Start { second: true }
+                State::Submenu { menu, second: true }
             }
-            State::Start { second: true } => {
+            State::Submenu { menu, second: true } => {
                 self.palette.after_wait();
                 self.graphics.update_cursor(
                     &mut self.screen,
                     &mut self.shown,
-                    &self.start,
+                    &self.submenus[menu as usize],
                     self.cursor,
                 );
                 self.cursor = (self.cursor + 1) % CURSOR_FRAMES;
-                self.start_key()
+                self.submenu_key(menu)
             }
+            State::Volume { music, level, last } => self.volume_tick(music, level, last),
+            State::KeyWait { control, key } => self.key_wait(control, key),
+            State::PadWait { control, polls } => self.pad_wait(control, polls),
+            State::NotDetected => self.not_detected(),
             State::Exit { second: false, yes } => {
                 self.palette.after_wait();
                 State::Exit { second: true, yes }
@@ -285,6 +337,8 @@ impl Menu {
                 if step + 1 < FADE_OUT_STEPS {
                     State::EndOut { step: step + 1 }
                 } else {
+                    // `mainMenu` writes `dr.cfg` after the end screen.
+                    self.save = true;
                     State::Ended
                 }
             }
@@ -391,16 +445,19 @@ impl Menu {
     }
 
     fn sound(&mut self, effect: u8) {
-        self.sound
-            .trigger_at(SOUND_CHANNEL, effect, DEFAULT_EFFECTS_VOLUME, SOUND_PITCH);
+        self.sound.trigger_at(
+            SOUND_CHANNEL,
+            effect,
+            self.config.effects_volume(),
+            SOUND_PITCH,
+        );
     }
 
-    /// Moves the highlight of `menu` (the main menu when `main`): `Some(row)`, or Up/Down.
-    fn move_highlight(&mut self, main: bool, key: u8) {
-        let menu = if main {
-            &mut self.main
-        } else {
-            &mut self.start
+    /// Moves the highlight of `menu` (the main menu when `None`) for Up, Down or Escape.
+    fn move_highlight(&mut self, menu: Option<Submenu>, key: u8) {
+        let menu = match menu {
+            None => &mut self.main,
+            Some(submenu) => &mut self.submenus[submenu as usize],
         };
         let (to, base) = match key {
             keys::UP | keys::PAD_UP => {
@@ -438,7 +495,7 @@ impl Menu {
         match self.keys.take() {
             keys::ESCAPE => {
                 if self.main.selected != self.main.rows - 1 {
-                    self.move_highlight(true, keys::ESCAPE);
+                    self.move_highlight(None, keys::ESCAPE);
                     self.sound(MOVE_SOUND);
                 }
             }
@@ -447,7 +504,7 @@ impl Menu {
                 return self.choose(self.main.selected);
             }
             key @ (keys::UP | keys::PAD_UP | keys::DOWN | keys::PAD_DOWN) => {
-                self.move_highlight(true, key);
+                self.move_highlight(None, key);
                 self.sound(MOVE_SOUND);
             }
             _ => {}
@@ -458,7 +515,8 @@ impl Menu {
     /// What a main menu row does.
     fn choose(&mut self, row: usize) -> State {
         match row {
-            START_ROW => self.start_pass(),
+            START_ROW => self.submenu_pass(Submenu::Start),
+            CONFIGURE_ROW => self.submenu_pass(Submenu::Configure),
             CREDITS_ROW => {
                 self.saved = self.screen.clone();
                 self.palette.compose();
@@ -467,43 +525,8 @@ impl Menu {
                 }
             }
             EXIT_ROW => self.ask_exit(),
-            // Configure and the Hall of Fame come with M2b.
+            // The Hall of Fame comes with M2c.
             _ => self.main_pass(),
-        }
-    }
-
-    /// A pass of `startRacingMenu`'s loop: the main menu dimmed, the submenu with focus.
-    fn start_pass(&mut self) -> State {
-        self.screen.copy_rows(&self.graphics.background, 92, 275);
-        self.graphics
-            .menu(&mut self.screen, &self.main, Focus::Unfocused, self.cursor);
-        self.graphics
-            .menu(&mut self.screen, &self.start, Focus::Focused, self.cursor);
-        self.shown = self.screen.clone();
-        State::Start { second: false }
-    }
-
-    fn start_key(&mut self) -> State {
-        match self.keys.take() {
-            keys::ESCAPE => {
-                self.sound(BACK_SOUND);
-                self.main_pass()
-            }
-            keys::ENTER | keys::SPACE | 0x9C => {
-                self.sound(CHOOSE_SOUND);
-                if self.start.selected == START_MENU_BACK {
-                    self.start.selected = 0;
-                    return self.main_pass();
-                }
-                // New game and loading wait for M3.
-                self.start_pass()
-            }
-            key @ (keys::UP | keys::PAD_UP | keys::DOWN | keys::PAD_DOWN) => {
-                self.move_highlight(false, key);
-                self.sound(MOVE_SOUND);
-                State::Start { second: false }
-            }
-            _ => State::Start { second: false },
         }
     }
 

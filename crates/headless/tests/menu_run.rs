@@ -104,7 +104,8 @@ const MAX_TICKS: u64 = 9_000;
 /// One line per screenshot (the frame's pixels and palette) and one for the whole run's sound.
 fn manifest() -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
-    let mut game = Game::new(assets);
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::new(assets, config);
     let mut lines = String::new();
     let mut audio = Vec::new();
     let mut ticks = 0;
