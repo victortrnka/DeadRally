@@ -5,7 +5,7 @@
 use deadrally_gamedata::assets::{MenuAssets, Picture};
 use deadrally_gamedata::dr_cfg::{DrCfg, HEADER_BYTES, PAYLOAD_BYTES};
 use deadrally_gamedata::image::{Image, Palette};
-use deadrally_gamedata::text::{ConfigureTexts, Metrics, Texts};
+use deadrally_gamedata::text::{ConfigureTexts, HallOfFameTexts, Metrics, Texts};
 use deadrally_gamedata::xm::{Bank, Instrument, Looping};
 
 /// `MENUBG5`, white in `MENU.PAL`.
@@ -29,6 +29,15 @@ pub const CHOOSE_SOUND: usize = 28;
 /// The volume popups' slider and knob.
 pub const SLIDER: u8 = 70;
 pub const KNOB: u8 = 71;
+/// The Hall of Fame: the medium font, the titles, the record bar, circuit c's snapshot
+/// (`SNAPSHOT + c`), the four arrows (`ARROW + k`) and the border's corners.
+pub const MEDIUM: u8 = 72;
+pub const FAME_TITLE: u8 = 73;
+pub const RECORDS_TITLE: u8 = 74;
+pub const RECORDS_BAR: u8 = 75;
+pub const SNAPSHOT: u8 = 150;
+pub const ARROW: u8 = 180;
+pub const BORDER: u8 = 190;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -103,6 +112,13 @@ fn texts() -> Texts {
             key_names: vec![b"K".to_vec(); 256],
             pad_names: vec![b"P".to_vec(); 9],
         },
+        hall_of_fame: HallOfFameTexts {
+            circuits: vec![b"C".to_vec(); 18],
+            cars: vec![b"V".to_vec(); 6],
+            difficulties: vec![b"D".to_vec(); 4],
+            // The original's order starts 0, 7, 5.
+            circuit_order: vec![0, 7, 5, 3, 4, 2, 8, 1, 6, 9, 16, 14, 12, 13, 11, 17, 10, 15],
+        },
     }
 }
 
@@ -145,5 +161,20 @@ pub fn menu_assets() -> MenuAssets {
         slider: solid(172, 24, SLIDER),
         knob: solid(10, 24, KNOB),
         default_config: config(),
+        medium: glyphs(9, MEDIUM),
+        fame_title: solid(640, 54, FAME_TITLE),
+        records_title: solid(640, 16, RECORDS_TITLE),
+        records_bar: solid(640, 68, RECORDS_BAR),
+        snapshots: (0..20).map(|c| solid(128, 112, SNAPSHOT + c)).collect(),
+        arrows: (0..4).map(|k| solid(16, 84, ARROW + k)).collect(),
+        // Frame k covers its tile's rows from k on: frame 0 all of it, so every column is
+        // covered once the band's first tile column has passed over it.
+        wipe: (0..10u32)
+            .map(|k| {
+                let pixels = (0..225).map(|i| u8::from(i / 15 >= k)).collect();
+                Image::new(15, 15, pixels)
+            })
+            .collect(),
+        border_corners: (0..4).map(|_| solid(24, 24, BORDER)).collect(),
     }
 }

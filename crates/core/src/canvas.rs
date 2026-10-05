@@ -54,6 +54,20 @@ impl Canvas {
         }
     }
 
+    /// Copies `other`'s pixels into this canvas where `mask` (placed at `offset`) is not 0
+    /// (0x43B080, the Hall of Fame's wipe).
+    pub(crate) fn blit_mask(&mut self, mask: &Image, other: &Canvas, offset: usize) {
+        let width = mask.width as usize;
+        for (row, line) in mask.pixels.chunks(width).enumerate() {
+            for (column, &cover) in line.iter().enumerate() {
+                let at = offset + row * WIDTH + column;
+                if cover != 0 && at < self.pixels.len() {
+                    self.pixels[at] = other.pixels[at];
+                }
+            }
+        }
+    }
+
     /// Copies a `width` x `height` region at `offset` from `other` into the same place
     /// (`copyRectToVram`, 0x41AA40, and `refreshAllScreen`, 0x41A210, for the whole screen).
     pub(crate) fn copy_from(&mut self, other: &Canvas, offset: usize, width: usize, height: usize) {
@@ -150,5 +164,16 @@ mod tests {
             background.pixels[at(639, 101)]
         );
         assert_eq!(canvas.pixels()[at(0, 102)], 0);
+    }
+
+    #[test]
+    fn a_masked_copy_takes_the_other_canvas_where_the_mask_is_set() {
+        // The wipe's tiles: a pixel of the new screen shows only where the mask has one.
+        let mut old = Canvas::default();
+        let mut new = Canvas::default();
+        new.fill(0, WIDTH, 2, 9);
+        old.blit_mask(&Image::new(3, 2, vec![1, 0, 1, 0, 1, 0]), &new, at(10, 0));
+        assert_eq!(&old.pixels()[at(10, 0)..at(13, 0)], [9, 0, 9]);
+        assert_eq!(&old.pixels()[at(10, 1)..at(13, 1)], [0, 9, 0]);
     }
 }

@@ -121,6 +121,8 @@ pub(crate) struct Graphics {
     pub(crate) big_b: Font,
     pub(crate) big_d: Font,
     pub(crate) small: [Font; 3],
+    /// The Hall of Fame's font.
+    pub(crate) medium: Font,
     /// `dr.exe`'s menu text table: `menus[m][r]` is row `r` of menu `m`. The original rewrites
     /// some rows as settings change.
     menus: Vec<Vec<Vec<u8>>>,
@@ -146,6 +148,7 @@ impl Graphics {
                 Font::new(assets.small_b.clone(), &texts.small),
                 Font::new(assets.small_c.clone(), &texts.small),
             ],
+            medium: Font::new(assets.medium.clone(), &texts.medium),
             menus: texts.menus.clone(),
             slider: assets.slider.clone(),
             knob: assets.knob.clone(),
@@ -377,6 +380,7 @@ pub(crate) mod tests {
                 Font::new(glyphs(16, 61), &metrics(16)),
                 Font::new(glyphs(16, 62), &metrics(16)),
             ],
+            medium: Font::new(glyphs(9, 63), &metrics(9)),
             menus: texts().menus,
             slider: solid(172, 24, 70),
             knob: solid(10, 24, 71),
@@ -411,6 +415,12 @@ pub(crate) mod tests {
             small: metrics.clone(),
             medium: metrics,
             configure: configure_texts(),
+            hall_of_fame: deadrally_gamedata::text::HallOfFameTexts {
+                circuits: vec![b"C".to_vec(); 18],
+                cars: vec![b"V".to_vec(); 6],
+                difficulties: vec![b"D".to_vec(); 4],
+                circuit_order: (0..18).collect(),
+            },
         }
     }
 

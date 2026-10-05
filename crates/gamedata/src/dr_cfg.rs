@@ -63,6 +63,15 @@ pub const KEY_COUNT: usize = 8;
 const PADS: usize = 0xB56;
 pub const PAD_COUNT: usize = 7;
 const TIMES_PLAYED: usize = 0xB72;
+/// The circuits' records: 18 circuits by 6 cars, 24 bytes each (a name of up to 12 bytes,
+/// minutes, seconds, hundredths), record `circuit + 18 * car`.
+const RECORDS: usize = 0x4E;
+const RECORD_BYTES: usize = 24;
+/// The best ten: 20 bytes each (a name of up to 12 bytes, races, difficulty).
+const HALL_OF_FAME: usize = 0xA6E;
+const ENTRY_BYTES: usize = 20;
+pub const HALL_OF_FAME_ENTRIES: usize = 10;
+const NAME_BYTES: usize = 12;
 
 /// `defaultConfig`, up to its jump into `saveConfiguration`.
 const DEFAULT_CONFIG: (u32, u32) = (0x42_6700, 0x42_71E8);
@@ -208,6 +217,41 @@ impl DrCfg {
         self.put(PADS + 4 * control, input);
     }
 
+    /// The name at `offset`, up to its NUL within `room` bytes.
+    fn name(&self, offset: usize, room: usize) -> &[u8] {
+        let field = &self.payload[offset..offset + room];
+        &field[..field.iter().position(|&b| b == 0).unwrap_or(room)]
+    }
+
+    /// Record `car` (0–5) of circuit `circuit` (0–17): the driver's name and the time
+    /// (minutes, seconds, hundredths).
+    pub fn record(&self, circuit: usize, car: usize) -> (&[u8], [u32; 3]) {
+        let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
+        let time = [0, 1, 2].map(|i| self.get(at + NAME_BYTES + 4 * i));
+        (self.name(at, NAME_BYTES), time)
+    }
+
+    /// Entry `rank` (0–9) of the best ten: the name, races and difficulty.
+    pub fn hall_of_fame(&self, rank: usize) -> (&[u8], i32, u32) {
+        let at = HALL_OF_FAME + ENTRY_BYTES * rank;
+        let races = self.get(at + NAME_BYTES) as i32;
+        (
+            self.name(at, NAME_BYTES),
+            races,
+            self.get(at + NAME_BYTES + 4),
+        )
+    }
+
+    /// Upper-cases the best ten's names in place, as `seeHallOfFame` (0x431510) does with
+    /// `_strupr` before drawing them.
+    pub fn upper_case_hall_of_fame(&mut self) {
+        for rank in 0..HALL_OF_FAME_ENTRIES {
+            let at = HALL_OF_FAME + ENTRY_BYTES * rank;
+            let length = self.name(at, NAME_BYTES).len();
+            self.payload[at..at + length].make_ascii_uppercase();
+        }
+    }
+
     pub fn times_played(&self) -> u32 {
         self.get(TIMES_PLAYED)
     }
@@ -319,5 +363,24 @@ mod tests {
         let unreadable = home.path().join("dr.cfg");
         std::fs::create_dir(&unreadable).unwrap();
         assert!(load(Some(&unreadable), home.path(), &dummy()).is_err());
+    }
+
+    #[test]
+    fn records_and_the_best_ten_sit_where_save_configuration_puts_them() {
+        // Circuit-major within each car: record 17 + 18 * 5 is the last of the 2592 bytes.
+        let mut bytes = vec![0; HEADER_BYTES + PAYLOAD_BYTES];
+        let last = HEADER_BYTES + RECORDS + RECORD_BYTES * (17 + 18 * 5);
+        bytes[last..last + 3].copy_from_slice(b"Ann");
+        bytes[last + 16..last + 20].copy_from_slice(&59u32.to_le_bytes());
+        let first = HEADER_BYTES + HALL_OF_FAME;
+        bytes[first..first + 12].copy_from_slice(b"Bob Twelve!!");
+        bytes[first + 12..first + 16].copy_from_slice(&7u32.to_le_bytes());
+        bytes[first + 16..first + 20].copy_from_slice(&2u32.to_le_bytes());
+        let mut cfg = DrCfg::parse(&bytes).unwrap();
+        assert_eq!(cfg.record(17, 5), (b"Ann".as_slice(), [0, 59, 0]));
+        assert_eq!(cfg.hall_of_fame(0), (b"Bob Twelve!!".as_slice(), 7, 2));
+        cfg.upper_case_hall_of_fame();
+        assert_eq!(cfg.hall_of_fame(0).0, b"BOB TWELVE!!");
+        assert_eq!(cfg.record(17, 5).0, b"Ann", "records keep their case");
     }
 }

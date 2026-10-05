@@ -1,5 +1,5 @@
-//! The main menu (spec M2a §3.2–§3.5, M2b §3.2), from the title's fade to black to the end
-//! screen, with Configure.
+//! The main menu (spec M2a §3.2–§3.5, M2b §3.2, M2c §3), from the title's fade to black to
+//! the end screen, with Configure and the Hall of Fame.
 //!
 //! The original runs this as straight code with waits in it (`waitWithRefresh`, 0x43D870); the
 //! screen shown during a tick is what the shown buffer and the palette hold when that tick's
@@ -8,6 +8,7 @@
 
 mod configure;
 pub(crate) mod draw;
+mod hall_of_fame;
 pub(crate) mod palette;
 
 use deadrally_gamedata::assets::Assets;
@@ -33,9 +34,10 @@ const CHOOSE_SOUND: u8 = 28;
 
 /// The player's colour at the first start: driver 19's, 0 until a game sets it.
 const PLAYER_COLOUR: usize = 0;
-/// The main menu's rows: 0 start, 2 configure, 4 credits, 5 exit.
+/// The main menu's rows: 0 start, 2 configure, 3 Hall of Fame, 4 credits, 5 exit.
 const START_ROW: usize = 0;
 const CONFIGURE_ROW: usize = 2;
+const HALL_OF_FAME_ROW: usize = 3;
 const CREDITS_ROW: usize = 4;
 const EXIT_ROW: usize = 5;
 /// The start submenu's last row returns to the main menu.
@@ -93,6 +95,22 @@ enum State {
     },
     /// The popup when the gamepad switch finds no gamepad (0x41E3B0), until a key.
     NotDetected,
+    /// A wipe's wait before step `step`.
+    Wipe {
+        wipe: hall_of_fame::Wipe,
+        step: u32,
+    },
+    /// The best ten, waiting for a key.
+    FameWait,
+    /// The records, circuit `index` of the circuit order; an arrow lit for 8 waits.
+    Records {
+        index: usize,
+    },
+    RecordsArrow {
+        index: usize,
+        right: bool,
+        waits: u32,
+    },
     /// `drawYesNoMenu` for the exit question; `yes` is the side selected.
     Exit {
         second: bool,
@@ -162,6 +180,10 @@ pub(crate) struct Menu {
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
     save: bool,
+    /// The second screen buffer the Hall of Fame is drawn into before its wipe, and the
+    /// menu music's order while the Hall of Fame plays its own.
+    back: Canvas,
+    music_order: usize,
     /// The cursor's frame (0x45FBF8).
     cursor: usize,
     state: State,
@@ -206,6 +228,8 @@ impl Menu {
             panel,
             config,
             save,
+            back: Canvas::default(),
+            music_order: 0,
             cursor: 0,
             state: State::TitleToBlack { step: 0 },
             assets,
@@ -295,6 +319,14 @@ impl Menu {
             State::KeyWait { control, key } => self.key_wait(control, key),
             State::PadWait { control, polls } => self.pad_wait(control, polls),
             State::NotDetected => self.not_detected(),
+            State::Wipe { wipe, step } => self.wipe_tick(wipe, step),
+            State::FameWait => self.fame_wait(),
+            State::Records { index } => self.records_tick(index),
+            State::RecordsArrow {
+                index,
+                right,
+                waits,
+            } => self.records_arrow(index, right, waits),
             State::Exit { second: false, yes } => {
                 self.palette.after_wait();
                 State::Exit { second: true, yes }
@@ -517,6 +549,7 @@ impl Menu {
         match row {
             START_ROW => self.submenu_pass(Submenu::Start),
             CONFIGURE_ROW => self.submenu_pass(Submenu::Configure),
+            HALL_OF_FAME_ROW => self.open_hall_of_fame(),
             CREDITS_ROW => {
                 self.saved = self.screen.clone();
                 self.palette.compose();
@@ -525,7 +558,7 @@ impl Menu {
                 }
             }
             EXIT_ROW => self.ask_exit(),
-            // The Hall of Fame comes with M2c.
+            // Multiplayer is never active.
             _ => self.main_pass(),
         }
     }

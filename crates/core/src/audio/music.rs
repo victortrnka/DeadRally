@@ -157,6 +157,21 @@ impl Music {
         self.gain = gain * self.module_gain / 64;
     }
 
+    /// The order playing, as the game counts them (`FMUSIC_GetOrder` through 0x43C1F0).
+    pub(crate) fn order(&self) -> usize {
+        self.order
+    }
+
+    /// On to order `order` (as the game counts them) at its first row (`FMUSIC_SetOrder`
+    /// through 0x43C320).
+    pub(crate) fn set_order(&mut self, order: usize) {
+        self.order = order;
+        self.row = 0;
+        self.tick = 0;
+        self.jump = None;
+        self.skip_marker_orders();
+    }
+
     /// Fades every channel out and hands the fading voices over, for music being replaced.
     pub(crate) fn into_fading(mut self) -> Vec<Voice> {
         self.stop();
@@ -960,6 +975,16 @@ mod tests {
         play(&mut music, 960);
         let out = play(&mut music, 960);
         assert!(out[2 * 900..].iter().all(|&sample| sample == 0));
+    }
+
+    #[test]
+    fn setting_the_order_goes_on_at_its_first_row() {
+        // The Hall of Fame moves the menu music to its own part (order 81) this way.
+        let mut music = Music::new(&module(&[], 6, 125), UNITY, 0);
+        play(&mut music, 5000);
+        music.set_order(1);
+        assert_eq!(music.position(), (1, 0, 0));
+        assert_eq!(music.order(), 1);
     }
 
     #[test]
