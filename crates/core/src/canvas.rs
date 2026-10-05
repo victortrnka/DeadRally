@@ -57,7 +57,7 @@ impl Canvas {
     /// Copies `other`'s pixels into this canvas where `mask` (placed at `offset`) is not 0
     /// (0x43B080, the Hall of Fame's wipe).
     pub(crate) fn blit_mask(&mut self, mask: &Image, other: &Canvas, offset: usize) {
-        let width = mask.width as usize;
+        let width = (mask.width as usize).max(1);
         for (row, line) in mask.pixels.chunks(width).enumerate() {
             for (column, &cover) in line.iter().enumerate() {
                 let at = offset + row * WIDTH + column;
@@ -175,5 +175,13 @@ mod tests {
         old.blit_mask(&Image::new(3, 2, vec![1, 0, 1, 0, 1, 0]), &new, at(10, 0));
         assert_eq!(&old.pixels()[at(10, 0)..at(13, 0)], [9, 0, 9]);
         assert_eq!(&old.pixels()[at(10, 1)..at(13, 1)], [0, 9, 0]);
+    }
+
+    #[test]
+    fn an_empty_mask_copies_nothing_instead_of_crashing() {
+        // Damaged data could hold a mask without columns; `draw` already copes with that.
+        let mut old = Canvas::default();
+        old.blit_mask(&Image::new(0, 0, Vec::new()), &Canvas::default(), 0);
+        assert!(old.pixels().iter().all(|&p| p == 0));
     }
 }
