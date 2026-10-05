@@ -92,6 +92,8 @@ target/release/deadrally-headless compare-audio captures/startup-sound/sound.wav
 
 `docs/verification/m1b.md` has the scenarios and the numbers they gave.
 
+`find` and `render-audio` press keys with `--key-at TICK:KEY` (space when no key is named), so they follow a scenario through the menus; `docs/verification/m2a.md` says how to read the ticks off a run's `run.log`.
+
 CI does not run `cargo test-data`, because GitHub has no game data. Run it yourself when you touch data code.
 
 ## Builds from CI

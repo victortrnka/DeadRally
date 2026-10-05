@@ -1,4 +1,5 @@
-//! The decoded data the startup sequence needs (spec M1a §4.2, M1b §4.1).
+//! The decoded data the startup sequence and the main menu need (spec M1a §4.2, M1b §4.1,
+//! M2a §4.1).
 
 use std::fmt;
 use std::path::PathBuf;
@@ -6,10 +7,12 @@ use std::path::PathBuf;
 use crate::bmp::{self, BmpError};
 use crate::bpa::{Archive, BpaError};
 use crate::catalog::{self, CatalogError};
+use crate::exe::{Exe, ExeError};
 use crate::haf::{Animation, HafError};
 use crate::image::{Image, Palette, PaletteError};
 use crate::s3m::Module;
 use crate::sound::{self, SoundError};
+use crate::text::{TextError, Texts};
 use crate::validate::Validation;
 use crate::xm::Bank;
 
@@ -39,6 +42,43 @@ pub struct Assets {
     pub intro_effects: Bank,
     /// `MEN-MUS.CMF`: the music that starts when the intro ends and goes on into the menus.
     pub menu_music: Module,
+    pub menu: MenuAssets,
+}
+
+/// What the main menu draws and plays.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MenuAssets {
+    /// `MENUBG5.BPK`, 640x480.
+    pub background: Image,
+    /// `CHATLIN1.BPK`, 640x10: the bottom panel's frame lines.
+    pub panel_line: Image,
+    /// `CORN3A.BPK` and `CORN3B.BPK`: popup corners (top left, top right, bottom left, bottom
+    /// right) of a focused and of an unfocused popup.
+    pub corners_focused: Vec<Image>,
+    pub corners_unfocused: Vec<Image>,
+    /// `CURSOR.BPK`: 50 frames, 20x20.
+    pub cursor: Vec<Image>,
+    /// `F-BIG3A`, `-B`, `-D` (32x32) and `F-SMA3A`, `-B`, `-C` (16x16): 96 glyphs each.
+    pub big_a: Vec<Image>,
+    pub big_b: Vec<Image>,
+    pub big_d: Vec<Image>,
+    pub small_a: Vec<Image>,
+    pub small_b: Vec<Image>,
+    pub small_c: Vec<Image>,
+    /// `MENU.PAL`.
+    pub palette: Palette,
+    /// `COPPER.PAL`: one colour per player colour, whose ramps the menu palette gets.
+    pub copper: Palette,
+    /// `BGCOP.PAL`: 512 colours for the background copper rows.
+    pub background_copper: Vec<[u8; 3]>,
+    /// `CREDIT1.BPK` and `CREDIT2.BPK` with their palettes.
+    pub credits: Vec<Picture>,
+    /// `end.bmp`: the screen the game ends on.
+    pub end: Picture,
+    /// `MEN-SAM.CMF`: the menus' effects.
+    pub effects: Bank,
+    /// The strings and font metrics in `dr.exe`.
+    pub texts: Texts,
 }
 
 #[derive(Debug)]
@@ -62,6 +102,13 @@ pub enum AssetError {
     },
     Animation(HafError),
     Sound(SoundError),
+    Exe(ExeError),
+    Text(TextError),
+    Size {
+        name: &'static str,
+        expected: usize,
+        actual: usize,
+    },
 }
 
 impl fmt::Display for AssetError {
@@ -76,6 +123,13 @@ impl fmt::Display for AssetError {
             }
             AssetError::Animation(error) => write!(f, "{error}"),
             AssetError::Sound(error) => write!(f, "{error}"),
+            AssetError::Exe(error) => write!(f, "dr.exe: {error}"),
+            AssetError::Text(error) => write!(f, "{error}"),
+            AssetError::Size {
+                name,
+                expected,
+                actual,
+            } => write!(f, "MENU.BPA/{name}: {actual} bytes, not {expected}"),
         }
     }
 }
@@ -124,8 +178,98 @@ impl Assets {
             intro_effects: sound::load_effects(&musics, "SANIM-E.CMF")
                 .map_err(AssetError::Sound)?,
             menu_music: sound::load_music(&musics, "MEN-MUS.CMF").map_err(AssetError::Sound)?,
+            menu: menu_assets(&menu, &musics, &path("END.BMP"), &path("DR.EXE"))?,
         })
     }
+}
+
+/// All frames of a catalogued `MENU.BPA` image.
+fn frames(menu: &Archive, name: &'static str) -> Result<Vec<Image>, AssetError> {
+    let entry = catalog::find("MENU.BPA", name).expect("menu images are catalogued");
+    entry
+        .decode(menu.read(name)?)
+        .map_err(|error| AssetError::Image { name, error })
+}
+
+fn palette(menu: &Archive, name: &'static str) -> Result<Palette, AssetError> {
+    Palette::from_bytes(menu.read(name)?).map_err(|error| AssetError::Palette { name, error })
+}
+
+fn bmp_picture(path: &std::path::Path) -> Result<Picture, AssetError> {
+    let bytes = std::fs::read(path).map_err(|source| AssetError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let (image, palette) = bmp::decode(&bytes).map_err(|error| AssetError::Bmp {
+        path: path.to_path_buf(),
+        error,
+    })?;
+    Ok(Picture { image, palette })
+}
+
+/// A picture the menu copies over its whole screen, which must be 640x480.
+fn full_screen(picture: Picture, path: &std::path::Path) -> Result<Picture, AssetError> {
+    let (width, height) = (picture.image.width, picture.image.height);
+    if (width, height) == (640, 480) {
+        Ok(picture)
+    } else {
+        Err(AssetError::Bmp {
+            path: path.to_path_buf(),
+            error: BmpError::Unsupported(format!("{width}x{height}, not 640x480")),
+        })
+    }
+}
+
+fn menu_assets(
+    menu: &Archive,
+    musics: &Archive,
+    end: &std::path::Path,
+    exe: &std::path::Path,
+) -> Result<MenuAssets, AssetError> {
+    const BGCOP: &str = "BGCOP.PAL";
+    let background_copper = menu.read(BGCOP)?;
+    // 512 colours of 6-bit components.
+    if background_copper.len() != 3 * 512 {
+        return Err(AssetError::Size {
+            name: BGCOP,
+            expected: 3 * 512,
+            actual: background_copper.len(),
+        });
+    }
+    if let Some((index, &value)) = background_copper.iter().enumerate().find(|(_, c)| **c > 63) {
+        return Err(AssetError::Palette {
+            name: BGCOP,
+            error: PaletteError::NotSixBit { index, value },
+        });
+    }
+    let exe_bytes = std::fs::read(exe).map_err(|source| AssetError::Read {
+        path: exe.to_path_buf(),
+        source,
+    })?;
+    let exe = Exe::parse(exe_bytes).map_err(AssetError::Exe)?;
+    Ok(MenuAssets {
+        background: frames(menu, "MENUBG5.BPK")?.remove(0),
+        panel_line: frames(menu, "CHATLIN1.BPK")?.remove(0),
+        corners_focused: frames(menu, "CORN3A.BPK")?,
+        corners_unfocused: frames(menu, "CORN3B.BPK")?,
+        cursor: frames(menu, "CURSOR.BPK")?,
+        big_a: frames(menu, "F-BIG3A.BPK")?,
+        big_b: frames(menu, "F-BIG3B.BPK")?,
+        big_d: frames(menu, "F-BIG3D.BPK")?,
+        small_a: frames(menu, "F-SMA3A.BPK")?,
+        small_b: frames(menu, "F-SMA3B.BPK")?,
+        small_c: frames(menu, "F-SMA3C.BPK")?,
+        palette: palette(menu, "MENU.PAL")?,
+        copper: palette(menu, "COPPER.PAL")?,
+        background_copper: background_copper.as_chunks::<3>().0.to_vec(),
+        credits: vec![
+            picture(menu, "CREDIT1.BPK", "CREDIT1.PAL")?,
+            picture(menu, "CREDIT2.BPK", "CREDIT2.PAL")?,
+        ],
+        end: full_screen(bmp_picture(end)?, end)?,
+        effects: sound::load_effects(musics, "MEN-SAM.CMF").map_err(AssetError::Sound)?,
+        texts: Texts::read(&exe).map_err(AssetError::Text)?,
+    })
 }
 
 fn picture(
@@ -133,7 +277,7 @@ fn picture(
     image: &'static str,
     palette: &'static str,
 ) -> Result<Picture, AssetError> {
-    let entry = catalog::find("MENU.BPA", image).expect("startup images are catalogued");
+    let entry = catalog::find("MENU.BPA", image).expect("these images are catalogued");
     let mut frames = entry
         .decode(menu.read(image)?)
         .map_err(|error| AssetError::Image { name: image, error })?;
@@ -162,4 +306,26 @@ fn letterbox(menu: &Archive) -> Result<Picture, AssetError> {
         image: frames.remove(0),
         palette,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_end_screen_of_another_size_is_an_error_not_a_crash_later() {
+        // The menu copies END.BMP over its whole 640x480 screen; a BMP of another size (from
+        // an unknown release) is reported when the data loads, naming the file.
+        let path = std::path::Path::new("END.BMP");
+        let screen = |width: u32, height: u32| Picture {
+            image: Image::new(width, height, vec![0; (width * height) as usize]),
+            palette: Palette::BLACK,
+        };
+        assert!(full_screen(screen(640, 480), path).is_ok());
+        let error = full_screen(screen(320, 200), path).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "END.BMP: unsupported BMP: 320x200, not 640x480"
+        );
+    }
 }

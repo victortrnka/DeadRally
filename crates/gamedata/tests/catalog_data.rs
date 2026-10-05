@@ -164,6 +164,38 @@ fn the_startup_assets_load_with_their_documented_shapes() {
     assert_eq!(assets.intro_music.orders.len(), 42);
     assert_eq!(assets.intro_effects.instruments.len(), 40);
     assert_eq!(assets.menu_music.orders.len(), 94);
+    let menu = &assets.menu;
+    assert_eq!((menu.background.width, menu.background.height), (640, 480));
+    assert_eq!((menu.panel_line.width, menu.panel_line.height), (640, 10));
+    assert_eq!(
+        (menu.corners_focused.len(), menu.corners_unfocused.len()),
+        (4, 4)
+    );
+    assert_eq!(menu.cursor.len(), 50);
+    for font in [
+        &menu.big_a,
+        &menu.big_b,
+        &menu.big_d,
+        &menu.small_a,
+        &menu.small_b,
+        &menu.small_c,
+    ] {
+        assert_eq!(font.len(), 96);
+    }
+    assert_eq!(menu.background_copper.len(), 512);
+    assert_eq!(menu.credits.len(), 2);
+    assert_eq!(size(&menu.end), (640, 480));
+    assert_eq!(menu.effects.instruments.len(), 31);
+    // Row counts of the main menu and the start submenu, from dr.exe.
+    let rows = |m: usize| {
+        menu.texts.menus[m]
+            .iter()
+            .filter(|row| !row.is_empty())
+            .count()
+    };
+    assert_eq!((rows(0), rows(1)), (6, 6));
+    assert_eq!(menu.texts.panel.len(), 4);
+    assert_eq!((menu.texts.big.width, menu.texts.small.height), (32, 16));
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

@@ -77,6 +77,8 @@ pub(crate) struct Music {
     jump: Option<(usize, usize)>,
     /// Gain applied to every channel, in 16.16 (the original's master volume).
     gain: i64,
+    /// The module's own share of it: its master volume, doubled for a stereo module.
+    module_gain: i64,
 }
 
 impl Music {
@@ -86,8 +88,8 @@ impl Music {
     /// `master / 64` (the game's music has 48, 2.5 dB below full), and a stereo module plays
     /// at twice a mono module's level.
     pub(crate) fn new(module: &Module, gain: i64, first_order: usize) -> Music {
-        let stereo = if module.stereo { 2 } else { 1 };
-        let gain = gain * i64::from(module.master_volume) * stereo / 64;
+        let module_gain = i64::from(module.master_volume) * if module.stereo { 2 } else { 1 };
+        let gain = gain * module_gain / 64;
         let samples = module
             .samples
             .iter()
@@ -133,6 +135,7 @@ impl Music {
             remainder: 0,
             jump: None,
             gain,
+            module_gain,
         };
         music.skip_marker_orders();
         music
@@ -147,6 +150,11 @@ impl Music {
             }
         }
         self.orders.clear();
+    }
+
+    /// A new master volume for the song (`FMUSIC_SetMasterVolume`), as [`Music::new`]'s `gain`.
+    pub(crate) fn set_gain(&mut self, gain: i64) {
+        self.gain = gain * self.module_gain / 64;
     }
 
     /// Fades every channel out and hands the fading voices over, for music being replaced.
@@ -306,6 +314,9 @@ impl Music {
                     channel.vibrato_position = 0;
                     channel.retrigger_count = 0;
                 }
+            } else if instrument != 0 && !(tone_porta && self.channels[index].voice.is_some()) {
+                // FMOD plays a note of an empty sample slot as silence: the note sounding stops.
+                self.cut(index);
             }
         }
         if let Some(volume) = cell.volume {
@@ -929,6 +940,26 @@ mod tests {
             music.channels[0].period, 1712,
             "the note itself does not move"
         );
+    }
+
+    #[test]
+    fn a_note_of_an_empty_sample_slot_silences_the_channel() {
+        // The menu music's order 47 starts with notes of a sample slot its author emptied;
+        // FMOD plays them as silence. Ignoring them left the channel's looping note playing,
+        // brought back up by their volume: a stray tone in the menu.
+        let mut emptied = module(
+            &[
+                (0, 0, cell(C4, 1, Some(64), ' ', 0)),
+                (1, 0, cell(C4, 2, Some(32), ' ', 0)),
+            ],
+            1,
+            125,
+        );
+        emptied.samples.push(Sample::default());
+        let mut music = Music::new(&emptied, UNITY, 0);
+        play(&mut music, 960);
+        let out = play(&mut music, 960);
+        assert!(out[2 * 900..].iter().all(|&sample| sample == 0));
     }
 
     #[test]

@@ -7,11 +7,15 @@
 #![forbid(unsafe_code)]
 
 mod audio;
+mod canvas;
 mod fade;
+mod font;
 mod frame;
 mod game;
 pub mod host;
 mod input;
+mod keys;
+mod menu;
 mod startup;
 mod test_scene;
 

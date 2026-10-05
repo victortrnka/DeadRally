@@ -2,6 +2,8 @@
 //! something a player of the original would notice: a logo that holds too long, a fade that
 //! ends at the wrong brightness, a key that does not skip.
 
+mod common;
+
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, Game, InputEvent, Key, PadButton};
 use deadrally_gamedata::assets::{Assets, Picture};
 use std::path::PathBuf;
@@ -60,10 +62,15 @@ fn assets() -> Assets {
         },
         apogee: picture(APOGEE, [63, 0, 0]),
         remedy: picture(REMEDY, [0, 63, 0]),
-        title: picture(TITLE, [0, 0, 63]),
+        // The main menu takes the title over as its 640x480 screen.
+        title: Picture {
+            image: Image::new(640, 480, vec![TITLE; 640 * 480]),
+            ..picture(TITLE, [0, 0, 63])
+        },
         intro_music: music(false),
         intro_effects: effects(),
         menu_music: music(false),
+        menu: common::menu_assets(),
     }
 }
 
@@ -377,18 +384,25 @@ fn a_key_during_the_hold_starts_the_fade_out_on_the_next_tick() {
 }
 
 #[test]
-fn the_title_fades_in_after_both_logos_and_stays_at_92_percent() {
-    // Measured on the original: it sets the last fade step and then loads the main menu
-    // without showing another frame, so the title never gets brighter than 92 % (63 as 58).
+fn the_title_fades_in_after_both_logos_and_then_to_black_for_the_menu() {
+    // Measured on the original: the title fades in to 92 % (63 as 58); loading the main menu
+    // shows the pending 96 % step, and `transitionToBlack` then takes the title from 100 % to
+    // black in 26 ticks. The original's load takes a moment, so it may skip a step or two of
+    // the fade to black; here loading takes no time (spec M2a decision 5).
     let mut game = Game::new(assets());
     run(&mut game, INTRO_END + 2 * LOGO);
     assert_eq!(shown(&game), (TITLE, 0));
     run(&mut game, FADE_IN - 1);
     assert_eq!(shown(&game), (TITLE, 58));
-    // M2's main menu continues from here; until then nothing else happens, keys included.
-    press(&mut game);
-    run(&mut game, 1_000);
-    assert_eq!(shown(&game), (TITLE, 58));
+    let brightness: Vec<u8> = (0..27)
+        .map(|_| {
+            game.tick();
+            shown(&game).1
+        })
+        .collect();
+    assert_eq!(&brightness[..4], [60, 63, 60, 58], "{brightness:?}");
+    assert_eq!(brightness[25], 3, "{brightness:?}");
+    assert_eq!(brightness[26], 0, "{brightness:?}");
 }
 
 #[test]
