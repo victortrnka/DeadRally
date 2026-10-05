@@ -220,6 +220,28 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         [5, 4, 1, 2, 6, 7, 8]
     );
     assert_eq!((defaults.use_joystick(), defaults.times_played()), (0, 0));
+    // The Hall of Fame's pictures and names (spec M2c section 3).
+    assert_eq!(menu.medium.len(), 62);
+    assert_eq!(
+        (
+            menu.fame_title.height,
+            menu.records_title.height,
+            menu.records_bar.height
+        ),
+        (54, 16, 68)
+    );
+    assert_eq!(
+        (
+            menu.snapshots.len(),
+            menu.arrows.len(),
+            menu.wipe.len(),
+            menu.border_corners.len()
+        ),
+        (20, 4, 10, 4)
+    );
+    let hall = &menu.texts.hall_of_fame;
+    assert_eq!((hall.circuits.len(), hall.cars.len()), (18, 6));
+    assert_eq!(hall.circuit_order[..3], [0, 7, 5]);
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

@@ -66,6 +66,17 @@ const MORE_NAMED_KEYS: [u8; 17] = [
 ];
 const NAMELESS_KEY: u32 = 0x44_30D0;
 
+/// The Hall of Fame (spec M2c §3): the 18 circuits' names (15 bytes apart), the six cars'
+/// names (in the car table, 1760 bytes apart, car 5 last), the difficulties' names (24 bytes
+/// apart) and the order the records screen steps through the circuits.
+const CIRCUIT_NAMES: u32 = 0x44_D148;
+pub const CIRCUITS: usize = 18;
+const CAR_NAMES: u32 = 0x45_01B0;
+pub const CARS: usize = 6;
+const DIFFICULTY_NAMES: u32 = 0x44_7340;
+const DIFFICULTIES: usize = 4;
+const CIRCUIT_ORDER: u32 = 0x45_673C;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
     Exe(ExeError),
@@ -136,6 +147,18 @@ pub struct ConfigureTexts {
     pub pad_names: Vec<Vec<u8>>,
 }
 
+/// The Hall of Fame's texts (spec M2c §3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HallOfFameTexts {
+    pub circuits: Vec<Vec<u8>>,
+    /// `cars[k]`: car `k`, 0 to 5.
+    pub cars: Vec<Vec<u8>>,
+    /// `difficulties[d]`; the last is empty.
+    pub difficulties: Vec<Vec<u8>>,
+    /// The circuits in the order Left and Right step through them.
+    pub circuit_order: Vec<u8>,
+}
+
 /// A font's cell size and the pen advance of each glyph, character 32 first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Metrics {
@@ -158,6 +181,7 @@ pub struct Texts {
     pub small: Metrics,
     pub medium: Metrics,
     pub configure: ConfigureTexts,
+    pub hall_of_fame: HallOfFameTexts,
 }
 
 impl Texts {
@@ -240,6 +264,26 @@ impl Texts {
                     .map(|input| shown(PAD_NAMES - 16 * input, MAX_LINE))
                     .collect::<Result<_, _>>()?,
             },
+            hall_of_fame: HallOfFameTexts {
+                circuits: (0..CIRCUITS as u32)
+                    .map(|c| shown(CIRCUIT_NAMES + 15 * c, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                cars: (0..CARS as u32)
+                    .map(|k| shown(CAR_NAMES - 1760 * (CARS as u32 - 1 - k), MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                difficulties: (0..DIFFICULTIES as u32)
+                    .map(|d| text(DIFFICULTY_NAMES + 24 * d, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                circuit_order: {
+                    let order = exe.bytes_at(CIRCUIT_ORDER, CIRCUITS)?.to_vec();
+                    if order.iter().any(|&c| usize::from(c) >= CIRCUITS) {
+                        return Err(TextError::Unexpected {
+                            address: CIRCUIT_ORDER,
+                        });
+                    }
+                    order
+                },
+            },
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
             small: metrics(SMALL_METRICS, 96, SMALL_SIZE)?,
             medium: metrics(MEDIUM_METRICS, 62, MEDIUM_SIZE)?,
@@ -253,10 +297,10 @@ mod tests {
 
     use crate::exe::tests::{build, build_at};
 
-    /// A section from 0x442000 to 0x448000 with every string and table where the known release
+    /// A section from 0x442000 to 0x457000 with every string and table where the known release
     /// keeps it: menu `m` row `r` reads "m.r", the other strings made-up words.
     fn known_layout() -> Vec<u8> {
-        let mut data = vec![0u8; 0x6000];
+        let mut data = vec![0u8; 0x1_5000];
         let mut put = |address: u32, bytes: &[u8]| {
             let at = (address - 0x44_2000) as usize;
             data[at..at + bytes.len()].copy_from_slice(bytes);
@@ -295,7 +339,20 @@ mod tests {
         for input in 0..PAD_INPUTS as u32 {
             put(PAD_NAMES - 16 * input, format!("pad {input}").as_bytes());
         }
-        build_at(0x4_2000, 0x6000, &data)
+        for c in 0..CIRCUITS as u32 {
+            put(CIRCUIT_NAMES + 15 * c, format!("circuit {c}").as_bytes());
+        }
+        for k in 0..CARS as u32 {
+            put(CAR_NAMES - 1760 * k, format!("car {k}").as_bytes());
+        }
+        for d in 0..3 {
+            put(DIFFICULTY_NAMES + 24 * d, format!("level {d}").as_bytes());
+        }
+        put(
+            CIRCUIT_ORDER,
+            &[0, 7, 5, 3, 4, 2, 8, 1, 6, 9, 16, 14, 12, 13, 11, 17, 10, 15],
+        );
+        build_at(0x4_2000, 0x1_5000, &data)
     }
 
     #[test]
@@ -353,9 +410,34 @@ mod tests {
         assert_eq!(texts.configure.pad_prompts.len(), 7);
     }
 
+    #[test]
+    fn the_hall_of_fames_names_and_circuit_order_come_from_their_tables() {
+        // Car 5 is the first in the table's order of reading: a wrong stride names every row's
+        // car wrongly; a circuit order naming a circuit past 17 is not the known release.
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let hall = &texts.hall_of_fame;
+        assert_eq!(hall.circuits[17], b"circuit 17");
+        assert_eq!(
+            (hall.cars[5].as_slice(), hall.cars[0].as_slice()),
+            (b"car 0".as_slice(), b"car 5".as_slice())
+        );
+        assert_eq!(hall.difficulties[1], b"level 1");
+        assert!(hall.difficulties[3].is_empty());
+        assert_eq!(hall.circuit_order[1], 7);
+        let mut bad = known_layout();
+        let at = offset(&bad, CIRCUIT_ORDER);
+        bad[at] = 18;
+        assert_eq!(
+            Texts::read(&Exe::parse(bad).unwrap()),
+            Err(TextError::Unexpected {
+                address: CIRCUIT_ORDER
+            })
+        );
+    }
+
     /// Where `address` lies in the bytes of [`known_layout`]'s file.
     fn offset(bytes: &[u8], address: u32) -> usize {
-        bytes.len() - 0x6000 + (address - 0x44_2000) as usize
+        bytes.len() - 0x1_5000 + (address - 0x44_2000) as usize
     }
 
     #[test]

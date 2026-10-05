@@ -411,6 +411,12 @@ pub(crate) mod tests {
             small: metrics.clone(),
             medium: metrics,
             configure: configure_texts(),
+            hall_of_fame: deadrally_gamedata::text::HallOfFameTexts {
+                circuits: vec![b"C".to_vec(); 18],
+                cars: vec![b"V".to_vec(); 6],
+                difficulties: vec![b"D".to_vec(); 4],
+                circuit_order: (0..18).collect(),
+            },
         }
     }
 

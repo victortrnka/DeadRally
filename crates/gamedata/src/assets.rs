@@ -86,6 +86,17 @@ pub struct MenuAssets {
     pub knob: Image,
     /// The `dr.cfg` the original writes when it has none, from `dr.exe`'s `defaultConfig`.
     pub default_config: DrCfg,
+    /// The Hall of Fame (spec M2c §3): `F-MED1A` (62 glyphs), `FAMETXT`, `RECOTXT`, `RECOBAR`,
+    /// the circuits' snapshots (`TRSNAP2M`), the arrows (`TRARR1`), the wipe's masks
+    /// (`15X150`) and the border's corners (`CHOO2`).
+    pub medium: Vec<Image>,
+    pub fame_title: Image,
+    pub records_title: Image,
+    pub records_bar: Image,
+    pub snapshots: Vec<Image>,
+    pub arrows: Vec<Image>,
+    pub wipe: Vec<Image>,
+    pub border_corners: Vec<Image>,
 }
 
 #[derive(Debug)]
@@ -281,6 +292,14 @@ fn menu_assets(
         slider: frames(menu, "SLIDMUS2.BPK")?.remove(0),
         knob: frames(menu, "VOLCUR2.BPK")?.remove(0),
         default_config: DrCfg::defaults(&exe).map_err(AssetError::Machine)?,
+        medium: frames(menu, "F-MED1A.BPK")?,
+        fame_title: frames(menu, "FAMETXT.BPK")?.remove(0),
+        records_title: frames(menu, "RECOTXT.BPK")?.remove(0),
+        records_bar: frames(menu, "RECOBAR.BPK")?.remove(0),
+        snapshots: frames(menu, "TRSNAP2M.BPK")?,
+        arrows: frames(menu, "TRARR1.BPK")?,
+        wipe: frames(menu, "15X150.BPK")?,
+        border_corners: frames(menu, "CHOO2.BPK")?,
     })
 }
 
