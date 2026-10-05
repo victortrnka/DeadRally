@@ -214,7 +214,7 @@ This setup worked well for DreeRally:
 | Platform layer | **Decided by spike:** see `docs/adr/0001-platform-layer.md` |
 | Renderer | indexed framebuffers, converted to RGBA by the core and uploaded as a texture by the frontend |
 | Tick | **Decided (2026-10-04):** 14 ms, as the Windows version |
-| Music | own XM player matching FMOD, or libxmp, checked against the original's output |
+| Music | **Decided (2026-10-04):** our own S3M and XM player in `deadrally-core`, matched to the original by measurement (spec M1b) |
 | Reuse policy | re-implement; copy from dRally (MIT) only with notice; avoid pasting decompiled DreeRally code |
 | Order of work | **Decided:** M0, then M1. The planned sub-project B (building and running DreeRally on Linux) was dropped on 2026-10-04; the reference runner for the original is built inside M1. |
 | Reference | **Decided (2026-10-04):** the original `dr.exe` under Wine is the oracle, used only as a test tool; DreeRally is read-only documentation; no macOS or CrossOver tooling. |

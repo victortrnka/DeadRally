@@ -9,7 +9,8 @@
 #
 # The game loads the original data, so export DEADRALLY_DATA (or set data_path) first.
 #
-# Needs `scripts/install-linux-deps.sh --local` and a running PipeWire or PulseAudio server.
+# Needs `scripts/install-linux-deps.sh --local`. The sound goes to <out-dir>/audio.raw (SDL's
+# disk driver), never to a device.
 set -euo pipefail
 
 usage="usage: $0 <binary> <out-dir>"
@@ -21,16 +22,12 @@ socket=wl-deadrally-check
 weston --backend=headless --renderer=gl --xwayland --width=1920 --height=1080 \
     --socket="$socket" --log="$out/weston.log" > /dev/null 2>&1 &
 weston_pid=$!
-sink=$(pactl load-module module-null-sink sink_name=deadrally_check)
 alsa_conf=$(mktemp)
-printf '%s\n' '</usr/share/alsa/alsa.conf>' \
-    'pcm.!default { type pulse device deadrally_check }' \
-    'ctl.!default { type pulse }' > "$alsa_conf"
+printf '%s\n' 'pcm.!default { type null }' > "$alsa_conf"
 app_pid=
 cleanup() {
     if [ -n "$app_pid" ]; then kill "$app_pid" 2>/dev/null || true; fi
     kill "$weston_pid" 2>/dev/null || true
-    pactl unload-module "$sink" || true
     rm -f "$alsa_conf"
 }
 trap cleanup EXIT
@@ -46,7 +43,11 @@ if [ -z "$display" ]; then
 fi
 export DISPLAY=$display
 
-SDL_AUDIO_DRIVER=pulseaudio PULSE_SINK=deadrally_check ALSA_CONFIG_PATH="$alsa_conf" \
+# SDL3 ignores PULSE_SINK, so a null sink would not keep the intro's sound off the speakers.
+# The disk driver writes it to a file, and the sound servers and ALSA are made unreachable in
+# case SDL ever falls back to another driver.
+SDL_AUDIO_DRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE="$out/audio.raw" \
+    PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=/nonexistent ALSA_CONFIG_PATH="$alsa_conf" \
     "$binary" > "$out/stats.log" 2> "$out/stderr.log" &
 app_pid=$!
 timeout 20 xdotool search --sync --name '^DR$' > /dev/null || true

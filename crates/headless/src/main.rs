@@ -4,22 +4,31 @@
 //! two operating systems, can be compared with one line. `check-data` reports where the game
 //! data was found and whether it is a known release. `dump-assets` writes every catalogued
 //! image as a PNG. `render`, `compare` and `find` check the startup sequence against
-//! screenshots of the original (scripts/reference-run.sh).
+//! screenshots of the original (scripts/reference-run.sh). `render-audio` writes what the game
+//! plays as a WAV, and `compare-audio` checks it against a recording of the original (spec M1b
+//! sections 4.4 and 5).
 
+mod audio_compare;
 mod dump;
 mod rgb;
+mod wav;
 mod window;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use deadrally_core::{Game, InputEvent, Key};
+use deadrally_core::{
+    AUDIO_SAMPLE_RATE, Game, InputEvent, Key, TICK_NANOS, render_effect, render_music,
+};
 use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::bpa::Archive;
+use deadrally_gamedata::sound;
 use deadrally_gamedata::{DATA_ENV_VAR, Located, Outcome, config_path, locate};
 use sha2::{Digest, Sha256};
 
 use crate::rgb::{Difference, Rgb};
+use crate::wav::Wav;
 
 const USAGE: &str = "usage:
   deadrally-headless run --ticks N
@@ -27,7 +36,11 @@ const USAGE: &str = "usage:
   deadrally-headless dump-assets [--data PATH] [--out DIR]
   deadrally-headless render [--data PATH] --tick T [--key-at T]... --out FILE.png
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T]... [--ticks N] SHOT.png...";
+  deadrally-headless find [--data PATH] [--key-at T]... [--ticks N] SHOT.png...
+  deadrally-headless render-audio [--data PATH] --startup [--key-at T]... [--seconds S] --out FILE.wav
+  deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
+  deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
+  deadrally-headless compare-audio ORIGINAL.wav OURS.wav [--min-overlap S]";
 
 /// Exit status of `check-data` when the data is usable but not a known release.
 const EXIT_UNKNOWN_VERSION: u8 = 2;
@@ -35,6 +48,24 @@ const EXIT_UNKNOWN_VERSION: u8 = 2;
 /// `find` runs this many ticks by default: the whole startup sequence of the known version
 /// (6219 ticks) and then some.
 const FIND_TICKS: u64 = 7_000;
+
+/// `render-audio --startup` renders the whole intro and then this many ticks (2 s) by default:
+/// the menu music starting.
+const STARTUP_AFTER_INTRO_TICKS: u64 = 143;
+
+/// `render-audio --music` renders this many seconds by default.
+const MUSIC_SECONDS: u64 = 30;
+/// `render-audio --effect` renders at most this many seconds, then trims the silence.
+const EFFECT_SECONDS: u64 = 10;
+
+/// `compare-audio` tolerances (spec M1b §5).
+const LOUDNESS_MEDIAN_DB: f64 = 1.5;
+const LOUDNESS_MAX_DB: f64 = 4.0;
+const BAND_DB: f64 = 3.0;
+const TEMPO_PERCENT: f64 = 0.15;
+const PITCH_CENTS: f64 = 10.0;
+const BALANCE_DB: f64 = 1.0;
+const MIN_OVERLAP_SECONDS: u64 = 25;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
@@ -64,6 +95,25 @@ enum Command {
         ticks: u64,
         shots: Vec<PathBuf>,
     },
+    RenderAudio {
+        data: Option<PathBuf>,
+        source: AudioSource,
+        keys: Vec<u64>,
+        seconds: Option<u64>,
+        out: PathBuf,
+    },
+    CompareAudio {
+        original: PathBuf,
+        ours: PathBuf,
+        min_overlap: u64,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum AudioSource {
+    Startup,
+    Music(String),
+    Effect { bank: String, number: u8 },
 }
 
 fn main() -> ExitCode {
@@ -99,6 +149,20 @@ fn main() -> ExitCode {
             ticks,
             shots,
         } => find(data.as_deref(), &keys, ticks, &shots),
+        Command::RenderAudio {
+            data,
+            source,
+            keys,
+            seconds,
+            out,
+        } => {
+            render_audio(data.as_deref(), &source, &keys, seconds, &out).map(|()| ExitCode::SUCCESS)
+        }
+        Command::CompareAudio {
+            original,
+            ours,
+            min_overlap,
+        } => compare_audio(&original, &ours, min_overlap),
     };
     result.unwrap_or_else(|message| {
         eprintln!("error: {message}");
@@ -117,15 +181,29 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
         "render" => &["--data", "--tick", "--key-at", "--out"],
         "compare" => &[],
         "find" => &["--data", "--key-at", "--ticks"],
+        "render-audio" => &[
+            "--data",
+            "--music",
+            "--effect",
+            "--number",
+            "--seconds",
+            "--key-at",
+            "--out",
+        ],
+        "compare-audio" => &["--min-overlap"],
         _ => return Err(format!("unknown command: {command}")),
     };
-    let takes_files = matches!(command, "compare" | "find");
+    let takes_files = matches!(command, "compare" | "find" | "compare-audio");
     let (mut data, mut out, mut ticks, mut tick) = (None, None, None, None);
+    let (mut startup, mut music, mut effect, mut effect_number, mut seconds, mut min_overlap) =
+        (false, None, None, None, None, None);
     let mut keys = Vec::new();
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
-        if options.contains(&name) {
+        if command == "render-audio" && name == "--startup" {
+            startup = true;
+        } else if options.contains(&name) {
             let value = args.next().ok_or(format!("{name} needs a value"))?;
             let number = || {
                 value
@@ -139,6 +217,15 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 "--ticks" => ticks = Some(number()?),
                 "--tick" => tick = Some(number()?),
                 "--key-at" => keys.push(number()?),
+                "--music" => music = Some(value.to_string_lossy().into_owned()),
+                "--effect" => effect = Some(value.to_string_lossy().into_owned()),
+                "--number" => {
+                    effect_number = Some(
+                        u8::try_from(number()?).map_err(|_| "--number: an effect is 1 to 255")?,
+                    );
+                }
+                "--seconds" => seconds = Some(number()?),
+                "--min-overlap" => min_overlap = Some(number()?),
                 _ => unreachable!("every option is handled"),
             }
         } else if takes_files && !name.starts_with("--") {
@@ -166,6 +253,36 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             Ok([a, b]) => Ok(Command::Compare { a, b }),
             Err(_) => Err("compare needs exactly two PNG files".into()),
         },
+        "compare-audio" => match <[PathBuf; 2]>::try_from(files) {
+            Ok([original, ours]) => Ok(Command::CompareAudio {
+                original,
+                ours,
+                min_overlap: min_overlap.unwrap_or(MIN_OVERLAP_SECONDS),
+            }),
+            Err(_) => Err("compare-audio needs exactly two WAV files".into()),
+        },
+        "render-audio" => {
+            let source = match (startup, music, effect, effect_number) {
+                (true, None, None, None) => AudioSource::Startup,
+                (false, Some(name), None, None) => AudioSource::Music(name),
+                (false, None, Some(bank), Some(number)) if number > 0 => {
+                    AudioSource::Effect { bank, number }
+                }
+                _ => {
+                    return Err("render-audio needs one of --startup, --music NAME, or --effect BANK --number K".into());
+                }
+            };
+            if source != AudioSource::Startup && !keys.is_empty() {
+                return Err("--key-at only applies to --startup".into());
+            }
+            Ok(Command::RenderAudio {
+                data,
+                source,
+                keys,
+                seconds,
+                out: out.ok_or("render-audio needs --out FILE.wav")?,
+            })
+        }
         _ => {
             if files.is_empty() {
                 return Err("find needs at least one screenshot".into());
@@ -424,6 +541,165 @@ fn timeline(
     visit(0, &game);
     play(&mut game, ticks, keys, &mut visit);
     failure.map_or(Ok(()), Err)
+}
+
+/// A sound file's entry name from `TR0-MUS` or `tr0-mus.cmf`.
+fn sound_entry(name: &str) -> String {
+    let upper = name.to_ascii_uppercase();
+    if upper.ends_with(".CMF") {
+        upper
+    } else {
+        format!("{upper}.CMF")
+    }
+}
+
+/// Writes the startup's sound (the intro, then the menu music), a piece of music or one effect
+/// as a 48 kHz 16-bit WAV.
+fn render_audio(
+    data: Option<&Path>,
+    source: &AudioSource,
+    keys: &[u64],
+    seconds: Option<u64>,
+    out: &Path,
+) -> Result<(), String> {
+    let located = locate_data(data)?;
+    let frames = |seconds: u64| {
+        usize::try_from(seconds * u64::from(AUDIO_SAMPLE_RATE)).unwrap_or(usize::MAX)
+    };
+    let musics = || {
+        let file = located
+            .validation
+            .files
+            .iter()
+            .find(|file| file.name == sound::ARCHIVE)
+            .ok_or("MUSICS.BPA is not among the validated files")?;
+        Archive::open(&file.path).map_err(|error| error.to_string())
+    };
+    let samples = match source {
+        AudioSource::Startup => {
+            let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
+            let intro_ticks = assets
+                .intro
+                .delays
+                .iter()
+                .map(|&delay| u64::from(delay))
+                .sum::<u64>();
+            let ticks = seconds.map_or(intro_ticks + STARTUP_AFTER_INTRO_TICKS, |seconds| {
+                seconds * 1_000_000_000 / TICK_NANOS
+            });
+            let mut game = Game::new(assets);
+            let mut audio = Vec::new();
+            for done in 0..ticks {
+                if keys.contains(&done) {
+                    for pressed in [true, false] {
+                        game.input(InputEvent::Key {
+                            key: Key::Space,
+                            pressed,
+                        });
+                    }
+                }
+                game.tick();
+                game.take_audio(&mut audio);
+            }
+            audio
+        }
+        AudioSource::Music(name) => {
+            let module = sound::load_music(&musics()?, &sound_entry(name))
+                .map_err(|error| error.to_string())?;
+            render_music(&module, frames(seconds.unwrap_or(MUSIC_SECONDS)))
+        }
+        AudioSource::Effect { bank, number } => {
+            let bank = sound::load_effects(&musics()?, &sound_entry(bank))
+                .map_err(|error| error.to_string())?;
+            let mut samples =
+                render_effect(&bank, *number, frames(seconds.unwrap_or(EFFECT_SECONDS)));
+            let end = samples
+                .iter()
+                .rposition(|&sample| sample != 0)
+                .map_or(0, |last| (last / 2 + 1) * 2);
+            samples.truncate(end);
+            samples
+        }
+    };
+    Wav {
+        rate: AUDIO_SAMPLE_RATE,
+        channels: 2,
+        samples,
+    }
+    .write(out)
+}
+
+/// Exit status 0 only when every measure is within the spec's tolerances.
+fn compare_audio(original: &Path, ours: &Path, min_overlap: u64) -> Result<ExitCode, String> {
+    let report = audio_compare::compare(&Wav::read(original)?, &Wav::read(ours)?);
+    println!(
+        "lag: {:.0} ms (envelope correlation {:.3})",
+        report.lag_ms, report.correlation
+    );
+    println!("overlap: {:.1} s", report.overlap_seconds);
+    println!(
+        "loudness per second, ours - original: median {:.2} dB, largest {:.2} dB",
+        report.loudness_median_db, report.loudness_max_db
+    );
+    let bands: Vec<String> = report
+        .bands
+        .iter()
+        .map(|(hz, difference)| format!("{hz:.0} Hz {difference:+.1} dB"))
+        .collect();
+    println!("octave bands, ours - original: {}", bands.join(", "));
+    println!(
+        "tempo, ours - original: {:+.3} % (over {} pieces of 10 s)",
+        report.tempo_percent, report.tempo_pieces
+    );
+    println!("pitch, ours - original: {:+.0} cents", report.pitch_cents);
+    println!(
+        "stereo balance (left - right), ours - original: largest {:+.2} dB (over {} pieces of 10 s)",
+        report.balance_db, report.balance_pieces
+    );
+    let mut failures = Vec::new();
+    if report.overlap_seconds < min_overlap as f64 {
+        failures.push(format!("overlap below {min_overlap} s"));
+    }
+    if report.loudness_median_db > LOUDNESS_MEDIAN_DB {
+        failures.push(format!(
+            "median loudness difference above {LOUDNESS_MEDIAN_DB} dB"
+        ));
+    }
+    if report.loudness_max_db > LOUDNESS_MAX_DB {
+        failures.push(format!(
+            "largest loudness difference above {LOUDNESS_MAX_DB} dB"
+        ));
+    }
+    for (hz, difference) in &report.bands {
+        if difference.abs() > BAND_DB {
+            failures.push(format!("{hz:.0} Hz band off by more than {BAND_DB} dB"));
+        }
+    }
+    // A measure that could not be taken fails: passing it would hide the difference it exists
+    // to find.
+    if report.tempo_pieces < audio_compare::MIN_TEMPO_PIECES {
+        failures.push(format!(
+            "tempo measured on fewer than {} pieces of 10 s",
+            audio_compare::MIN_TEMPO_PIECES
+        ));
+    } else if report.tempo_percent.abs() > TEMPO_PERCENT {
+        failures.push(format!("tempo off by more than {TEMPO_PERCENT} %"));
+    }
+    if report.pitch_cents.abs() > PITCH_CENTS {
+        failures.push(format!("pitch off by more than {PITCH_CENTS} cents"));
+    }
+    if report.balance_pieces == 0 {
+        failures.push("stereo balance not measured (a mono or silent file)".to_owned());
+    } else if report.balance_db.abs() > BALANCE_DB {
+        failures.push(format!("stereo balance off by more than {BALANCE_DB} dB"));
+    }
+    if failures.is_empty() {
+        println!("result: PASS");
+        Ok(ExitCode::SUCCESS)
+    } else {
+        println!("result: FAIL ({})", failures.join("; "));
+        Ok(ExitCode::FAILURE)
+    }
 }
 
 /// `[3, 4, 5, 9]` as `3-5, 9`.

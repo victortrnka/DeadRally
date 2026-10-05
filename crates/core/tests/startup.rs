@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 use deadrally_gamedata::haf::{Animation, FRAME_PIXELS, HafFrame};
 use deadrally_gamedata::image::{Image, Palette};
+use deadrally_gamedata::s3m::{self, Cell, Module, Sample};
+use deadrally_gamedata::xm::{Bank, Instrument, Looping};
 
 /// Intro delays: frame 0 at tick 4, frame 1 at tick 6, the last frame at tick 9.
 const DELAYS: [u8; 3] = [4, 2, 3];
@@ -59,7 +61,90 @@ fn assets() -> Assets {
         apogee: picture(APOGEE, [63, 0, 0]),
         remedy: picture(REMEDY, [0, 63, 0]),
         title: picture(TITLE, [0, 0, 63]),
+        intro_music: music(false),
+        intro_effects: effects(),
+        menu_music: music(false),
     }
+}
+
+/// A module that is silent, or plays one endless tone from its first row.
+fn music(tone: bool) -> Module {
+    let mut channels = [s3m::Channel::default(); s3m::CHANNELS];
+    channels[0] = s3m::Channel {
+        enabled: true,
+        pan: 3,
+    };
+    let mut pattern = s3m::Pattern {
+        rows: vec![[Cell::default(); s3m::CHANNELS]; s3m::ROWS],
+    };
+    pattern.rows[0][0] = Cell {
+        note: 0x40,
+        instrument: 1,
+        volume: Some(64),
+        command: 0,
+        info: 0,
+    };
+    Module {
+        title: "Tone".into(),
+        orders: if tone { vec![0] } else { Vec::new() },
+        initial_speed: 6,
+        initial_tempo: 125,
+        global_volume: 64,
+        master_volume: 48,
+        stereo: false,
+        channels,
+        samples: vec![Sample {
+            name: "Tone".into(),
+            c2spd: 8363,
+            volume: 64,
+            looped: Some((0, 1000)),
+            data: vec![4000; 1000],
+        }],
+        patterns: vec![pattern],
+    }
+}
+
+/// Music that is silent from its first order and plays a tone from order 45, where the original
+/// starts the menu music.
+fn menu_music() -> Module {
+    let mut module = music(true);
+    module.patterns.push(s3m::Pattern {
+        rows: vec![[Cell::default(); s3m::CHANNELS]; s3m::ROWS],
+    });
+    module.orders = [vec![1; 45], vec![0]].concat();
+    module
+}
+
+/// Effect 1 is an endless constant tone.
+fn effects() -> Bank {
+    Bank {
+        linear_frequencies: true,
+        instruments: vec![Some(Instrument {
+            name: "Hum".into(),
+            data: vec![1000; 1000],
+            looping: Looping::Forward {
+                start: 0,
+                length: 1000,
+            },
+            volume: 64,
+            finetune: 0,
+            relative_note: 0,
+            panning: 128,
+            fadeout: 0,
+        })],
+    }
+}
+
+/// The last left sample of each of the next `ticks` ticks.
+fn loudness(game: &mut Game, ticks: u32) -> Vec<i16> {
+    (0..ticks)
+        .map(|_| {
+            game.tick();
+            let mut audio = Vec::new();
+            game.take_audio(&mut audio);
+            audio[audio.len() - 2]
+        })
+        .collect()
 }
 
 fn press(game: &mut Game) {
@@ -181,6 +266,17 @@ fn an_empty_intro_goes_straight_to_the_logos() {
 }
 
 #[test]
+fn an_empty_intro_still_starts_the_menu_music() {
+    // The original starts the menu music after `checkAndOpenAnimation`, whether or not that
+    // played anything.
+    let mut empty = assets();
+    empty.intro = Animation::from_frames(Vec::new(), Vec::new());
+    empty.menu_music = menu_music();
+    let mut game = Game::new(empty);
+    assert!(loudness(&mut game, 3).iter().all(|&level| level > 0));
+}
+
+#[test]
 fn a_pad_button_skips_like_a_key() {
     let mut game = Game::new(assets());
     game.input(InputEvent::PadButton {
@@ -296,14 +392,116 @@ fn the_title_fades_in_after_both_logos_and_stays_at_92_percent() {
 }
 
 #[test]
-fn the_startup_sequence_is_silent_but_keeps_the_audio_stream_full() {
+fn the_audio_stream_stays_full_when_nothing_plays() {
     // The frontend paces itself on the audio queue; missing samples would stall or drift it.
     let mut game = Game::new(assets());
     run(&mut game, 30);
     let mut audio = Vec::new();
     game.take_audio(&mut audio);
     assert_eq!(audio.len(), 30 * AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS);
-    assert!(audio.iter().all(|&sample| sample == 0));
-    game.take_audio(&mut audio);
-    assert_eq!(audio.len(), 30 * AUDIO_FRAMES_PER_TICK * AUDIO_CHANNELS);
+    assert!(
+        audio.iter().all(|&sample| sample == 0),
+        "no music, no effects in these assets"
+    );
+}
+
+#[test]
+fn the_intro_plays_its_music_and_stops_it_when_it_ends() {
+    // The original stops the song as the intro ends; music running on would play over the
+    // logos.
+    let mut with_music = assets();
+    with_music.intro_music = music(true);
+    let mut game = Game::new(with_music);
+    let during = loudness(&mut game, INTRO_END - 1);
+    assert!(during.iter().all(|&level| level > 0), "{during:?}");
+    let after = loudness(&mut game, 5);
+    assert_eq!(&after[1..], [0, 0, 0, 0], "{after:?}");
+}
+
+#[test]
+fn the_menu_music_starts_when_the_intro_ends_and_plays_through_the_logos() {
+    // `mainMenu` starts the menu music from order 45 right after the intro, before the logos;
+    // they and the title are not silent.
+    let mut with_menu = assets();
+    with_menu.menu_music = menu_music();
+    let mut game = Game::new(with_menu);
+    let intro = loudness(&mut game, INTRO_END - 1);
+    assert!(intro.iter().all(|&level| level == 0), "{intro:?}");
+    let after = loudness(&mut game, LOGO + 10);
+    assert!(after[1..].iter().all(|&level| level > 0), "{after:?}");
+    assert_eq!(
+        shown(&game).0,
+        REMEDY,
+        "the music goes on through the logos"
+    );
+}
+
+#[test]
+fn the_menu_music_plays_at_the_default_configurations_half_volume() {
+    // The intro always plays at full volume: the original applies dr.cfg's volumes only when it
+    // starts the menu music, and a fresh dr.cfg has the music at 50 % (FMOD master volume 63
+    // against the intro's 127).
+    let mut same = assets();
+    let mut tone = music(true);
+    tone.orders = vec![0; 46];
+    same.intro_music = tone.clone();
+    same.menu_music = tone;
+    let mut game = Game::new(same);
+    let intro = i32::from(loudness(&mut game, INTRO_END - 1)[2]);
+    let menu = i32::from(loudness(&mut game, 5)[4]);
+    assert!(intro > 0, "{intro}");
+    assert!(
+        (menu * 127 - intro * 63).abs() <= 127 * 2,
+        "{menu} vs {intro}"
+    );
+}
+
+#[test]
+fn a_key_that_ends_the_intro_stops_its_sound() {
+    // As in the original, the intro's music stops, and frames that were still due never start
+    // their effects (the menu music, silent in these assets, takes over).
+    let mut with_music = assets();
+    with_music.intro_music = music(true);
+    with_music.intro.effects = vec![1, 1, 1];
+    let mut game = Game::new(with_music);
+    run(&mut game, 1);
+    press(&mut game);
+    loudness(&mut game, 3);
+    let after = loudness(&mut game, 10);
+    assert!(after[1..].iter().all(|&level| level == 0), "{after:?}");
+}
+
+#[test]
+fn a_frames_effect_sounds_when_the_frame_is_shown() {
+    // Effects mark moments of the intro's picture; one early or late is out of sync with it.
+    let mut timed = assets();
+    timed.intro.effects = vec![0, 1, 0];
+    let mut game = Game::new(timed);
+    let levels = loudness(&mut game, 6);
+    assert_eq!(&levels[..5], [0, 0, 0, 0, 0], "frame 1 appears at tick 6");
+    assert!(levels[5] > 0);
+}
+
+#[test]
+fn the_intros_effects_take_channels_one_to_six_in_turn() {
+    // The seventh effect reuses channel 1 and cuts the first one off, so at most six effects
+    // sound together, as in the original.
+    let mut busy = assets();
+    busy.intro = Animation::from_frames(vec![1; 10], (0..10).map(|k| intro_frame(k % 3)).collect());
+    busy.intro.effects = vec![1; 10];
+    let mut game = Game::new(busy);
+    let levels = loudness(&mut game, 9);
+    let one = i32::from(levels[0]);
+    assert!(one > 0);
+    for (voices, &level) in levels.iter().enumerate().take(6) {
+        let expected = one * (voices as i32 + 1);
+        assert!(
+            (i32::from(level) - expected).abs() <= 6,
+            "{voices}: {levels:?}"
+        );
+    }
+    assert!(
+        (i32::from(levels[7]) - 6 * one).abs() <= 6,
+        "still six voices: {levels:?}"
+    );
 }

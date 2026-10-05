@@ -161,6 +161,9 @@ fn the_startup_assets_load_with_their_documented_shapes() {
     assert_eq!(size(&assets.apogee), (640, 480));
     assert_eq!(size(&assets.remedy), (640, 480));
     assert_eq!(size(&assets.title), (640, 480));
+    assert_eq!(assets.intro_music.orders.len(), 42);
+    assert_eq!(assets.intro_effects.instruments.len(), 40);
+    assert_eq!(assets.menu_music.orders.len(), 94);
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

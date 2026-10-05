@@ -1,0 +1,6 @@
+# The startup's sound (spec M1b section 5): the whole intro (80.2 s), then the menu music, which
+# starts when the intro ends and plays through the logos, the title and the main menu. Run with
+# --sound. Compare with
+#   deadrally-headless render-audio --startup --seconds 122 --out captures/startup-sound/ours.wav
+#   deadrally-headless compare-audio captures/startup-sound/sound.wav captures/startup-sound/ours.wav --min-overlap 115
+at 122000 shot menu

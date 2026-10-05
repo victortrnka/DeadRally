@@ -204,6 +204,89 @@ fn compare_succeeds_only_for_identical_pictures() {
     assert!(text(&other_size.stdout).contains("sizes differ"));
 }
 
+/// A 48 kHz WAV of a 440 Hz tone whose loudness changes every 200 ms without repeating, so
+/// `compare-audio` can line two of them up in one place only.
+fn write_tone(path: &Path, seconds: u32, gain: f64, channels: u16) {
+    const RATE: u32 = 48_000;
+    let mut data = Vec::new();
+    for i in 0..seconds * RATE {
+        let t = f64::from(i) / f64::from(RATE);
+        let segment = (t * 5.0) as u64;
+        let mixed = segment
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407)
+            >> 33;
+        let level = 0.1 + 0.8 * (mixed % 1000) as f64 / 1000.0;
+        let value =
+            (gain * level * (2.0 * std::f64::consts::PI * 440.0 * t).sin() * 32767.0) as i16;
+        for _ in 0..channels {
+            data.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    let block = 2 * u32::from(channels);
+    for field in [
+        16,
+        1 | u32::from(channels) << 16,
+        RATE,
+        RATE * block,
+        block | 16 << 16,
+    ] {
+        bytes.extend_from_slice(&field.to_le_bytes());
+    }
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&data);
+    fs::write(path, bytes).unwrap();
+}
+
+#[test]
+fn compare_audio_passes_only_within_the_tolerances() {
+    // The sound checks rely on the exit status: a quieter render, too short an overlap or a
+    // measure that could not be taken must fail, not pass with a remark.
+    let home = tempdir().unwrap();
+    let path = |name: &str| home.path().join(name);
+    write_tone(&path("original.wav"), 40, 1.0, 2);
+    write_tone(&path("quieter.wav"), 40, 0.5, 2);
+    write_tone(&path("brief.wav"), 15, 1.0, 2);
+    write_tone(&path("mono.wav"), 40, 1.0, 1);
+    let compare = |ours: &str, options: &[&str]| {
+        let (original, ours) = (path("original.wav"), path(ours));
+        let mut args = vec![
+            "compare-audio",
+            original.to_str().unwrap(),
+            ours.to_str().unwrap(),
+        ];
+        args.extend_from_slice(options);
+        run(&home, &args)
+    };
+
+    let same = compare("original.wav", &[]);
+    assert_eq!(same.status.code(), Some(0), "{}", text(&same.stdout));
+    assert!(text(&same.stdout).contains("result: PASS"));
+
+    let quieter = compare("quieter.wav", &[]);
+    assert_eq!(quieter.status.code(), Some(1), "{}", text(&quieter.stdout));
+    assert!(text(&quieter.stdout).contains("median loudness difference above"));
+
+    let short = compare("original.wav", &["--min-overlap", "50"]);
+    assert_eq!(short.status.code(), Some(1), "{}", text(&short.stdout));
+    assert!(text(&short.stdout).contains("overlap below 50 s"));
+
+    // 15 s hold one 10 s piece: too few to measure a tempo on.
+    let brief = compare("brief.wav", &["--min-overlap", "10"]);
+    assert_eq!(brief.status.code(), Some(1), "{}", text(&brief.stdout));
+    assert!(text(&brief.stdout).contains("tempo measured on fewer than 3 pieces"));
+
+    // A mono file has no stereo image to compare.
+    let mono = compare("mono.wav", &[]);
+    assert_eq!(mono.status.code(), Some(1), "{}", text(&mono.stdout));
+    assert!(text(&mono.stdout).contains("stereo balance not measured"));
+}
+
 #[test]
 fn find_rejects_a_screenshot_that_is_not_window_sized() {
     // A shot of the whole virtual screen or with window decorations can never match; say so
@@ -333,4 +416,26 @@ fn find_locates_a_rendered_frame_in_the_startup_sequence() {
     let (first, last) = ticks.split_once('-').unwrap_or((ticks, ticks));
     let (first, last): (u64, u64) = (first.parse().unwrap(), last.parse().unwrap());
     assert!((first..=last).contains(&1000), "{line}");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn render_audio_writes_the_whole_intro_and_the_music_after_it_as_a_48_khz_wav() {
+    // compare-audio and the owner's listening use this file: another rate would shift every
+    // pitch, and a short file would hide how the intro ends and the menu music starts.
+    let home = tempdir().unwrap();
+    let out = home.path().join("startup.wav");
+    let output = headless(&home)
+        .args(["render-audio", "--startup", "--out", out.to_str().unwrap()])
+        .env("DEADRALLY_DATA", data_env())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    let bytes = fs::read(&out).unwrap();
+    let field = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    assert_eq!(&bytes[..4], b"RIFF");
+    assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 2, "channels");
+    assert_eq!(field(24), 48_000, "rate");
+    // The intro's 5732 ticks and 2 s (143 ticks) after it, 672 frames of 4 bytes each.
+    assert_eq!(field(40), (5732 + 143) * 672 * 4, "data bytes");
 }

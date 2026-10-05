@@ -42,7 +42,7 @@ Exit status 0 means a known release, 2 an unknown release (usable, but parity ch
 
 ```
 cargo build --workspace
-cargo run --release -p deadrally -- -window     # the game: intro, logos, title (no sound yet)
+cargo run --release -p deadrally -- -window     # the game: intro, logos, title, with sound
 cargo test --workspace
 DEADRALLY_DATA=~/games/DeathRally cargo test-data
 cargo fmt --all
@@ -59,9 +59,20 @@ cargo run --release -p deadrally-headless -- dump-assets    # every image as PNG
 
 `dumps/` is ignored by Git. Never commit what is in it.
 
+## Listening to the sound
+
+```
+cargo build --release -p deadrally-headless
+target/release/deadrally-headless render-audio --startup --seconds 100 --out captures/startup.wav
+target/release/deadrally-headless render-audio --music MEN-MUS --seconds 60 --out captures/menu.wav
+target/release/deadrally-headless render-audio --effect SANIM-E --number 29 --out captures/effect.wav
+```
+
+The files are 48 kHz WAVs of the original's music and effects: keep them under `captures/`, which Git ignores.
+
 ## Checking against the original
 
-The original `dr.exe` is the reference. On Linux, `scripts/reference-run.sh` runs it under Wine on a virtual display (no window appears, no sound plays), presses keys and takes screenshots as a scenario file says:
+The original `dr.exe` is the reference. On Linux, `scripts/reference-run.sh` runs it under Wine on a virtual display (no window appears, nothing reaches the speakers), presses keys and takes screenshots as a scenario file says:
 
 ```
 scripts/reference-run.sh scripts/reference/startup.scenario captures/startup
@@ -70,6 +81,16 @@ target/release/deadrally-headless find captures/startup/*.png
 ```
 
 `find` reports, for each screenshot, the ticks of DeadRally's startup sequence that show exactly the same picture. `docs/verification/m1a.md` lists the scenarios and what they must show. Screenshots stay under `captures/`, which Git ignores: they show the original's art.
+
+With `--sound`, the runner also records what the original plays, from a PulseAudio null sink, and stops if the game's sound is not on that sink. `compare-audio` then says whether our render sounds the same:
+
+```
+scripts/reference-run.sh --sound scripts/reference/startup-sound.scenario captures/startup-sound
+target/release/deadrally-headless render-audio --startup --seconds 122 --out captures/startup-sound/ours.wav
+target/release/deadrally-headless compare-audio captures/startup-sound/sound.wav captures/startup-sound/ours.wav --min-overlap 115
+```
+
+`docs/verification/m1b.md` has the scenarios and the numbers they gave.
 
 CI does not run `cargo test-data`, because GitHub has no game data. Run it yourself when you touch data code.
 

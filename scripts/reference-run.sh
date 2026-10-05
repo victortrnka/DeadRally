@@ -1,36 +1,65 @@
 #!/usr/bin/env bash
 # Runs the original dr.exe under Wine on a virtual X display and takes screenshots, so DeadRally
-# can be compared with it (spec M1a section 8). The original is only a test tool here: nothing
-# reaches a monitor or the speakers, and the game install is never written to.
+# can be compared with it (spec M1a section 8, M1b section 4.5). The original is only a test
+# tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
-#   scripts/reference-run.sh [--data DIR] SCENARIO OUT_DIR
+#   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] SCENARIO OUT_DIR
+#
+# With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
+# OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
+# scenario line; the run stops if the game's stream is not on that sink.
+#
+# With --cfg the original starts with FILE as its dr.cfg (volumes, keys, records); without it,
+# it writes a fresh one with its defaults.
 #
 # SCENARIO is a text file of lines "at <ms> key <name>" (an xdotool key name, e.g. space) and
 # "at <ms> shot <label>", in time order; times count from the moment the window appears, and
 # '#' starts a comment. OUT_DIR gets <label>.png per shot and run.log. Keep it under captures/:
 # screenshots of the original's art are never committed.
 #
-# Needs wine32, Xvfb, xdotool and ImageMagick (scripts/install-linux-deps.sh --local) and the
-# Windows version's files, which `deadrally-headless check-data` must recognise.
+# Needs wine32, Xvfb, xdotool and ImageMagick, and for --sound pactl and parec
+# (scripts/install-linux-deps.sh --local), and the Windows version's files, which
+# `deadrally-headless check-data` must recognise.
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
 data_args=()
-if [[ "${1:-}" == --data ]]; then
-    [[ $# -ge 2 ]] || usage
-    data_args=(--data "$2")
-    shift 2
-fi
+sound=false
+cfg=
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --data)
+            [[ $# -ge 2 ]] || usage
+            data_args=(--data "$2")
+            shift 2
+            ;;
+        --sound)
+            sound=true
+            shift
+            ;;
+        --cfg)
+            [[ $# -ge 2 ]] || usage
+            cfg=$(realpath "$2")
+            shift 2
+            ;;
+        *) usage ;;
+    esac
+done
 [[ $# -eq 2 ]] || usage
 scenario=$1
 out=$2
 [[ -f "$scenario" ]] || { echo "error: no scenario file $scenario" >&2; exit 1; }
+[[ -z "$cfg" || -f "$cfg" ]] || { echo "error: no dr.cfg file $cfg" >&2; exit 1; }
 
-for tool in wine Xvfb xdotool xwd convert; do
+tools=(wine Xvfb xdotool xwd convert)
+if $sound; then
+    tools+=(pactl parec)
+fi
+for tool in "${tools[@]}"; do
     command -v "$tool" >/dev/null || {
         echo "error: $tool is missing; run scripts/install-linux-deps.sh --local" >&2
         exit 1
@@ -64,13 +93,21 @@ echo "dr.exe sha256: $(sha256sum "$dir/dr.exe" | cut -d' ' -f1)" >>"$log"
 rm -rf "$run"
 mkdir -p "$run"
 cp -a "$dir/." "$run/"
+if [[ -n "$cfg" ]]; then
+    cp "$cfg" "$run/dr.cfg"
+    echo "dr.cfg: $cfg" >>"$log"
+fi
 
 display_fd=$(mktemp)
 Xvfb -displayfd 3 -screen 0 1024x768x24 -nolisten tcp 3>"$display_fd" 2>>"$log" &
 xvfb=$!
+sink_module=
+recorder=
 cleanup() {
     WINEPREFIX="$prefix" wineserver -k 2>/dev/null || true
     kill "$xvfb" 2>/dev/null || true
+    if [[ -n "$recorder" ]]; then kill "$recorder" 2>/dev/null || true; fi
+    if [[ -n "$sink_module" ]]; then pactl unload-module "$sink_module" 2>/dev/null || true; fi
     rm -f "$display_fd"
 }
 trap cleanup EXIT
@@ -89,7 +126,18 @@ if [[ ! -f "$prefix/system.reg" ]]; then
     wineserver -w
 fi
 
-(cd "$run" && exec wine dr.exe -window -nogl -nosound) >>"$log" 2>&1 &
+sound_args=(-nosound)
+if $sound; then
+    sink=deadrally_ref_$$
+    sink_module=$(pactl load-module module-null-sink "sink_name=$sink" "sink_properties=device.description=$sink")
+    parec --device="$sink.monitor" --file-format=wav --format=s16le --rate=44100 --channels=2 \
+        "$out/sound.wav" 2>>"$log" &
+    recorder=$!
+    sound_args=()
+    export PULSE_SINK=$sink
+fi
+
+(cd "$run" && exec wine dr.exe -window -nogl "${sound_args[@]}") >>"$log" 2>&1 &
 game=$!
 window=$(timeout 30 xdotool search --sync --onlyvisible --name '.' | head -n1) || {
     echo "error: the original did not open a window within 30 s; see $log" >&2
@@ -97,6 +145,23 @@ window=$(timeout 30 xdotool search --sync --onlyvisible --name '.' | head -n1) |
 }
 start=$(date +%s%N)
 echo "window: $window $(xdotool getwindowgeometry "$window" | tr '\n' ' ')" >>"$log"
+
+if $sound; then
+    # The game's stream must be on the null sink; anywhere else it could reach the speakers.
+    sink_index=$(pactl list short sinks | awk -v name="$sink" '$2 == name {print $1}')
+    stream_sink=
+    for _ in $(seq 50); do
+        stream_sink=$(pactl list sink-inputs | awk '/^Sink Input/ {sink=""} /^\tSink:/ {sink=$2}
+            /application.name = "dr.exe"/ {print sink; exit}')
+        [[ -n "$stream_sink" ]] && break
+        sleep 0.1
+    done
+    if [[ "$stream_sink" != "$sink_index" ]]; then
+        echo "error: dr.exe plays to sink '$stream_sink', not the null sink $sink_index; stopped" >&2
+        exit 1
+    fi
+    echo "sound: dr.exe plays to null sink $sink ($sink_index), recorded to sound.wav" >>"$log"
+fi
 xdotool windowfocus --sync "$window" 2>>"$log" || true
 
 shots=()
@@ -127,6 +192,13 @@ while read -r at ms action arg rest; do
     esac
     echo "$taken_ms ms: $action $arg (planned $ms)" >>"$log"
 done <"$scenario"
+
+if $sound; then
+    # SIGINT lets parec finish the WAV header.
+    kill -INT "$recorder"
+    wait "$recorder" || true
+    recorder=
+fi
 
 for label in "${shots[@]}"; do
     convert "$out/$label.xwd" "$out/$label.png"
