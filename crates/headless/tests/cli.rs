@@ -204,9 +204,9 @@ fn compare_succeeds_only_for_identical_pictures() {
     assert!(text(&other_size.stdout).contains("sizes differ"));
 }
 
-/// A 48 kHz stereo WAV of a 440 Hz tone whose loudness changes every 200 ms without
-/// repeating, so `compare-audio` can line two of them up in one place only.
-fn write_tone(path: &Path, seconds: u32, gain: f64) {
+/// A 48 kHz WAV of a 440 Hz tone whose loudness changes every 200 ms without repeating, so
+/// `compare-audio` can line two of them up in one place only.
+fn write_tone(path: &Path, seconds: u32, gain: f64, channels: u16) {
     const RATE: u32 = 48_000;
     let mut data = Vec::new();
     for i in 0..seconds * RATE {
@@ -219,14 +219,22 @@ fn write_tone(path: &Path, seconds: u32, gain: f64) {
         let level = 0.1 + 0.8 * (mixed % 1000) as f64 / 1000.0;
         let value =
             (gain * level * (2.0 * std::f64::consts::PI * 440.0 * t).sin() * 32767.0) as i16;
-        data.extend_from_slice(&value.to_le_bytes());
-        data.extend_from_slice(&value.to_le_bytes());
+        for _ in 0..channels {
+            data.extend_from_slice(&value.to_le_bytes());
+        }
     }
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"RIFF");
     bytes.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
     bytes.extend_from_slice(b"WAVEfmt ");
-    for field in [16u32, 1 | 2 << 16, RATE, RATE * 4, 4 | 16 << 16] {
+    let block = 2 * u32::from(channels);
+    for field in [
+        16,
+        1 | u32::from(channels) << 16,
+        RATE,
+        RATE * block,
+        block | 16 << 16,
+    ] {
         bytes.extend_from_slice(&field.to_le_bytes());
     }
     bytes.extend_from_slice(b"data");
@@ -241,9 +249,10 @@ fn compare_audio_passes_only_within_the_tolerances() {
     // measure that could not be taken must fail, not pass with a remark.
     let home = tempdir().unwrap();
     let path = |name: &str| home.path().join(name);
-    write_tone(&path("original.wav"), 40, 1.0);
-    write_tone(&path("quieter.wav"), 40, 0.5);
-    write_tone(&path("brief.wav"), 15, 1.0);
+    write_tone(&path("original.wav"), 40, 1.0, 2);
+    write_tone(&path("quieter.wav"), 40, 0.5, 2);
+    write_tone(&path("brief.wav"), 15, 1.0, 2);
+    write_tone(&path("mono.wav"), 40, 1.0, 1);
     let compare = |ours: &str, options: &[&str]| {
         let (original, ours) = (path("original.wav"), path(ours));
         let mut args = vec![
@@ -271,6 +280,11 @@ fn compare_audio_passes_only_within_the_tolerances() {
     let brief = compare("brief.wav", &["--min-overlap", "10"]);
     assert_eq!(brief.status.code(), Some(1), "{}", text(&brief.stdout));
     assert!(text(&brief.stdout).contains("tempo measured on fewer than 3 pieces"));
+
+    // A mono file has no stereo image to compare.
+    let mono = compare("mono.wav", &[]);
+    assert_eq!(mono.status.code(), Some(1), "{}", text(&mono.stdout));
+    assert!(text(&mono.stdout).contains("stereo balance not measured"));
 }
 
 #[test]

@@ -73,6 +73,10 @@ fn slice(bytes: &[u8], start: usize, length: usize) -> Result<&[u8], XmError> {
         .ok_or_else(|| malformed(format!("ends before byte {}", start + length)))
 }
 
+fn byte_at(bytes: &[u8], offset: usize) -> Result<u8, XmError> {
+    slice(bytes, offset, 1).map(|b| b[0])
+}
+
 fn u16_at(bytes: &[u8], offset: usize) -> Result<u16, XmError> {
     slice(bytes, offset, 2).map(|b| u16::from_le_bytes([b[0], b[1]]))
 }
@@ -143,7 +147,11 @@ fn parse_instrument(
     }
     let header = slice(bytes, at, size)?;
     let sample_header_size = u32_at(header, 29)? as usize;
-    let (volume_type, panning_type, vibrato_depth) = (header[233], header[234], header[237]);
+    let (volume_type, panning_type, vibrato_depth) = (
+        byte_at(header, 233)?,
+        byte_at(header, 234)?,
+        byte_at(header, 237)?,
+    );
     if volume_type & 1 != 0 || panning_type & 1 != 0 || vibrato_depth != 0 {
         return Err(XmError::Unsupported(format!(
             "instrument {} has an envelope or auto-vibrato",
@@ -156,11 +164,11 @@ fn parse_instrument(
     let (loop_start, loop_length) = (u32_at(bytes, sample + 4)?, u32_at(bytes, sample + 8)?);
     let sample_header = slice(bytes, sample, sample_header_size)?;
     let (volume, finetune, kind, panning, relative_note) = (
-        sample_header[12].min(64),
-        sample_header[13] as i8,
-        sample_header[14],
-        sample_header[15],
-        sample_header[16] as i8,
+        byte_at(sample_header, 12)?.min(64),
+        byte_at(sample_header, 13)? as i8,
+        byte_at(sample_header, 14)?,
+        byte_at(sample_header, 15)?,
+        byte_at(sample_header, 16)? as i8,
     );
     let data_start = sample + sample_header_size;
     let raw = slice(bytes, data_start, length)?;
@@ -169,7 +177,7 @@ fn parse_instrument(
         return Ok((None, data_start));
     }
     let sixteen_bit = kind & 0x10 != 0;
-    let (data, scale) = if sixteen_bit {
+    let (data, scale): (Vec<i16>, u32) = if sixteen_bit {
         if !length.is_multiple_of(2) {
             return Err(malformed(format!(
                 "instrument {} has an odd 16-bit length",
@@ -198,7 +206,10 @@ fn parse_instrument(
             .collect();
         (data, 1)
     };
-    let (start, loop_samples) = (loop_start / scale, loop_length / scale);
+    // Kept inside the sample, as FastTracker 2 does.
+    let samples = u32::try_from(data.len()).unwrap_or(u32::MAX);
+    let start = (loop_start / scale).min(samples);
+    let loop_samples = (loop_length / scale).min(samples - start);
     let looping = match (kind & 3, loop_samples) {
         (_, 0) | (0, _) => Looping::None,
         (1, _) => Looping::Forward {
@@ -305,6 +316,52 @@ pub(crate) mod tests {
             bytes.extend(&sample.deltas);
         }
         bytes
+    }
+
+    #[test]
+    fn headers_too_short_for_their_fields_are_malformed_not_a_crash() {
+        // Data of an unknown version is loaded with a warning; a crash would end the game
+        // before it could say what is wrong.
+        let instrument_at = HEADER_START + 276 + 9;
+        let mut short_instrument = build(&[Some(sample(&[1, 2, 3]))]);
+        short_instrument[instrument_at..instrument_at + 4].copy_from_slice(&40u32.to_le_bytes());
+        assert!(matches!(
+            Bank::parse(&short_instrument),
+            Err(XmError::Malformed(_))
+        ));
+        let mut short_sample = build(&[Some(sample(&[1, 2, 3]))]);
+        short_sample[instrument_at + 29..instrument_at + 33].copy_from_slice(&8u32.to_le_bytes());
+        assert!(matches!(
+            Bank::parse(&short_sample),
+            Err(XmError::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn loops_are_kept_inside_their_sample() {
+        // A loop past the sample's end would read past the data; FastTracker clamps it.
+        let mut long_loop = sample(&[1; 100]);
+        (
+            long_loop.loop_type,
+            long_loop.loop_start,
+            long_loop.loop_length,
+        ) = (1, 50, 1000);
+        let mut far_loop = sample(&[1; 100]);
+        (
+            far_loop.loop_type,
+            far_loop.loop_start,
+            far_loop.loop_length,
+        ) = (1, u32::MAX - 10, 100);
+        let bank = Bank::parse(&build(&[Some(long_loop), Some(far_loop)])).unwrap();
+        let looping = |index: usize| bank.instruments[index].as_ref().unwrap().looping;
+        assert_eq!(
+            looping(0),
+            Looping::Forward {
+                start: 50,
+                length: 50
+            }
+        );
+        assert_eq!(looping(1), Looping::None, "a loop that starts past the end");
     }
 
     #[test]

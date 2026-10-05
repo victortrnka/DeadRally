@@ -209,6 +209,26 @@ mod tests {
     }
 
     #[test]
+    fn a_retriggered_channel_hands_its_old_sound_over_instead_of_cutting_it() {
+        // minifmod moves the old voice to a spare channel and ramps it out while the new one
+        // ramps in; a hard cut would click.
+        let mut effects = Effects::new(&bank(0, 128));
+        effects.trigger(1, 2, FULL, FULL);
+        let mut before = vec![0i64; 2 * 400];
+        effects.mix_into(&mut before);
+        let level = before[2 * 399];
+        effects.trigger(1, 2, FULL, FULL);
+        let mut after = vec![0i64; 2 * 20];
+        effects.mix_into(&mut after);
+        // Ten frames in, the old voice has lost what the new one has gained.
+        assert!(
+            (after[2 * 10] - level).abs() < level / 10,
+            "{} after {level}",
+            after[2 * 10]
+        );
+    }
+
+    #[test]
     fn effect_numbers_outside_the_bank_are_silent() {
         // The HAF tables and the game's calls name effects by number; one the bank lacks must
         // play nothing rather than crash.

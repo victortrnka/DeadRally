@@ -458,8 +458,8 @@ fn the_menu_music_plays_at_the_default_configurations_half_volume() {
 
 #[test]
 fn a_key_that_ends_the_intro_stops_its_sound() {
-    // The logos are silent in the original: the music stops, and frames that were still due
-    // never start their effects.
+    // As in the original, the intro's music stops, and frames that were still due never start
+    // their effects (the menu music, silent in these assets, takes over).
     let mut with_music = assets();
     with_music.intro_music = music(true);
     with_music.intro.effects = vec![1, 1, 1];

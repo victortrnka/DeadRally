@@ -267,7 +267,7 @@ impl Startup {
         }
     }
 
-    /// The intro's music and effects; silence once it has ended.
+    /// The startup's sound: the intro's music and effects, then the menu music.
     pub(crate) fn take_audio(&mut self, out: &mut Vec<i16>) {
         out.append(&mut self.audio);
     }

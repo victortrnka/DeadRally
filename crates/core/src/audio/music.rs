@@ -421,10 +421,11 @@ impl Music {
                 }
             }
             'H' => vibrato_tick(channel),
-            'Q' => {
+            // Without an interval nothing repeats, and nothing is counted.
+            'Q' if channel.retrigger & 0xF != 0 => {
                 let interval = channel.retrigger & 0xF;
                 channel.retrigger_count += 1;
-                if interval > 0 && channel.retrigger_count >= interval {
+                if channel.retrigger_count >= interval {
                     channel.retrigger_count = 0;
                     channel.volume = retrigger_volume(channel.volume, channel.retrigger >> 4);
                     let sample = usize::from(channel.instrument)
@@ -725,6 +726,131 @@ mod tests {
         let mut music = Music::new(&base, UNITY, 0);
         play(&mut music, 960 * s3m::ROWS);
         assert_eq!(music.position(), (3, 0, 0));
+    }
+
+    /// A module whose one sample rises steadily (0, 8, 16, ...), so the output shows how far
+    /// into the sample a voice is.
+    fn rising(rows: &[(usize, usize, Cell)], speed: u8) -> Module {
+        let mut rising = module(rows, speed, 125);
+        rising.samples[0].data = (0..4000).map(|i| i16::try_from(i * 8).unwrap()).collect();
+        rising.samples[0].looped = None;
+        rising
+    }
+
+    #[test]
+    fn the_sample_offset_starts_a_note_further_into_its_sample() {
+        // O (545 times in TR5) starts notes part way into their sample; ignoring it would play
+        // the sample's beginning instead.
+        let mut plain = Music::new(
+            &rising(&[(0, 0, cell(C4, 1, Some(64), ' ', 0))], 6),
+            UNITY,
+            0,
+        );
+        let mut offset = Music::new(
+            &rising(&[(0, 0, cell(C4, 1, Some(64), 'O', 8))], 6),
+            UNITY,
+            0,
+        );
+        let (plain, offset) = (play(&mut plain, 300), play(&mut offset, 300));
+        // 8 * 256 = 2048 samples in: about 2100 instead of about 50 at frame 299.
+        assert!(plain[2 * 299] > 0);
+        assert!(
+            offset[2 * 299] > 20 * plain[2 * 299],
+            "{} vs {}",
+            offset[2 * 299],
+            plain[2 * 299]
+        );
+    }
+
+    #[test]
+    fn vibrato_with_volume_slide_does_both() {
+        // K (277 times in TR1) keeps an earlier H's vibrato going while it slides the volume;
+        // doing only one of the two freezes the note or its level.
+        let mut music = Music::new(
+            &module(
+                &[
+                    (0, 0, cell(C4, 1, Some(10), 'H', 0x48)),
+                    (1, 0, cell(NO_NOTE, 0, None, 'K', 0x20)),
+                ],
+                4,
+                125,
+            ),
+            UNITY,
+            0,
+        );
+        play(&mut music, 960 * 4);
+        let position = music.channels[0].vibrato_position;
+        play(&mut music, 960 * 4);
+        assert_eq!(music.channels[0].volume, 16, "3 ticks of +2");
+        assert_eq!(
+            music.channels[0].vibrato_position,
+            position + 3 * 4,
+            "the vibrato goes on at speed 4"
+        );
+    }
+
+    #[test]
+    fn portamento_up_lowers_the_period_and_its_fine_form_acts_once() {
+        // F (252 times in TR5) slides notes up; the wrong direction, or FFx on every tick,
+        // would detune whole phrases.
+        let mut up = Music::new(
+            &module(&[(0, 0, cell(C4, 1, None, 'F', 2))], 3, 125),
+            UNITY,
+            0,
+        );
+        play(&mut up, 960 * 3);
+        assert_eq!(up.channels[0].period, 1712 - 2 * 8, "2 ticks of 4 * 2");
+        let mut fine = Music::new(
+            &module(&[(0, 0, cell(C4, 1, None, 'F', 0xF3))], 3, 125),
+            UNITY,
+            0,
+        );
+        play(&mut fine, 960 * 3);
+        assert_eq!(
+            fine.channels[0].period,
+            1712 - 3 * 4,
+            "FF3: once, on the first tick"
+        );
+    }
+
+    #[test]
+    fn retrigger_restarts_the_note_at_its_interval_and_changes_its_volume() {
+        // Q (90 times in TR9) drums a note several times per row; without the restarts, or the
+        // volume change, a roll becomes one long note.
+        let mut music = Music::new(
+            &rising(&[(0, 0, cell(C4, 1, Some(20), 'Q', 0xA3))], 7),
+            UNITY,
+            0,
+        );
+        let out = play(&mut music, 960 * 7);
+        // Restarted at tick 3: 200 frames later a voice plays again, near the sample's start.
+        let (restarted, before) = (out[2 * (3 * 960 + 200)], out[2 * (3 * 960 - 1)]);
+        assert!(
+            restarted > 0 && restarted < before / 4,
+            "{restarted} vs {before}"
+        );
+        assert_eq!(
+            music.channels[0].volume, 24,
+            "+2 at each restart, on ticks 3 and 6"
+        );
+    }
+
+    #[test]
+    fn a_retrigger_without_an_interval_never_overflows() {
+        // Q00 before any Q with an interval repeats nothing; counting its ticks anyway overflowed
+        // after 255 of them and crashed the game in the middle of the music.
+        let mut long = module(
+            &[
+                (0, 0, cell(C4, 1, Some(64), 'Q', 0)),
+                (1, 0, cell(NO_NOTE, 0, None, 'Q', 0)),
+            ],
+            200,
+            125,
+        );
+        long.orders = vec![0];
+        let mut music = Music::new(&long, UNITY, 0);
+        play(&mut music, 960 * 400);
+        assert_eq!(music.position(), (0, 2, 0));
     }
 
     #[test]
