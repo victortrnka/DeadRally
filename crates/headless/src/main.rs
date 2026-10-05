@@ -388,7 +388,7 @@ fn locate_data(cli: Option<&Path>) -> Result<Located, String> {
 type Press = (u64, Key);
 
 /// The keys `--key-at T:KEY` can name; `T` alone presses Space.
-const KEY_NAMES: [(&str, Key); 9] = [
+const KEY_NAMES: [(&str, Key); 10] = [
     ("space", Key::Space),
     ("enter", Key::Enter),
     ("escape", Key::Escape),
@@ -398,6 +398,7 @@ const KEY_NAMES: [(&str, Key); 9] = [
     ("right", Key::Right),
     ("y", Key::Y),
     ("n", Key::N),
+    ("q", Key::Q),
 ];
 
 /// Parses `T` or `T:KEY`.
@@ -443,7 +444,8 @@ fn play(game: &mut Game, ticks: u64, keys: &[Press], mut each: impl FnMut(u64, &
 fn render(data: Option<&Path>, tick: u64, keys: &[Press], out: &Path) -> Result<(), String> {
     let located = locate_data(data)?;
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
-    let mut game = Game::new(assets);
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::new(assets, config);
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame())?.write_png(out)
 }
@@ -553,7 +555,8 @@ fn timeline(
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
-    let mut game = Game::new(assets);
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::new(assets, config);
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -625,7 +628,8 @@ fn render_audio(
             let ticks = seconds.map_or(intro_ticks + STARTUP_AFTER_INTRO_TICKS, |seconds| {
                 seconds * 1_000_000_000 / TICK_NANOS
             });
-            let mut game = Game::new(assets);
+            let config = assets.menu.default_config.clone();
+            let mut game = Game::new(assets, config);
             let mut audio = Vec::new();
             for done in 0..ticks {
                 press_due(&mut game, keys, done);

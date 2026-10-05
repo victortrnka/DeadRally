@@ -189,7 +189,7 @@ fn intro_row(game: &Game) -> (u8, [u8; 3]) {
 
 #[test]
 fn the_intro_starts_with_the_letterbox_and_black_animation_colours() {
-    let game = Game::new(assets());
+    let game = Game::new(assets(), common::config());
     let frame = game.frame();
     assert_eq!(
         (frame.width, frame.height, frame.aspect),
@@ -203,7 +203,7 @@ fn the_intro_starts_with_the_letterbox_and_black_animation_colours() {
 #[test]
 fn each_intro_frame_appears_its_delay_after_the_previous_one() {
     // The intro is cut to its music (M1b); a frame early or late drifts out of sync.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, 3);
     assert_eq!(intro_row(&game), (0, [0, 0, 0]), "nothing before tick 4");
     run(&mut game, 1);
@@ -222,7 +222,7 @@ fn each_intro_frame_appears_its_delay_after_the_previous_one() {
 #[test]
 fn the_last_intro_frame_is_never_shown() {
     // openAnimation blacks the palette as soon as the last frame is drawn, before it is shown.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, INTRO_END - 1);
     assert_eq!(intro_row(&game).0, 17);
     run(&mut game, 1);
@@ -233,7 +233,7 @@ fn the_last_intro_frame_is_never_shown() {
 fn a_key_ends_the_intro_when_the_next_frame_is_due() {
     // The original checks for a key once per frame, so the intro runs on until the next frame
     // would have been shown.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, 1);
     press(&mut game);
     run(&mut game, 2);
@@ -257,7 +257,7 @@ fn a_corrupt_intro_frame_ends_the_intro_instead_of_crashing() {
     let mut broken = assets();
     broken.intro = Animation::from_bytes(PathBuf::from("BROKEN.HAF"), haf).unwrap();
     assert!(broken.intro.frame(0).is_err());
-    let mut game = Game::new(broken);
+    let mut game = Game::new(broken, common::config());
     run(&mut game, 1);
     assert_eq!(shown(&game), (APOGEE, 0));
 }
@@ -266,7 +266,7 @@ fn a_corrupt_intro_frame_ends_the_intro_instead_of_crashing() {
 fn an_empty_intro_goes_straight_to_the_logos() {
     let mut empty = assets();
     empty.intro = Animation::from_frames(Vec::new(), Vec::new());
-    let mut game = Game::new(empty);
+    let mut game = Game::new(empty, common::config());
     assert_eq!(shown(&game), (APOGEE, 0));
     run(&mut game, FADE_IN);
     assert_eq!(shown(&game), (APOGEE, 60));
@@ -279,13 +279,15 @@ fn an_empty_intro_still_starts_the_menu_music() {
     let mut empty = assets();
     empty.intro = Animation::from_frames(Vec::new(), Vec::new());
     empty.menu_music = menu_music();
-    let mut game = Game::new(empty);
+    let mut game = Game::new(empty, common::config());
     assert!(loudness(&mut game, 3).iter().all(|&level| level > 0));
 }
 
 #[test]
-fn a_pad_button_skips_like_a_key() {
-    let mut game = Game::new(assets());
+fn a_pad_button_skips_like_a_key_once_dr_cfg_switches_the_gamepad_on() {
+    let mut config = common::config();
+    config.set_use_joystick(1);
+    let mut game = Game::new(assets(), config);
     game.input(InputEvent::PadButton {
         button: PadButton::A,
         pressed: true,
@@ -308,7 +310,7 @@ fn apogee_brightness(game: &mut Game, ticks: u32) -> Vec<u8> {
 
 #[test]
 fn a_logo_fades_in_holds_and_fades_out_like_the_original() {
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, INTRO_END);
     let brightness = apogee_brightness(&mut game, LOGO - 1);
     // The fade-in climbs one 4 % step per tick from black and stops at 96 %: 63 shows as 60.
@@ -328,7 +330,7 @@ fn a_logo_fades_in_holds_and_fades_out_like_the_original() {
 fn a_key_during_the_fade_in_ends_the_hold_after_one_tick() {
     // The original remembers the press until the hold asks, so impatient players see the logo
     // at full fade for a single tick.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, INTRO_END + 5);
     press(&mut game);
     let brightness = apogee_brightness(&mut game, FADE_IN - 5 + 1);
@@ -341,7 +343,7 @@ fn a_key_during_the_fade_in_ends_the_hold_after_one_tick() {
 fn a_key_during_a_fade_out_ends_the_next_logos_hold_after_one_tick() {
     // The remembered press survives the change of screen, as in the original: a player who
     // presses while Apogee fades out sees the Remedy logo for a single hold tick.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, INTRO_END + FADE_IN + HOLD + 10);
     assert_eq!(shown(&game).0, APOGEE, "Apogee is fading out");
     press(&mut game);
@@ -357,7 +359,7 @@ fn a_key_during_a_fade_out_ends_the_next_logos_hold_after_one_tick() {
 fn a_key_with_the_last_intro_frame_carries_into_the_apogee_hold() {
     // openAnimation stops after its last frame without checking for a key, so the press waits
     // for the Apogee hold.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, 7);
     press(&mut game);
     run(&mut game, INTRO_END - 7 + FADE_IN);
@@ -370,7 +372,7 @@ fn a_key_with_the_last_intro_frame_carries_into_the_apogee_hold() {
 
 #[test]
 fn a_key_during_the_hold_starts_the_fade_out_on_the_next_tick() {
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, INTRO_END + FADE_IN + 50);
     press(&mut game);
     game.tick();
@@ -389,7 +391,7 @@ fn the_title_fades_in_after_both_logos_and_then_to_black_for_the_menu() {
     // shows the pending 96 % step, and `transitionToBlack` then takes the title from 100 % to
     // black in 26 ticks. The original's load takes a moment, so it may skip a step or two of
     // the fade to black; here loading takes no time (spec M2a decision 5).
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, INTRO_END + 2 * LOGO);
     assert_eq!(shown(&game), (TITLE, 0));
     run(&mut game, FADE_IN - 1);
@@ -408,7 +410,7 @@ fn the_title_fades_in_after_both_logos_and_then_to_black_for_the_menu() {
 #[test]
 fn the_audio_stream_stays_full_when_nothing_plays() {
     // The frontend paces itself on the audio queue; missing samples would stall or drift it.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, 30);
     let mut audio = Vec::new();
     game.take_audio(&mut audio);
@@ -425,7 +427,7 @@ fn the_intro_plays_its_music_and_stops_it_when_it_ends() {
     // logos.
     let mut with_music = assets();
     with_music.intro_music = music(true);
-    let mut game = Game::new(with_music);
+    let mut game = Game::new(with_music, common::config());
     let during = loudness(&mut game, INTRO_END - 1);
     assert!(during.iter().all(|&level| level > 0), "{during:?}");
     let after = loudness(&mut game, 5);
@@ -438,7 +440,7 @@ fn the_menu_music_starts_when_the_intro_ends_and_plays_through_the_logos() {
     // they and the title are not silent.
     let mut with_menu = assets();
     with_menu.menu_music = menu_music();
-    let mut game = Game::new(with_menu);
+    let mut game = Game::new(with_menu, common::config());
     let intro = loudness(&mut game, INTRO_END - 1);
     assert!(intro.iter().all(|&level| level == 0), "{intro:?}");
     let after = loudness(&mut game, LOGO + 10);
@@ -460,7 +462,7 @@ fn the_menu_music_plays_at_the_default_configurations_half_volume() {
     tone.orders = vec![0; 46];
     same.intro_music = tone.clone();
     same.menu_music = tone;
-    let mut game = Game::new(same);
+    let mut game = Game::new(same, common::config());
     let intro = i32::from(loudness(&mut game, INTRO_END - 1)[2]);
     let menu = i32::from(loudness(&mut game, 5)[4]);
     assert!(intro > 0, "{intro}");
@@ -477,7 +479,7 @@ fn a_key_that_ends_the_intro_stops_its_sound() {
     let mut with_music = assets();
     with_music.intro_music = music(true);
     with_music.intro.effects = vec![1, 1, 1];
-    let mut game = Game::new(with_music);
+    let mut game = Game::new(with_music, common::config());
     run(&mut game, 1);
     press(&mut game);
     loudness(&mut game, 3);
@@ -490,7 +492,7 @@ fn a_frames_effect_sounds_when_the_frame_is_shown() {
     // Effects mark moments of the intro's picture; one early or late is out of sync with it.
     let mut timed = assets();
     timed.intro.effects = vec![0, 1, 0];
-    let mut game = Game::new(timed);
+    let mut game = Game::new(timed, common::config());
     let levels = loudness(&mut game, 6);
     assert_eq!(&levels[..5], [0, 0, 0, 0, 0], "frame 1 appears at tick 6");
     assert!(levels[5] > 0);
@@ -503,7 +505,7 @@ fn the_intros_effects_take_channels_one_to_six_in_turn() {
     let mut busy = assets();
     busy.intro = Animation::from_frames(vec![1; 10], (0..10).map(|k| intro_frame(k % 3)).collect());
     busy.intro.effects = vec![1; 10];
-    let mut game = Game::new(busy);
+    let mut game = Game::new(busy, common::config());
     let levels = loudness(&mut game, 9);
     let one = i32::from(levels[0]);
     assert!(one > 0);

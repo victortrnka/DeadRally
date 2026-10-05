@@ -4,9 +4,10 @@
 
 mod common;
 
-use common::{BACKGROUND, BIG_A, BIG_B, BIG_D, CREDITS, CURSOR, END, SMALL};
+use common::{BACKGROUND, BIG_A, BIG_B, BIG_D, CREDITS, CURSOR, END, KNOB, SLIDER, SMALL};
 use deadrally_core::{Game, InputEvent, Key, PadAxis, PadButton};
 use deadrally_gamedata::assets::{Assets, Picture};
+use deadrally_gamedata::dr_cfg::DrCfg;
 use deadrally_gamedata::haf::Animation;
 use deadrally_gamedata::image::{Image, Palette};
 use deadrally_gamedata::s3m::{self, Cell, Module, Sample};
@@ -18,6 +19,7 @@ const MENU_SHOWN: u32 = 2 * (25 + 180 + 26) + 25 + 26 + 50;
 /// Where the main menu and the start submenu stand.
 const MAIN: (usize, usize) = (145, 124);
 const START: (usize, usize) = (109, 171);
+const CONFIGURE: (usize, usize) = (95, 146);
 /// Inside the exit question's "yes" and "no".
 const YES: (usize, usize) = (212, 241);
 const NO: (usize, usize) = (382, 241);
@@ -104,7 +106,11 @@ fn run(game: &mut Game, ticks: u32) {
 
 /// A game in the main menu, its fade-in over.
 fn in_menu(assets: Assets) -> Game {
-    let mut game = Game::new(assets);
+    in_menu_with(assets, common::config())
+}
+
+fn in_menu_with(assets: Assets, config: DrCfg) -> Game {
+    let mut game = Game::new(assets, config);
     run(&mut game, MENU_SHOWN);
     game
 }
@@ -163,7 +169,7 @@ fn colour(game: &Game, colour: u8) -> [u8; 3] {
 #[test]
 fn the_menu_fades_in_after_the_title_and_stays_just_below_full_brightness() {
     // The original's fade-in stops at 98 %: white shows as 62, never 63.
-    let mut game = Game::new(assets());
+    let mut game = Game::new(assets(), common::config());
     run(&mut game, MENU_SHOWN - 1);
     let before = colour(&game, BACKGROUND);
     game.tick();
@@ -288,9 +294,11 @@ fn a_held_key_moves_the_highlight_again_after_half_a_second() {
 
 #[test]
 fn the_gamepad_moves_and_chooses_like_the_keys() {
-    // `eventDetected` treats a push as fresh when it was last called within 400 ms without
-    // the stick: a pass of the menu first.
-    let mut game = in_menu(assets());
+    // With the gamepad switched on in dr.cfg. `eventDetected` treats a push as fresh when it
+    // was last called within 400 ms without the stick: a pass of the menu first.
+    let mut config = common::config();
+    config.set_use_joystick(1);
+    let mut game = in_menu_with(assets(), config);
     run(&mut game, 2);
     game.input(InputEvent::PadAxis {
         axis: PadAxis::StickY,
@@ -363,14 +371,14 @@ fn the_submenus_last_row_returns_and_starts_it_over_at_the_top() {
 }
 
 #[test]
-fn rows_waiting_for_later_milestones_do_nothing_when_chosen() {
-    // Configure and the Hall of Fame come with M2b.
+fn the_hall_of_fame_does_nothing_when_chosen_until_m2c() {
     let mut game = in_menu(assets());
+    step(&mut game, Key::Down);
     step(&mut game, Key::Down);
     assert_eq!(sound_after(&mut game, Key::Enter), CHOOSE);
     assert_eq!(
         row_fonts(&game, MAIN),
-        [BIG_B, BIG_D, BIG_A, BIG_B, BIG_B, BIG_B]
+        [BIG_B, BIG_D, BIG_B, BIG_A, BIG_B, BIG_B]
     );
 }
 
@@ -500,4 +508,220 @@ fn a_key_during_a_credits_fade_in_moves_on_as_soon_as_it_is_done() {
     run(&mut game, 15 + 26 + 25);
     assert_eq!(pixel(&game, (5, 5)), CREDITS[1]);
     assert_eq!(colour(&game, CREDITS[1]), [0, 60, 0]);
+}
+
+/// A game in Configure, the file written at start-up taken.
+fn in_configure(config: DrCfg) -> Game {
+    let mut game = in_menu_with(assets(), config);
+    game.take_config();
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    game
+}
+
+/// The `dr.cfg` the game hands out now, if it writes one.
+fn written(game: &mut Game) -> Option<DrCfg> {
+    game.take_config()
+        .map(|bytes| DrCfg::parse(&bytes).unwrap())
+}
+
+/// Where the volume popup's knob shows level `level`.
+fn knob_at(level: usize) -> (usize, usize) {
+    (329 + level + 5, 260)
+}
+
+#[test]
+fn dr_cfg_is_written_at_start_up_counting_the_start() {
+    // mainMenu counts every start and writes the file before the intro.
+    let mut config = common::config();
+    config.set_times_played(4);
+    let mut game = Game::new(assets(), config);
+    game.tick();
+    assert_eq!(written(&mut game).map(|cfg| cfg.times_played()), Some(5));
+    run(&mut game, 50);
+    assert!(game.take_config().is_none(), "only once");
+}
+
+#[test]
+fn configure_opens_over_the_dimmed_main_menu_and_escape_returns_writing_dr_cfg() {
+    let mut game = in_configure(common::config());
+    assert_eq!(
+        row_fonts(&game, CONFIGURE),
+        [BIG_A, BIG_B, BIG_B, BIG_B, BIG_B, BIG_B]
+    );
+    assert_eq!(row_fonts(&game, MAIN)[0], BIG_D, "the main menu dims");
+    assert!(game.take_config().is_none());
+    assert_eq!(sound_after(&mut game, Key::Escape), BACK);
+    assert_eq!(selected(&game), 2, "back on the configure row");
+    assert!(
+        written(&mut game).is_some(),
+        "leaving Configure writes dr.cfg"
+    );
+}
+
+#[test]
+fn the_music_volume_moves_by_two_levels_and_is_kept_on_enter() {
+    // The level is the volume / 512: 64 for the default 50 %; three steps left make 58.
+    let mut game = in_configure(common::config());
+    step(&mut game, Key::Enter);
+    assert_eq!(pixel(&game, (320, 255)), SLIDER);
+    assert_eq!(pixel(&game, knob_at(64)), KNOB);
+    for _ in 0..3 {
+        press(&mut game, Key::Left);
+        run(&mut game, 1);
+    }
+    run(&mut game, 1);
+    assert_eq!(pixel(&game, knob_at(58)), KNOB);
+    assert_eq!(sound_after(&mut game, Key::Enter), BACK);
+    assert_eq!(row_fonts(&game, CONFIGURE)[0], BIG_A, "back in Configure");
+    step(&mut game, Key::Escape);
+    let config = written(&mut game).unwrap();
+    assert_eq!(config.music_volume(), 58 * 512);
+    assert_eq!(config.effects_volume(), 0xC000, "the effects untouched");
+}
+
+#[test]
+fn a_volume_stops_at_its_ends() {
+    let mut game = in_configure(common::config());
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    for _ in 0..80 {
+        press(&mut game, Key::Right);
+        run(&mut game, 1);
+    }
+    run(&mut game, 1);
+    assert_eq!(pixel(&game, knob_at(128)), KNOB);
+    for _ in 0..80 {
+        press(&mut game, Key::Left);
+        run(&mut game, 1);
+    }
+    run(&mut game, 1);
+    assert_eq!(pixel(&game, knob_at(0)), KNOB);
+    step(&mut game, Key::Escape);
+    step(&mut game, Key::Escape);
+    assert_eq!(written(&mut game).unwrap().effects_volume(), 0);
+}
+
+#[test]
+fn define_keyboard_takes_the_next_key_for_the_chosen_control() {
+    let mut game = in_configure(common::config());
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    run(&mut game, 10);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Escape);
+    step(&mut game, Key::Escape);
+    let config = written(&mut game).unwrap();
+    assert_eq!(config.key(1), 0x10, "brake on Q");
+    assert_eq!(config.key(0), 0, "accelerate untouched");
+}
+
+#[test]
+fn define_gamepad_waits_for_the_pad_to_settle_and_enter_means_none() {
+    // While it waits, the original's key reads leave the gamepad alone: a button is taken as
+    // an input, not as Enter or Escape.
+    let mut config = common::config();
+    config.set_use_joystick(1);
+    config.set_pad(0, 5);
+    config.set_pad(1, 4);
+    let mut game = in_configure(config);
+    game.input(InputEvent::PadConnected { connected: true });
+    for _ in 0..3 {
+        step(&mut game, Key::Down);
+    }
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Enter);
+    let button = |game: &mut Game, pressed: bool| {
+        game.input(InputEvent::PadButton {
+            button: PadButton::Y,
+            pressed,
+        });
+    };
+    button(&mut game, true);
+    run(&mut game, 30);
+    button(&mut game, false);
+    run(&mut game, 30);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Enter);
+    run(&mut game, 4);
+    step(&mut game, Key::Escape);
+    step(&mut game, Key::Escape);
+    let config = written(&mut game).unwrap();
+    assert_eq!(config.pad(0), 8, "button 4");
+    assert_eq!(config.pad(1), 0, "none");
+}
+
+#[test]
+fn the_gamepad_switch_without_a_gamepad_shows_the_popup_until_a_key() {
+    let mut game = in_configure(common::config());
+    for _ in 0..4 {
+        step(&mut game, Key::Down);
+    }
+    step(&mut game, Key::Enter);
+    assert_eq!(pixel(&game, (141, 218)), BIG_A, "not detected");
+    run(&mut game, 100);
+    assert_eq!(pixel(&game, (141, 218)), BIG_A, "until a key");
+    step(&mut game, Key::Space);
+    assert_eq!(row_fonts(&game, CONFIGURE)[4], BIG_A, "back in Configure");
+    step(&mut game, Key::Escape);
+    assert_eq!(written(&mut game).unwrap().use_joystick(), 0);
+}
+
+#[test]
+fn the_gamepad_switch_turns_a_connected_gamepad_on_and_off() {
+    let mut game = in_configure(common::config());
+    game.input(InputEvent::PadConnected { connected: true });
+    for _ in 0..4 {
+        step(&mut game, Key::Down);
+    }
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Escape);
+    assert_eq!(written(&mut game).unwrap().use_joystick(), 1);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Escape);
+    assert_eq!(written(&mut game).unwrap().use_joystick(), 0);
+}
+
+#[test]
+fn previous_menu_returns_and_starts_configure_over_at_its_first_row() {
+    // Escape keeps Configure's row; its last row also sets it back.
+    let mut game = in_configure(common::config());
+    for _ in 0..5 {
+        step(&mut game, Key::Down);
+    }
+    assert_eq!(sound_after(&mut game, Key::Enter), CHOOSE);
+    assert_eq!(selected(&game), 2);
+    assert!(written(&mut game).is_some());
+    step(&mut game, Key::Enter);
+    assert_eq!(row_fonts(&game, CONFIGURE)[0], BIG_A);
+}
+
+#[test]
+fn dr_cfg_is_written_after_the_end_screen() {
+    let mut game = in_menu(assets());
+    game.take_config();
+    step(&mut game, Key::Escape);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Left);
+    press(&mut game, Key::Enter);
+    run(&mut game, 2 + 26 + 25 + 560 + 25);
+    assert!(game.take_config().is_none());
+    game.tick();
+    assert!(game.quit_requested());
+    assert!(game.take_config().is_some());
+}
+
+#[test]
+fn a_corrupt_volume_in_dr_cfg_opens_the_popup_at_full_instead_of_crashing() {
+    // A damaged or hand-edited file can hold any number; the slider shows the most it can.
+    let mut config = common::config();
+    config.set_music_volume(0xFB1B_6C00);
+    let mut game = in_configure(config);
+    step(&mut game, Key::Enter);
+    assert_eq!(pixel(&game, knob_at(128)), KNOB);
 }

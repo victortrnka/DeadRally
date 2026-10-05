@@ -23,6 +23,8 @@ Tell DeadRally where the data is. The first of these that is set wins:
 2. the `DEADRALLY_DATA` environment variable;
 3. `data_path = "<dir>"` in `config.toml` in your config directory (on Linux `~/.config/deadrally/config.toml`; `check-data` prints the path on every system).
 
+DeadRally keeps the original's settings, records and Hall of Fame in its own `dr.cfg` next to `config.toml`. When it has none, it reads the game folder's `dr.cfg` once, if there is one; it never writes into the game folder.
+
 `<dir>` may be the folder holding `ENGINE.BPA` or Steam's `Death Rally` folder above it. Check your setup:
 
 ```

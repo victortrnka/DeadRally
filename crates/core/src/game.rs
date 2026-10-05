@@ -1,4 +1,5 @@
 use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::dr_cfg::DrCfg;
 
 use crate::menu::Menu;
 use crate::startup::Startup;
@@ -29,9 +30,10 @@ impl Game {
     ///
     /// If the intro letterbox is not 320x200 ([`Assets::load`] guarantees it is).
     #[must_use]
-    pub fn new(assets: Assets) -> Game {
+    /// `config` is the player's `dr.cfg` (`assets.menu.default_config` when there is none).
+    pub fn new(assets: Assets, config: DrCfg) -> Game {
         Game {
-            scene: Scene::Startup(Box::new(Startup::new(assets))),
+            scene: Scene::Startup(Box::new(Startup::new(assets, config))),
         }
     }
 
@@ -71,6 +73,18 @@ impl Game {
     #[must_use]
     pub fn quit_requested(&self) -> bool {
         matches!(&self.scene, Scene::Menu(menu) if menu.quit_requested())
+    }
+
+    /// The bytes of `dr.cfg` when the original would write the file (at start-up, on leaving
+    /// Configure, after the end screen); `None` otherwise. The frontend writes them to
+    /// DeadRally's own copy.
+    pub fn take_config(&mut self) -> Option<Vec<u8>> {
+        match &mut self.scene {
+            Scene::Startup(scene) => scene.take_config(),
+            Scene::Menu(scene) => scene.take_config(),
+            Scene::Test(_) => None,
+            Scene::Handover => unreachable!("no scene hands over between calls"),
+        }
     }
 
     #[must_use]

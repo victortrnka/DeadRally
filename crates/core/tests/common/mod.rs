@@ -3,8 +3,9 @@
 //! committed.
 
 use deadrally_gamedata::assets::{MenuAssets, Picture};
+use deadrally_gamedata::dr_cfg::{DrCfg, HEADER_BYTES, PAYLOAD_BYTES};
 use deadrally_gamedata::image::{Image, Palette};
-use deadrally_gamedata::text::{Metrics, Texts};
+use deadrally_gamedata::text::{ConfigureTexts, Metrics, Texts};
 use deadrally_gamedata::xm::{Bank, Instrument, Looping};
 
 /// `MENUBG5`, white in `MENU.PAL`.
@@ -25,6 +26,17 @@ pub const END: u8 = 202;
 pub const BACK_SOUND: usize = 22;
 pub const MOVE_SOUND: usize = 25;
 pub const CHOOSE_SOUND: usize = 28;
+/// The volume popups' slider and knob.
+pub const SLIDER: u8 = 70;
+pub const KNOB: u8 = 71;
+
+/// A `dr.cfg` with the original's default volumes, gamepad off.
+pub fn config() -> DrCfg {
+    let mut config = DrCfg::parse(&[0; HEADER_BYTES + PAYLOAD_BYTES]).unwrap();
+    config.set_music_volume(0x8000);
+    config.set_effects_volume(0xC000);
+    config
+}
 
 fn solid(width: u32, height: u32, colour: u8) -> Image {
     Image::new(width, height, vec![colour; (width * height) as usize])
@@ -78,6 +90,19 @@ fn texts() -> Texts {
         big: metrics(32),
         small: metrics(16),
         medium: metrics(9),
+        configure: ConfigureTexts {
+            adjust_music: b"m".to_vec(),
+            adjust_effects: b"e".to_vec(),
+            gamepad_on: b"+".to_vec(),
+            gamepad_off: b"-".to_vec(),
+            not_detected: b"!".to_vec(),
+            press_any_key: b".".to_vec(),
+            controls: vec![b"c".to_vec(); 8],
+            key_prompts: vec![b"k".to_vec(); 8],
+            pad_prompts: vec![b"p".to_vec(); 7],
+            key_names: vec![b"K".to_vec(); 256],
+            pad_names: vec![b"P".to_vec(); 9],
+        },
     }
 }
 
@@ -117,5 +142,8 @@ pub fn menu_assets() -> MenuAssets {
             instruments: effects,
         },
         texts: texts(),
+        slider: solid(172, 24, SLIDER),
+        knob: solid(10, 24, KNOB),
+        default_config: config(),
     }
 }

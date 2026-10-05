@@ -15,6 +15,10 @@ pub enum InputEvent {
         axis: PadAxis,
         value: i16,
     },
+    /// Whether a gamepad is connected now.
+    PadConnected {
+        connected: bool,
+    },
 }
 
 /// The four face buttons of "one stick, four buttons" (brief §1), named by position with Xbox

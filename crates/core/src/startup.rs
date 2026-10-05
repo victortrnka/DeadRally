@@ -7,10 +7,11 @@
 //! `showStartScreen` (0x427880).
 
 use deadrally_gamedata::assets::{Assets, Picture};
+use deadrally_gamedata::dr_cfg::DrCfg;
 use deadrally_gamedata::haf::FRAME_PIXELS;
 use deadrally_gamedata::image::Palette;
 
-use crate::audio::{DEFAULT_EFFECTS_VOLUME, DEFAULT_MUSIC_VOLUME, FULL_VOLUME, Sound};
+use crate::audio::{FULL_VOLUME, Sound};
 use crate::fade::{FADE_FULL, FADE_STEP, fade};
 use crate::keys::Keys;
 use crate::menu::Menu;
@@ -82,10 +83,18 @@ pub(crate) struct Startup {
     effect_channel: usize,
     /// Samples rendered since the last `take_audio`.
     audio: Vec<i16>,
+    /// The player's `dr.cfg`, and whether the original would write it now.
+    config: DrCfg,
+    save: bool,
 }
 
 impl Startup {
-    pub(crate) fn new(assets: Assets) -> Startup {
+    /// `mainMenu` (0x43A020) reads `dr.cfg`, counts the start, writes it back and only then
+    /// plays the intro.
+    pub(crate) fn new(assets: Assets, mut config: DrCfg) -> Startup {
+        config.set_times_played(config.times_played().wrapping_add(1));
+        let mut keys = Keys::default();
+        keys.set_pad_on(config.use_joystick() as i32 > 0);
         let mut startup = Startup {
             assets,
             stage: Stage::Intro { next: 0, waited: 0 },
@@ -93,10 +102,12 @@ impl Startup {
             height: 0,
             pixels: Vec::new(),
             palette: Palette::BLACK,
-            keys: Keys::default(),
+            keys,
             sound: Sound::default(),
             effect_channel: 1,
             audio: Vec::new(),
+            config,
+            save: true,
         };
         if startup.assets.intro.is_empty() {
             // `openAnimation` plays nothing when the file has no frames.
@@ -122,7 +133,7 @@ impl Startup {
         self.stage == Stage::Done
     }
 
-    /// The main menu, taking over the data, the sound and the remembered key.
+    /// The main menu, taking over the data, the sound, the remembered key and `dr.cfg`.
     pub(crate) fn into_menu(self) -> Menu {
         Menu::new(
             self.assets,
@@ -130,7 +141,13 @@ impl Startup {
             self.keys,
             self.audio,
             &self.palette,
+            (self.config, self.save),
         )
+    }
+
+    /// `dr.cfg`'s bytes when the original writes the file, once.
+    pub(crate) fn take_config(&mut self) -> Option<Vec<u8>> {
+        std::mem::take(&mut self.save).then(|| self.config.to_bytes())
     }
 
     pub(crate) fn tick(&mut self) {
@@ -244,10 +261,10 @@ impl Startup {
         self.sound.play_music(
             &self.assets.menu_music,
             MENU_MUSIC_ORDER,
-            DEFAULT_MUSIC_VOLUME,
+            self.config.music_volume(),
         );
         self.sound.load_effects(&self.assets.menu.effects);
-        self.sound.set_effects_volume(DEFAULT_EFFECTS_VOLUME);
+        self.sound.set_effects_volume(self.config.effects_volume());
         self.show(Screen::Apogee)
     }
 
