@@ -10742,7 +10742,7 @@ mod tests {
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 Expected: all pass (266 passed, 16 ignored), no warnings.
 
-Check that the menu tests can fail, one mutation at a time, each undone after (`git checkout crates/core/src/menu`):
+Check that the menu tests can fail, one mutation at a time, each undone after (the files are not in Git yet: undo by hand, or apply Steps 13, 15 and 23 again):
 - `END_HOLD_TICKS` 560 → 500: `the_end_screen_stops_waiting_after_560_ticks` fails.
 - In `main_key`, `if self.main.selected != self.main.rows - 1` → `if true`: `escape_jumps_to_exit_once` fails.
 - In `CreditsIn`, drop the key check after the last step (go to `CreditsHold` always): `a_key_during_a_credits_fade_in_moves_on_as_soon_as_it_is_done` fails.
@@ -12587,7 +12587,7 @@ mod tests {
 - [ ] **Step 4: Run the checks**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-Expected: all pass (267 passed, 17 ignored).
+Expected: all pass (267 passed, 16 ignored; the 17th ignored test comes in Step 9).
 
 - [ ] **Step 5: Write the scenarios**
 
@@ -13270,7 +13270,7 @@ ded37fa17b599c118051f025dab24ce4e618ac7ebd2cebce5b92b66a2e4c8a4e  frame after ti
 ```
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && DEADRALLY_DATA=~/games/DeathRally cargo test-data`
-Expected: all pass (17 passed), among them `the_menu_run_matches_the_committed_manifest`. It cannot fail first: it pins what Task 5 made and Steps 6 to 8 checked. To see that it can fail, change `END_HOLD_TICKS` in `crates/core/src/menu/mod.rs` to 500, run `cargo test --release -p deadrally-headless --test menu_run -- --ignored` (FAIL: the last frames and the sound differ), and undo it.
+Expected: all pass (17 passed), among them `the_menu_run_matches_the_committed_manifest`. It cannot fail first: it pins what Task 5 made and Steps 6 to 8 checked. To see that it can fail, change `BACK_SOUND` in `crates/core/src/menu/mod.rs` from 22 to 25, run `cargo test --release -p deadrally-headless --test menu_run -- --ignored` (FAIL: the sound differs), and undo it. (`END_HOLD_TICKS` would not do: in this run a key ends the end screen after 234 ticks.)
 
 - [ ] **Step 10: Commit**
 
