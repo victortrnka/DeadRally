@@ -121,6 +121,25 @@ impl Exe {
             .ok_or(ExeError::Address(address))
     }
 
+    /// The byte at `address` as the loaded image holds it: the file's byte, or 0 past the
+    /// file's bytes within the section's size in memory; `None` outside every section.
+    pub(crate) fn image_byte(&self, address: u32) -> Option<u8> {
+        self.sections.iter().find_map(|section| {
+            let offset = address.checked_sub(section.address)? as usize;
+            if offset >= section.virtual_size as usize {
+                return None;
+            }
+            Some(if offset < section.file_size {
+                self.bytes
+                    .get(section.file_offset + offset)
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                0
+            })
+        })
+    }
+
     /// The NUL-terminated string at `address`, without its NUL, at most `max` bytes long.
     ///
     /// # Errors
