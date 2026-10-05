@@ -6,7 +6,7 @@ use std::process::{Command, Output};
 
 use tempfile::{TempDir, tempdir};
 
-const REQUIRED_FILES: [&str; 19] = deadrally_gamedata::REQUIRED_FILES;
+const REQUIRED_FILES: [&str; 20] = deadrally_gamedata::REQUIRED_FILES;
 
 /// The binary with an empty, private config directory and no DEADRALLY_DATA, so the
 /// developer's own settings cannot leak into a test.

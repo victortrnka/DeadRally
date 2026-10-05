@@ -2,6 +2,8 @@
 //! something a player of the original would notice: a logo that holds too long, a fade that
 //! ends at the wrong brightness, a key that does not skip.
 
+mod common;
+
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_FRAMES_PER_TICK, Game, InputEvent, Key, PadButton};
 use deadrally_gamedata::assets::{Assets, Picture};
 use std::path::PathBuf;
@@ -64,6 +66,7 @@ fn assets() -> Assets {
         intro_music: music(false),
         intro_effects: effects(),
         menu_music: music(false),
+        menu: common::menu_assets(),
     }
 }
 

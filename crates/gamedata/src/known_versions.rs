@@ -1,6 +1,7 @@
 /// The data files the game needs (brief §9), in canonical upper case. Names on disk match
-/// case-insensitively.
-pub const REQUIRED_FILES: [&str; 19] = [
+/// case-insensitively. `DR.EXE` holds the original's texts (spec M2a §3.1); it is read, never
+/// run.
+pub const REQUIRED_FILES: [&str; 20] = [
     "ENGINE.BPA",
     "IBFILES.BPA",
     "MENU.BPA",
@@ -20,6 +21,7 @@ pub const REQUIRED_FILES: [&str; 19] = [
     "ENDANI0.HAF",
     "END.BMP",
     "RMD.BMP",
+    "DR.EXE",
 ];
 
 /// One file of a known release. Hashes are facts about the data, not the data itself, so they
@@ -130,6 +132,11 @@ const STEAM_358270: KnownVersion = KnownVersion {
             name: "ENDANI0.HAF",
             size: 7_193_340,
             sha256: "cd20359a766a6ee64137869f65caa91ab6b166dc314ef1ef0561943f7b54a362",
+        },
+        KnownFile {
+            name: "DR.EXE",
+            size: 365_952,
+            sha256: "54fe789faca583d67b8e73e7c58908f3f1468c5c8f75942239a60483ae9be58c",
         },
         KnownFile {
             name: "END.BMP",
