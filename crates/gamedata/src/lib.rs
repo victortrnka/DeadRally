@@ -1,5 +1,5 @@
 //! Finds, validates and decodes the player's copy of the original game data (M0 spec section 6,
-//! M1a spec section 4, M1b spec section 4.1).
+//! M1a spec section 4, M1b spec section 4.1, M2a spec section 4.1).
 //!
 //! Data files are only ever opened for reading; nothing is written into the data directory.
 
@@ -10,6 +10,7 @@ pub mod bpk;
 pub mod catalog;
 pub mod cmf;
 mod config;
+pub mod exe;
 pub mod haf;
 pub mod image;
 mod known_versions;
