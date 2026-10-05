@@ -98,38 +98,93 @@ const SHOTS: [(u64, &str); 47] = [
     (8937, "end-125200"),
 ];
 
-/// The run ends when the game asks to quit, a little after the last screenshot.
+/// The menu run ends when the game asks to quit, a little after its last screenshot.
 const MAX_TICKS: u64 = 9_000;
 
-/// One line per screenshot (the frame's pixels and palette) and one for the whole run's sound.
-fn manifest() -> String {
+/// The keys of `scripts/reference/menu-configure.scenario` in the run of
+/// docs/verification/m2b.md: both volume popups, Define Keyboard with Q for accelerate, Define
+/// Gamepad, the gamepad switch (no gamepad under Wine), Escape and "previous menu".
+const CONFIGURE_KEYS: [(u64, Key); 24] = [
+    (6420, Key::Down),
+    (6491, Key::Enter),
+    (6563, Key::Enter),
+    (6634, Key::Left),
+    (6656, Key::Left),
+    (6677, Key::Left),
+    (6742, Key::Enter),
+    (6813, Key::Down),
+    (6849, Key::Enter),
+    (6920, Key::Right),
+    (6992, Key::Enter),
+    (7027, Key::Down),
+    (7063, Key::Enter),
+    (7134, Key::Enter),
+    (7206, Key::Q),
+    (7277, Key::Escape),
+    (7349, Key::Down),
+    (7385, Key::Enter),
+    (7456, Key::Escape),
+    (7528, Key::Down),
+    (7563, Key::Enter),
+    (7635, Key::Space),
+    (7706, Key::Escape),
+    (7778, Key::Enter),
+];
+
+const CONFIGURE_SHOTS: [(u64, &str); 17] = [
+    (6384, "idle"),
+    (6527, "configure"),
+    (6598, "music"),
+    (6705, "music-left"),
+    (6777, "after-music"),
+    (6884, "effects"),
+    (6955, "effects-right"),
+    (7098, "keyboard"),
+    (7170, "press-key"),
+    (7241, "after-q"),
+    (7312, "after-keyboard"),
+    (7419, "gamepad"),
+    (7491, "after-gamepad"),
+    (7598, "not-detected"),
+    (7670, "after-not-detected"),
+    (7741, "escape"),
+    (7812, "previous"),
+];
+
+/// One line per screenshot (the frame's pixels and palette), one for the run's sound and one
+/// for the last `dr.cfg` it wrote. The run stops at `ticks`, or earlier when the game quits.
+fn manifest(keys: &[(u64, Key)], shots: &[(u64, &str)], ticks: u64) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
     let mut game = Game::new(assets, config);
     let mut lines = String::new();
     let mut audio = Vec::new();
-    let mut ticks = 0;
-    while !game.quit_requested() && ticks < MAX_TICKS {
-        for &(_, key) in KEYS.iter().filter(|(at, _)| *at == ticks) {
+    let mut written = None;
+    let mut done = 0;
+    while !game.quit_requested() && done < ticks {
+        for &(_, key) in keys.iter().filter(|(at, _)| *at == done) {
             for pressed in [true, false] {
                 game.input(InputEvent::Key { key, pressed });
             }
         }
         game.tick();
         game.take_audio(&mut audio);
-        ticks += 1;
-        for &(_, name) in SHOTS.iter().filter(|(at, _)| *at == ticks) {
+        written = game.take_config().or(written);
+        done += 1;
+        for &(_, name) in shots.iter().filter(|(at, _)| *at == done) {
             let frame = game.frame();
             let mut hasher = Sha256::new();
             hasher.update(frame.pixels);
             hasher.update(frame.palette.as_flattened());
-            writeln!(lines, "{}  frame after tick {ticks} ({name})", hex(hasher)).unwrap();
+            writeln!(lines, "{}  frame after tick {done} ({name})", hex(hasher)).unwrap();
         }
     }
-    assert!(game.quit_requested(), "the end screen asks to quit");
     let mut hasher = Sha256::new();
     hash(&audio, &mut hasher);
-    writeln!(lines, "{}  sound of {ticks} ticks", hex(hasher)).unwrap();
+    writeln!(lines, "{}  sound of {done} ticks", hex(hasher)).unwrap();
+    let mut hasher = Sha256::new();
+    hasher.update(written.expect("dr.cfg is written at start-up"));
+    writeln!(lines, "{}  dr.cfg written last", hex(hasher)).unwrap();
     lines
 }
 
@@ -139,5 +194,20 @@ fn the_menu_run_matches_the_committed_manifest() {
     // The manifest was written after every screenshot of the run equalled our frame at its
     // tick and the sound was measured against the recording (docs/verification/m2a.md); a
     // change to the menu must not alter a frame or a sound unnoticed.
-    check_manifest("menu-run.sha256", &manifest(), "the menu run");
+    let lines = manifest(&KEYS, &SHOTS, MAX_TICKS);
+    assert!(
+        lines.contains("after tick 8937"),
+        "the end screen asks to quit after its fade"
+    );
+    check_manifest("menu-run.sha256", &lines, "the menu run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_configure_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and the
+    // dr.cfg written last equalled the original's but for its random byte
+    // (docs/verification/m2b.md).
+    let lines = manifest(&CONFIGURE_KEYS, &CONFIGURE_SHOTS, 7_900);
+    check_manifest("configure-run.sha256", &lines, "the configure run");
 }
