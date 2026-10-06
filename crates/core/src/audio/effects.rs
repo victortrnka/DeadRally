@@ -30,6 +30,8 @@ struct Sound {
 pub(crate) struct Effects {
     sounds: Vec<Option<Sound>>,
     channels: [Option<Voice>; CHANNELS],
+    /// The effect (0-based) each channel last started.
+    started: [usize; CHANNELS],
     /// Voices cut off by a new effect on their channel, fading out.
     fading: Vec<Voice>,
 }
@@ -62,6 +64,7 @@ impl Effects {
         Effects {
             sounds,
             channels: std::array::from_fn(|_| None),
+            started: [0; CHANNELS],
             fading: Vec::new(),
         }
     }
@@ -74,21 +77,28 @@ impl Effects {
             old.release();
             self.fading.push(old);
         }
-        let Some(Some(sound)) = usize::from(effect)
-            .checked_sub(1)
-            .and_then(|index| self.sounds.get(index))
-        else {
+        let Some(index) = usize::from(effect).checked_sub(1) else {
             return;
         };
-        // The volume byte (volume * 64 >> 16) + 16 sets the channel volume 0..=64; the final
-        // volume is 64 * volume * 255 / (64 * 64) / 2 of 255 (fadeout and global volume full).
-        let channel_volume = i64::from((volume.min(FULL) * 64) >> 16);
-        let final_volume = channel_volume * 255 / 128;
-        let (left, right) = pan(final_volume, sound.panning);
+        let Some(Some(sound)) = self.sounds.get(index) else {
+            return;
+        };
         let mut voice = Voice::new(Arc::clone(&sound.data), sound.looping, 0);
-        voice.set_frequency(frequency(sound, pitch));
-        voice.set_volume(left, right);
+        tune(&mut voice, sound, volume, pitch);
         self.channels[slot] = Some(voice);
+        self.started[slot] = index;
+    }
+
+    /// Sets the volume and pitch of the effect playing on `channel` (1-based), as the race
+    /// does for the engine every tick (`sub_43C1B0`); nothing when the channel is silent.
+    pub(crate) fn set(&mut self, channel: usize, volume: u32, pitch: u32) {
+        let slot = channel - 1;
+        if let (Some(voice), Some(Some(sound))) = (
+            self.channels[slot].as_mut(),
+            self.sounds.get(self.started[slot]),
+        ) {
+            tune(voice, sound, volume, pitch);
+        }
     }
 
     /// Silences `channel` (1-based) with a short fade.
@@ -126,6 +136,17 @@ impl Effects {
         }
         self.fading.retain(|voice| !voice.finished());
     }
+}
+
+/// A voice's frequency and volume for `sound` at `volume` and `pitch`: the volume byte
+/// (volume * 64 >> 16) + 16 sets the channel volume 0..=64; the final volume is 64 * volume *
+/// 255 / (64 * 64) / 2 of 255 (fadeout and global volume full).
+fn tune(voice: &mut Voice, sound: &Sound, volume: u32, pitch: u32) {
+    let channel_volume = i64::from((volume.min(FULL) * 64) >> 16);
+    let final_volume = channel_volume * 255 / 128;
+    let (left, right) = pan(final_volume, sound.panning);
+    voice.set_frequency(frequency(sound, pitch));
+    voice.set_volume(left, right);
 }
 
 /// minifmod's linear frequency: period `7680 - (6 * pitch / 65536 + 46 + relative) * 64 -

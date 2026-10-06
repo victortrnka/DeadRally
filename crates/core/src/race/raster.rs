@@ -13,11 +13,22 @@ const ROWS: i32 = 200;
 const ROW_LIMIT: i32 = 512;
 
 /// MSVC's `_ftol`: towards zero, and 0x80000000 for what does not fit.
-fn ftol(value: f64) -> i32 {
+pub(super) fn ftol(value: f64) -> i32 {
     if value.is_nan() || value >= 2_147_483_648.0 || value <= -2_147_483_649.0 {
         i32::MIN
     } else {
         value as i32
+    }
+}
+
+/// The original's rounding of a coordinate: `_ftol`, plus 1 when the fraction is 0.5 or more
+/// (so half up for positive values, towards zero for negative ones).
+pub(super) fn nearest(value: f64) -> i32 {
+    let whole = ftol(value);
+    if value - f64::from(whole) < 0.5 {
+        whole
+    } else {
+        ftol(value + 1.0)
     }
 }
 

@@ -742,6 +742,767 @@ const RACE_START_SHOTS: [(u64, &str); 55] = [
     (3248, "r55"),
 ];
 
+/// The keys held in `scripts/reference/drive.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`): Up from before the start for 324 ticks, Left and Right 14 ticks each on the way.
+const DRIVE_HELD: [Held; 3] = [
+    (3359, Key::Up, 324),
+    (3540, Key::Left, 14),
+    (3583, Key::Right, 14),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the countdown, the
+/// car pulling away with its wheels spinning, smoke and tire marks, the turns, the grass
+/// slowing it, rolling out.
+const DRIVE_SHOTS: [(u64, &str); 61] = [
+    (3324, "race"),
+    (3366, "d01"),
+    (3374, "d02"),
+    (3381, "d03"),
+    (3389, "d04"),
+    (3396, "d05"),
+    (3403, "d06"),
+    (3410, "d07"),
+    (3417, "d08"),
+    (3424, "d09"),
+    (3432, "d10"),
+    (3439, "d11"),
+    (3446, "d12"),
+    (3453, "d13"),
+    (3460, "d14"),
+    (3468, "d15"),
+    (3475, "d16"),
+    (3481, "d17"),
+    (3489, "d18"),
+    (3496, "d19"),
+    (3503, "d20"),
+    (3510, "d21"),
+    (3517, "d22"),
+    (3525, "d23"),
+    (3532, "d24"),
+    (3540, "d25"),
+    (3546, "d26"),
+    (3555, "d27"),
+    (3560, "d28"),
+    (3567, "d29"),
+    (3574, "d30"),
+    (3583, "d31"),
+    (3589, "d32"),
+    (3597, "d33"),
+    (3603, "d34"),
+    (3610, "d35"),
+    (3617, "d36"),
+    (3624, "d37"),
+    (3632, "d38"),
+    (3639, "d39"),
+    (3646, "d40"),
+    (3653, "d41"),
+    (3660, "d42"),
+    (3667, "d43"),
+    (3673, "d44"),
+    (3684, "d45"),
+    (3689, "d46"),
+    (3696, "d47"),
+    (3703, "d48"),
+    (3710, "d49"),
+    (3716, "d50"),
+    (3724, "d51"),
+    (3730, "d52"),
+    (3739, "d53"),
+    (3746, "d54"),
+    (3752, "d55"),
+    (3759, "d56"),
+    (3766, "d57"),
+    (3774, "d58"),
+    (3781, "d59"),
+    (3789, "d60"),
+];
+
+/// The keys held in `scripts/reference/collide.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched): Down from before the start for 250 ticks, the car reversing
+/// into the one behind, then Up for 57.
+const COLLIDE_HELD: [Held; 2] = [(3359, Key::Down, 250), (3673, Key::Up, 57)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the car reversing,
+/// knocking the car behind back again and again, pulling away.
+const COLLIDE_SHOTS: [(u64, &str); 61] = [
+    (3321, "race"),
+    (3366, "c01"),
+    (3373, "c02"),
+    (3379, "c03"),
+    (3386, "c04"),
+    (3393, "c05"),
+    (3400, "c06"),
+    (3408, "c07"),
+    (3415, "c08"),
+    (3422, "c09"),
+    (3429, "c10"),
+    (3436, "c11"),
+    (3442, "c12"),
+    (3451, "c13"),
+    (3457, "c14"),
+    (3465, "c15"),
+    (3472, "c16"),
+    (3479, "c17"),
+    (3486, "c18"),
+    (3493, "c19"),
+    (3500, "c20"),
+    (3508, "c21"),
+    (3515, "c22"),
+    (3522, "c23"),
+    (3529, "c24"),
+    (3535, "c25"),
+    (3543, "c26"),
+    (3551, "c27"),
+    (3558, "c28"),
+    (3565, "c29"),
+    (3572, "c30"),
+    (3579, "c31"),
+    (3586, "c32"),
+    (3593, "c33"),
+    (3600, "c34"),
+    (3609, "c35"),
+    (3613, "c36"),
+    (3622, "c37"),
+    (3627, "c38"),
+    (3636, "c39"),
+    (3643, "c40"),
+    (3649, "c41"),
+    (3657, "c42"),
+    (3664, "c43"),
+    (3671, "c44"),
+    (3679, "c45"),
+    (3686, "c46"),
+    (3693, "c47"),
+    (3700, "c48"),
+    (3708, "c49"),
+    (3715, "c50"),
+    (3722, "c51"),
+    (3730, "c52"),
+    (3736, "c53"),
+    (3743, "c54"),
+    (3750, "c55"),
+    (3758, "c56"),
+    (3765, "c57"),
+    (3772, "c58"),
+    (3779, "c59"),
+    (3786, "c60"),
+];
+
+/// The keys held in `scripts/reference/pickup.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched): the car standing until the first power-ups appear, then
+/// Up for 120 ticks and Left for 6, over the turbo laid ahead of it.
+const PICKUP_HELD: [Held; 2] = [(3651, Key::Up, 120), (3654, Key::Left, 6)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the power-ups
+/// appearing, the car pulling away and taking the turbo, its pixels put back.
+const PICKUP_SHOTS: [(u64, &str); 36] = [
+    (3610, "u00"),
+    (3617, "u01"),
+    (3624, "u02"),
+    (3631, "u03"),
+    (3638, "u04"),
+    (3645, "u05"),
+    (3654, "u06"),
+    (3660, "u07"),
+    (3667, "u08"),
+    (3674, "u09"),
+    (3681, "u10"),
+    (3688, "u11"),
+    (3695, "u12"),
+    (3702, "u13"),
+    (3710, "u14"),
+    (3717, "u15"),
+    (3724, "u16"),
+    (3731, "u17"),
+    (3738, "u18"),
+    (3745, "u19"),
+    (3753, "u20"),
+    (3760, "u21"),
+    (3767, "u22"),
+    (3774, "u23"),
+    (3781, "u24"),
+    (3788, "u25"),
+    (3795, "u26"),
+    (3802, "u27"),
+    (3810, "u28"),
+    (3817, "u29"),
+    (3824, "u30"),
+    (3831, "u31"),
+    (3838, "u32"),
+    (3845, "u33"),
+    (3853, "u34"),
+    (3860, "u35"),
+];
+
+/// The keys held in `scripts/reference/pedestrian.scenario`'s run of
+/// `docs/verification/m4c.md` (`--no-ai`, its state watched): Up from before the start for
+/// 468 ticks, Right for 50 through the first U-turn.
+const PEDESTRIAN_HELD: [Held; 2] = [(3361, Key::Up, 468), (3511, Key::Right, 50)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the U-turn, two
+/// pedestrians run over, the red tracks after them.
+const PEDESTRIAN_SHOTS: [(u64, &str); 66] = [
+    (3324, "race"),
+    (3367, "h01"),
+    (3374, "h02"),
+    (3382, "h03"),
+    (3389, "h04"),
+    (3396, "h05"),
+    (3403, "h06"),
+    (3410, "h07"),
+    (3417, "h08"),
+    (3424, "h09"),
+    (3432, "h10"),
+    (3439, "h11"),
+    (3446, "h12"),
+    (3453, "h13"),
+    (3460, "h14"),
+    (3467, "h15"),
+    (3474, "h16"),
+    (3482, "h17"),
+    (3489, "h18"),
+    (3496, "h19"),
+    (3503, "h20"),
+    (3511, "h21"),
+    (3517, "h22"),
+    (3524, "h23"),
+    (3532, "h24"),
+    (3539, "h25"),
+    (3546, "h26"),
+    (3553, "h27"),
+    (3562, "h28"),
+    (3567, "h29"),
+    (3574, "h30"),
+    (3582, "h31"),
+    (3589, "h32"),
+    (3596, "h33"),
+    (3603, "h34"),
+    (3610, "h35"),
+    (3617, "h36"),
+    (3625, "h37"),
+    (3632, "h38"),
+    (3639, "h39"),
+    (3647, "h40"),
+    (3653, "h41"),
+    (3660, "h42"),
+    (3667, "h43"),
+    (3675, "h44"),
+    (3682, "h45"),
+    (3689, "h46"),
+    (3696, "h47"),
+    (3703, "h48"),
+    (3710, "h49"),
+    (3717, "h50"),
+    (3725, "h51"),
+    (3732, "h52"),
+    (3739, "h53"),
+    (3746, "h54"),
+    (3753, "h55"),
+    (3760, "h56"),
+    (3767, "h57"),
+    (3774, "h58"),
+    (3782, "h59"),
+    (3789, "h60"),
+    (3796, "h61"),
+    (3803, "h62"),
+    (3810, "h63"),
+    (3817, "h64"),
+    (3824, "h65"),
+];
+
+/// The keys held in `scripts/reference/guns.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched): Left from before the start for 96 ticks, turning the
+/// standing car half round, then the gun key for 60.
+const GUNS_HELD: [Held; 2] = [(3360, Key::Left, 96), (3625, Key::LeftCtrl, 60)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the car turned, its
+/// gun firing at the car behind it, the flashes and the sparks, the target's damage.
+const GUNS_SHOTS: [(u64, &str); 23] = [
+    (3323, "race"),
+    (3467, "turned"),
+    (3610, "g00"),
+    (3617, "g01"),
+    (3623, "g02"),
+    (3630, "g03"),
+    (3638, "g04"),
+    (3645, "g05"),
+    (3652, "g06"),
+    (3659, "g07"),
+    (3666, "g08"),
+    (3674, "g09"),
+    (3681, "g10"),
+    (3687, "g11"),
+    (3695, "g12"),
+    (3703, "g13"),
+    (3710, "g14"),
+    (3717, "g15"),
+    (3723, "g16"),
+    (3731, "g17"),
+    (3738, "g18"),
+    (3745, "g19"),
+    (3753, "g20"),
+];
+
+/// The keys held in `scripts/reference/mines.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game with three mines): the mine key, again inside
+/// its wait, Down backing over the mine, the mine key, then the accelerator with the horn.
+const MINES_HELD: [Held; 6] = [
+    (3640, Key::LeftAlt, 7),
+    (3654, Key::LeftAlt, 7),
+    (3697, Key::Down, 50),
+    (3797, Key::LeftAlt, 7),
+    (3812, Key::Up, 64),
+    (3826, Key::Space, 43),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the mine behind the
+/// car, the blast's pictures, the crater, the mines left in the HUD, the horn's drive.
+const MINES_SHOTS: [(u64, &str); 31] = [
+    (3324, "race"),
+    (3610, "m00"),
+    (3647, "m01"),
+    (3661, "m02"),
+    (3682, "m03"),
+    (3703, "m04"),
+    (3710, "m05"),
+    (3718, "m06"),
+    (3725, "m07"),
+    (3732, "m08"),
+    (3739, "m09"),
+    (3746, "m10"),
+    (3753, "m11"),
+    (3760, "m12"),
+    (3767, "m13"),
+    (3775, "m14"),
+    (3782, "m15"),
+    (3804, "h0"),
+    (3811, "h1"),
+    (3818, "h2"),
+    (3826, "h3"),
+    (3832, "h4"),
+    (3839, "h5"),
+    (3846, "h6"),
+    (3853, "h7"),
+    (3860, "h8"),
+    (3869, "h9"),
+    (3876, "h10"),
+    (3882, "h11"),
+    (3889, "h12"),
+    (3896, "h13"),
+];
+
+/// The keys held in `scripts/reference/rocket.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game with a rocket): Up from the start, the turbo
+/// with it for 71 ticks.
+const ROCKET_HELD: [Held; 2] = [(3388, Key::Up, 122), (3403, Key::LeftShift, 71)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the rocket's flame
+/// behind the car, its two pictures taking turns, gone with the turbo.
+const ROCKET_SHOTS: [(u64, &str); 22] = [
+    (3323, "race"),
+    (3394, "r00"),
+    (3403, "r01"),
+    (3409, "r02"),
+    (3416, "r03"),
+    (3423, "r04"),
+    (3430, "r05"),
+    (3437, "r06"),
+    (3444, "r07"),
+    (3452, "r08"),
+    (3459, "r09"),
+    (3466, "r10"),
+    (3474, "r11"),
+    (3480, "r12"),
+    (3487, "r13"),
+    (3494, "r14"),
+    (3502, "r15"),
+    (3510, "r16"),
+    (3516, "r17"),
+    (3523, "r18"),
+    (3530, "r19"),
+    (3537, "r20"),
+];
+
+/// The keys held in `scripts/reference/wreck.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game at 99 % damage with a mine): the mine key,
+/// Down backing over the mine, and Enter once the race is over.
+const WRECK_HELD: [Held; 3] = [
+    (3638, Key::LeftAlt, 7),
+    (3695, Key::Down, 50),
+    (4180, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the blast wrecking
+/// the car, its fire's pictures, the medals rolling to the new places, 300 ticks on the box
+/// saying the race is over flying in and apart, and the view tilting away.
+const WRECK_SHOTS: [(u64, &str); 85] = [
+    (3323, "race"),
+    (3610, "w00"),
+    (3701, "w01"),
+    (3708, "w02"),
+    (3715, "w03"),
+    (3723, "w04"),
+    (3730, "w05"),
+    (3737, "w06"),
+    (3745, "w07"),
+    (3751, "w08"),
+    (3757, "w09"),
+    (3765, "w10"),
+    (3772, "w11"),
+    (3780, "w12"),
+    (3787, "w13"),
+    (3793, "w14"),
+    (3801, "w15"),
+    (3808, "w16"),
+    (3815, "w17"),
+    (3822, "w18"),
+    (3829, "w19"),
+    (3837, "w20"),
+    (3844, "w21"),
+    (3850, "w22"),
+    (3858, "w23"),
+    (3865, "w24"),
+    (3873, "w25"),
+    (3880, "w26"),
+    (3886, "w27"),
+    (3894, "w28"),
+    (3901, "w29"),
+    (3907, "w30"),
+    (3916, "w31"),
+    (3922, "w32"),
+    (3930, "w33"),
+    (3937, "w34"),
+    (3943, "w35"),
+    (3951, "w36"),
+    (3958, "w37"),
+    (3967, "w38"),
+    (3973, "w39"),
+    (3979, "w40"),
+    (3987, "w41"),
+    (3994, "w42"),
+    (4000, "w43"),
+    (4008, "w44"),
+    (4015, "w45"),
+    (4023, "w46"),
+    (4030, "w47"),
+    (4037, "w48"),
+    (4044, "w49"),
+    (4051, "w50"),
+    (4058, "w51"),
+    (4065, "w52"),
+    (4073, "w53"),
+    (4080, "w54"),
+    (4087, "w55"),
+    (4094, "w56"),
+    (4101, "w57"),
+    (4108, "w58"),
+    (4115, "w59"),
+    (4123, "w60"),
+    (4130, "w61"),
+    (4137, "w62"),
+    (4144, "w63"),
+    (4151, "w64"),
+    (4158, "w65"),
+    (4165, "w66"),
+    (4172, "w67"),
+    (4179, "w68"),
+    (4187, "w69"),
+    (4193, "w70"),
+    (4200, "w71"),
+    (4207, "w72"),
+    (4215, "w73"),
+    (4222, "w74"),
+    (4229, "w75"),
+    (4236, "w76"),
+    (4243, "w77"),
+    (4250, "w78"),
+    (4257, "w79"),
+    (4265, "w80"),
+    (4272, "w81"),
+    (4279, "w82"),
+    (4284, "w83"),
+];
+
+/// The keys held in `scripts/reference/spikes.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game with spikes): Left from before the start
+/// for 100 ticks, turning the standing car round, then Up into the car behind.
+const SPIKES_HELD: [Held; 2] = [(3360, Key::Left, 100), (3481, Key::Up, 86)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the spiked car
+/// turned, driving into the car behind and tearing into it.
+const SPIKES_SHOTS: [(u64, &str); 27] = [
+    (3324, "race"),
+    (3467, "turned"),
+    (3473, "s00"),
+    (3480, "s01"),
+    (3488, "s02"),
+    (3495, "s03"),
+    (3502, "s04"),
+    (3509, "s05"),
+    (3516, "s06"),
+    (3523, "s07"),
+    (3530, "s08"),
+    (3538, "s09"),
+    (3545, "s10"),
+    (3552, "s11"),
+    (3559, "s12"),
+    (3568, "s13"),
+    (3573, "s14"),
+    (3580, "s15"),
+    (3588, "s16"),
+    (3595, "s17"),
+    (3602, "s18"),
+    (3609, "s19"),
+    (3616, "s20"),
+    (3623, "s21"),
+    (3630, "s22"),
+    (3638, "s23"),
+    (3646, "s24"),
+];
+
+/// The keys held in `scripts/reference/help.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`): F1 after the start, Enter on each of the help's pages, Escape, F1 in the pause
+/// box, Enter on each page again.
+const HELP_HELD: [Held; 7] = [
+    (3465, Key::F1, 7),
+    (3675, Key::Enter, 7),
+    (3885, Key::Enter, 7),
+    (4100, Key::Escape, 7),
+    (4340, Key::F1, 7),
+    (4585, Key::Enter, 7),
+    (4795, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the race fading out,
+/// the keys' page with the controls' keys, the tips' page, the race fading back in; the pause
+/// box flying in and apart on F1, and the help again.
+const HELP_SHOTS: [(u64, &str); 224] = [
+    (3324, "race"),
+    (3453, "h000"),
+    (3460, "h001"),
+    (3467, "h002"),
+    (3474, "h003"),
+    (3480, "h004"),
+    (3487, "h005"),
+    (3494, "h006"),
+    (3501, "h007"),
+    (3508, "h008"),
+    (3515, "h009"),
+    (3523, "h010"),
+    (3530, "h011"),
+    (3537, "h012"),
+    (3544, "h013"),
+    (3551, "h014"),
+    (3558, "h015"),
+    (3565, "h016"),
+    (3572, "h017"),
+    (3580, "h018"),
+    (3587, "h019"),
+    (3593, "h020"),
+    (3600, "h021"),
+    (3607, "h022"),
+    (3614, "h023"),
+    (3621, "h024"),
+    (3628, "h025"),
+    (3635, "h026"),
+    (3642, "h027"),
+    (3649, "h028"),
+    (3656, "h029"),
+    (3663, "h030"),
+    (3670, "h031"),
+    (3676, "h032"),
+    (3683, "h033"),
+    (3689, "h034"),
+    (3696, "h035"),
+    (3703, "h036"),
+    (3710, "h037"),
+    (3718, "h038"),
+    (3725, "h039"),
+    (3732, "h040"),
+    (3739, "h041"),
+    (3746, "h042"),
+    (3753, "h043"),
+    (3760, "h044"),
+    (3767, "h045"),
+    (3775, "h046"),
+    (3782, "h047"),
+    (3789, "h048"),
+    (3796, "h049"),
+    (3803, "h050"),
+    (3810, "h051"),
+    (3817, "h052"),
+    (3824, "h053"),
+    (3831, "h054"),
+    (3838, "h055"),
+    (3845, "h056"),
+    (3852, "h057"),
+    (3859, "h058"),
+    (3866, "h059"),
+    (3873, "h060"),
+    (3880, "h061"),
+    (3886, "h062"),
+    (3893, "h063"),
+    (3899, "h064"),
+    (3906, "h065"),
+    (3913, "h066"),
+    (3921, "h067"),
+    (3928, "h068"),
+    (3935, "h069"),
+    (3942, "h070"),
+    (3949, "h071"),
+    (3956, "h072"),
+    (3963, "h073"),
+    (3971, "h074"),
+    (3978, "h075"),
+    (3985, "h076"),
+    (3992, "h077"),
+    (3999, "h078"),
+    (4006, "h079"),
+    (4013, "h080"),
+    (4020, "h081"),
+    (4028, "h082"),
+    (4034, "h083"),
+    (4041, "h084"),
+    (4048, "h085"),
+    (4055, "h086"),
+    (4063, "h087"),
+    (4069, "h088"),
+    (4078, "h089"),
+    (4083, "h090"),
+    (4090, "h091"),
+    (4097, "h092"),
+    (4108, "h093"),
+    (4113, "h094"),
+    (4121, "h095"),
+    (4128, "h096"),
+    (4135, "h097"),
+    (4142, "h098"),
+    (4149, "h099"),
+    (4156, "h100"),
+    (4163, "h101"),
+    (4171, "h102"),
+    (4178, "h103"),
+    (4185, "h104"),
+    (4192, "h105"),
+    (4199, "h106"),
+    (4206, "h107"),
+    (4214, "h108"),
+    (4221, "h109"),
+    (4223, "h110"),
+    (4230, "h111"),
+    (4237, "h112"),
+    (4244, "h113"),
+    (4251, "h114"),
+    (4258, "h115"),
+    (4265, "h116"),
+    (4272, "h117"),
+    (4279, "h118"),
+    (4286, "h119"),
+    (4293, "h120"),
+    (4300, "h121"),
+    (4307, "h122"),
+    (4314, "h123"),
+    (4321, "h124"),
+    (4328, "h125"),
+    (4335, "h126"),
+    (4342, "h127"),
+    (4348, "h128"),
+    (4354, "h129"),
+    (4361, "h130"),
+    (4368, "h131"),
+    (4375, "h132"),
+    (4382, "h133"),
+    (4389, "h134"),
+    (4397, "h135"),
+    (4404, "h136"),
+    (4411, "h137"),
+    (4418, "h138"),
+    (4425, "h139"),
+    (4432, "h140"),
+    (4439, "h141"),
+    (4446, "h142"),
+    (4453, "h143"),
+    (4461, "h144"),
+    (4468, "h145"),
+    (4475, "h146"),
+    (4482, "h147"),
+    (4489, "h148"),
+    (4496, "h149"),
+    (4503, "h150"),
+    (4511, "h151"),
+    (4518, "h152"),
+    (4525, "h153"),
+    (4531, "h154"),
+    (4538, "h155"),
+    (4545, "h156"),
+    (4552, "h157"),
+    (4559, "h158"),
+    (4566, "h159"),
+    (4573, "h160"),
+    (4580, "h161"),
+    (4586, "h162"),
+    (4594, "h163"),
+    (4600, "h164"),
+    (4607, "h165"),
+    (4614, "h166"),
+    (4621, "h167"),
+    (4628, "h168"),
+    (4635, "h169"),
+    (4642, "h170"),
+    (4649, "h171"),
+    (4657, "h172"),
+    (4664, "h173"),
+    (4671, "h174"),
+    (4678, "h175"),
+    (4685, "h176"),
+    (4692, "h177"),
+    (4700, "h178"),
+    (4707, "h179"),
+    (4713, "h180"),
+    (4720, "h181"),
+    (4727, "h182"),
+    (4734, "h183"),
+    (4741, "h184"),
+    (4748, "h185"),
+    (4755, "h186"),
+    (4762, "h187"),
+    (4769, "h188"),
+    (4776, "h189"),
+    (4783, "h190"),
+    (4790, "h191"),
+    (4796, "h192"),
+    (4803, "h193"),
+    (4809, "h194"),
+    (4816, "h195"),
+    (4823, "h196"),
+    (4830, "h197"),
+    (4837, "h198"),
+    (4845, "h199"),
+    (4852, "h200"),
+    (4859, "h201"),
+    (4866, "h202"),
+    (4873, "h203"),
+    (4880, "h204"),
+    (4887, "h205"),
+    (4895, "h206"),
+    (4902, "h207"),
+    (4909, "h208"),
+    (4916, "h209"),
+    (4923, "h210"),
+    (4930, "h211"),
+    (4937, "h212"),
+    (4944, "h213"),
+    (4951, "h214"),
+    (4958, "h215"),
+    (4965, "h216"),
+    (4973, "h217"),
+    (4979, "h218"),
+    (4988, "h219"),
+    (4993, "h220"),
+    (5000, "h221"),
+    (5007, "h222"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -805,9 +1566,9 @@ const PAUSE_SHOTS: [(u64, &str); 50] = [
 /// The keys held in `scripts/reference/abort.scenario`'s run: Escape, then Y.
 const ABORT_HELD: [Held; 2] = [(3397, Key::Escape, 7), (3576, Key::Y, 7)];
 
-/// The ticks after which our frame equalled each screenshot of that run: the box landed, and
-/// flying apart before the race ends.
-const ABORT_SHOTS: [(u64, &str); 9] = [
+/// The ticks after which our frame equalled each screenshot of that run: the box landed,
+/// flying apart, the race's last frame and the view tilting away (spec M4c).
+const ABORT_SHOTS: [(u64, &str); 16] = [
     (3555, "box"),
     (3584, "a01"),
     (3589, "a02"),
@@ -817,6 +1578,13 @@ const ABORT_SHOTS: [(u64, &str); 9] = [
     (3618, "a06"),
     (3625, "a07"),
     (3632, "a08"),
+    (3639, "a09"),
+    (3648, "a10"),
+    (3655, "a11"),
+    (3662, "a12"),
+    (3669, "a13"),
+    (3676, "a14"),
+    (3680, "a15"),
 ];
 
 /// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
@@ -1252,10 +2020,202 @@ fn the_pause_run_matches_the_committed_manifest() {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_drive_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4c.md): a wrong step of the car's physics, its wheelspin, marks or
+    // the power-ups' draws of `rand()` moves or turns the car on screen within a second.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &DRIVE_HELD),
+        &DRIVE_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("drive-run.sha256", &lines, "the drive run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_collide_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong push, knock or spin between cars moves them apart differently within ticks.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &COLLIDE_HELD),
+        &COLLIDE_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("collide-run.sha256", &lines, "the collide run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pickup_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong draw of `rand()` lays the power-ups elsewhere, a wrong pick-up leaves the turbo.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PICKUP_HELD),
+        &PICKUP_SHOTS,
+        3_860,
+        slots,
+    );
+    check_manifest("pickup-run.sha256", &lines, "the pickup run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pedestrian_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong jolt or draw of `rand()` sends the car elsewhere after the first pedestrian.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PEDESTRIAN_HELD),
+        &PEDESTRIAN_SHOTS,
+        3_900,
+        slots,
+    );
+    check_manifest("pedestrian-run.sha256", &lines, "the pedestrian run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_mines_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // mine in the wrong place, a wrong blast or a horn that brakes shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [3, 0, 0]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &MINES_HELD),
+        &MINES_SHOTS,
+        3_900,
+        slots,
+    );
+    check_manifest("mines-run.sha256", &lines, "the mines run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_rocket_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // flame in the wrong place or turning at the wrong time shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 0, 1]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &ROCKET_HELD),
+        &ROCKET_SHOTS,
+        3_540,
+        slots,
+    );
+    check_manifest("rocket-run.sha256", &lines, "the rocket run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_wreck_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wreck's fire, the HUD's medals rolling to the new places, the race's end 300 ticks on
+    // and the view tilting away show here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 99, [1, 0, 0]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &WRECK_HELD),
+        &WRECK_SHOTS,
+        4_290,
+        slots,
+    );
+    check_manifest("wreck-run.sha256", &lines, "the wreck run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_spikes_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): the
+    // spiked wheels' sprites or what they tear off the other car show here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 1, 0]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &SPIKES_HELD),
+        &SPIKES_SHOTS,
+        3_650,
+        slots,
+    );
+    check_manifest("spikes-run.sha256", &lines, "the spikes run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_help_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4c.md): the fades' 63 ticks, the keys' page naming the controls'
+    // keys and the gamepad's inputs, the tips' page, and the race back in its own palette.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &HELP_HELD),
+        &HELP_SHOTS,
+        5_020,
+        slots,
+    );
+    check_manifest("help-run.sha256", &lines, "the help run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_guns_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong muzzle, spread or damage shows within a frame of the first shot.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &GUNS_HELD),
+        &GUNS_SHOTS,
+        3_760,
+        slots,
+    );
+    check_manifest("guns-run.sha256", &lines, "the guns run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_abort_run_matches_the_committed_manifest() {
     // Written after every screenshot of the run equalled our frame at its tick
-    // (docs/verification/m4b.md): the box landed, Y, the tiles flying apart. The run goes on
-    // into the stand-in's shop, so its sound pins the menus' music coming back after the race.
+    // (docs/verification/m4b.md, m4c.md): the box landed, Y, the tiles flying apart, the race's
+    // last frame and the view tilting away. The run goes on into the stand-in's shop, so its
+    // sound pins the menus' music coming back after the race.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
     slots[0] = Some(test_save(&assets.menu.texts));
@@ -1340,6 +2300,16 @@ fn the_shop_purchases_run_matches_the_committed_manifest() {
 /// loads the same file): seed 1's drivers as `initDrivers` sets them up, recomputed here, and
 /// a player part-way through a game.
 fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    armed_save(texts, 37, [0, 0, 0])
+}
+
+/// The test game with the player's damage (37 in it), mines, spikes and rocket
+/// (`captures/test.sg` with them changed).
+fn armed_save(
+    texts: &deadrally_gamedata::text::Texts,
+    damage: i32,
+    [mines, spikes, rocket]: [i32; 3],
+) -> Vec<u8> {
     let campaign = &texts.campaign;
     let mut state: u32 = 1;
     let mut rand = || {
@@ -1411,7 +2381,8 @@ fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
     drivers.extend(record(
         b"Tester",
         [
-            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, 0, 0, 0, 0,
+            damage, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, mines,
+            spikes, rocket, 0,
         ],
     ));
     let mut name = [0; 15];

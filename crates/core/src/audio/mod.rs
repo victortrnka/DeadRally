@@ -146,6 +146,13 @@ impl Sound {
         }
     }
 
+    /// The volume and pitch of what plays on `channel` changed in place (`sub_43C1B0`).
+    pub(crate) fn set_channel(&mut self, channel: usize, volume: u32, pitch: u32) {
+        if let Some(effects) = &mut self.effects {
+            effects.set(channel, volume, pitch);
+        }
+    }
+
     /// Silences `channel` (1-based) with a short fade (`stopSoundChannel`, 0x43C3E0).
     pub(crate) fn stop_channel(&mut self, channel: usize) {
         if let Some(effects) = &mut self.effects {

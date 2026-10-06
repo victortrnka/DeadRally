@@ -203,6 +203,18 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         (configure.key_names.len(), configure.pad_names.len()),
         (256, 9)
     );
+    // The race's help names 101 keys (0x407330 fills its table for them, as running the
+    // original's code shows) and the gamepad's nine inputs.
+    let help = &menu.texts.help;
+    let named = help
+        .key_names
+        .iter()
+        .filter(|name| !name.is_empty())
+        .count();
+    assert_eq!(
+        (named, help.pad_names.len(), help.controls.len()),
+        (101, 9, 8)
+    );
     // The defaults dr.exe's defaultConfig writes, as a fresh dr.cfg of the original holds
     // them (docs/verification/m2b.md): A, Z, the arrows, left shift, left control, left alt
     // and space; button 1, down, left, right, buttons 2 to 4; gamepad off.
@@ -256,6 +268,44 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         ]
     );
     assert_eq!((menu.weapons.len(), menu.loan_shark.width), (12, 96));
+    // The cars' handling tables, as initParticipantValues (0x401060) fills them when run; the
+    // values agree with DreeRally's copy of them. A wrong value changes how a car drives.
+    let handling = &assets.race.handling;
+    assert_eq!(handling.size, [8.3, 9.7, 9.0, 10.5, 8.5, 9.2]);
+    assert_eq!((handling.steering[0], handling.steering[23]), (1.8, 1.35));
+    assert_eq!(
+        (handling.engine[0], handling.engine[1], handling.engine[119]),
+        (2.55, 2.6, 4.2)
+    );
+    assert_eq!((handling.tires[0], handling.tires[119]), (0.5, 0.0));
+    assert_eq!((handling.armour[0], handling.armour[23]), (120, 400));
+    assert_eq!(
+        (handling.armour_upgrade[0], handling.armour_upgrade[19]),
+        (360, 440)
+    );
+    let guns: Vec<_> = handling
+        .guns
+        .iter()
+        .map(|g| (g.count, g.angle, g.reach, g.flash))
+        .collect();
+    assert_eq!(
+        guns,
+        [
+            (1, [22, 0], [8, 0], [0, 0]),
+            (1, [-18, 0], [17, 0], [1, 0]),
+            (1, [-40, 0], [7, 0], [2, 0]),
+            (2, [16, -17], [20, 20], [3, 3]),
+            (2, [16, -17], [19, 19], [4, 4]),
+            (2, [16, -17], [20, 20], [5, 5]),
+        ]
+    );
+    assert_eq!(handling.gun_damage, [0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 0.95]);
+    assert_eq!(
+        handling.balance,
+        [
+            0.07, 0.12, 0.11, 0.2, 0.18, 0.32, 0.12, 0.19, 0.06, 0.12, 0.03, 0.06
+        ]
+    );
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

@@ -1450,9 +1450,7 @@ fn the_race_s_preview_wipes_in_after_the_sign_up() {
 #[test]
 fn the_shop_after_a_race_is_the_menus_own_again() {
     // After a race (here the stand-in for one whose data does not load) the shop opens on the
-    // menus' screen with none of the preview left on it, and its sounds are heard again: the
-    // race's fade to black had silenced them, and the original brings the menus' music and
-    // sounds back as the race ends (0x434617).
+    // menus' screen with none of the preview left on it.
     let mut game = new_game_in_shop();
     to_a_race(&mut game, true, &[]);
     step(&mut game, Key::Space);
@@ -1467,16 +1465,42 @@ fn the_shop_after_a_race_is_the_menus_own_again() {
         common::PREVIEW + 2,
         "its circuit gone"
     );
-    press(&mut game, Key::Left);
+}
+
+#[test]
+fn the_menus_are_as_loud_after_a_race_as_before() {
+    // The race fades its sound out to its end (the view tilting away leaves it at 1/90); the
+    // original's results bring it back, and until they come (M5) the shop that stands in for
+    // them must: a menu's step after a race sounds as loud as before it.
+    let mut game = in_menu(assets());
+    through_a_new_game(&mut game);
+    let before = loudest_after(&mut game, Key::Down);
+    step(&mut game, Key::Up);
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 44 + 143 + 41 + 60);
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    assert!(before > 0, "the step heard before the race");
+    // The music under the step plays on from elsewhere in its song: a little either way.
+    let after = loudest_after(&mut game, Key::Down);
+    assert!(after * 10 >= before * 9, "{after} after, {before} before");
+}
+
+/// Waits for earlier effects to end, presses `key`, and gives the loudest sample after it.
+fn loudest_after(game: &mut Game, key: Key) -> i32 {
+    run(game, 100);
+    game.take_audio(&mut Vec::new());
+    step(game, key);
     let mut audio = Vec::new();
-    for _ in 0..10 {
-        game.tick();
-        game.take_audio(&mut audio);
-    }
-    assert!(
-        audio.iter().any(|&sample| sample != 0),
-        "the shop's step heard"
-    );
+    game.take_audio(&mut audio);
+    audio
+        .iter()
+        .map(|&sample| i32::from(sample).abs())
+        .max()
+        .unwrap_or(0)
 }
 
 #[test]

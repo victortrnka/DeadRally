@@ -108,6 +108,18 @@ impl<'a> Machine<'a> {
             .collect()
     }
 
+    /// Sets register `index` (eax, ecx, edx, ebx, esp, ebp, esi, edi) before a run, as the
+    /// code's caller would have left it.
+    pub fn set_register(&mut self, index: usize, value: u32) {
+        self.registers[index] = value;
+    }
+
+    /// The stack pointer as the code left it, for the locals of a function stopped before
+    /// its end.
+    pub fn stack_pointer(&self) -> u32 {
+        self.registers[4]
+    }
+
     /// Sets the 32-bit value at `address` before a run, as the original's globals would hold
     /// it.
     pub fn poke(&mut self, address: u32, value: u32) {
@@ -309,8 +321,8 @@ impl<'a> Machine<'a> {
                 self.set(Place::Register(reg), 4, address);
                 next
             }
-            // add, xor (r, r/m) and add (r/m, r).
-            0x01 | 0x03 | 0x31 | 0x33 => {
+            // add, sub, cmp and xor, between a register and a register or memory.
+            0x01 | 0x03 | 0x29 | 0x2B | 0x31 | 0x33 | 0x39 | 0x3B => {
                 let (reg, place, next) = self.modrm(at_op + 1)?;
                 let (target, source) = if opcode & 2 == 0 {
                     (place, Place::Register(reg))
@@ -318,15 +330,20 @@ impl<'a> Machine<'a> {
                     (Place::Register(reg), place)
                 };
                 let (a, b) = (self.get(target, 4)?, self.get(source, 4)?);
-                let (result, overflow) = if opcode < 0x30 {
-                    (
+                let (result, overflow) = match opcode & 0xF8 {
+                    0x00 => (
                         a.wrapping_add(b),
                         (a as i32).checked_add(b as i32).is_none(),
-                    )
-                } else {
-                    (a ^ b, false)
+                    ),
+                    0x28 | 0x38 => (
+                        a.wrapping_sub(b),
+                        (a as i32).checked_sub(b as i32).is_none(),
+                    ),
+                    _ => (a ^ b, false),
                 };
-                self.set(target, 4, result);
+                if opcode & 0xF8 != 0x38 {
+                    self.set(target, 4, result);
+                }
                 self.flags(result, overflow);
                 next
             }

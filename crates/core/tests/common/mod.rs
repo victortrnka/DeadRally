@@ -177,8 +177,17 @@ fn texts() -> Texts {
             laps: b"L".to_vec(),
             prize: b"P".to_vec(),
             abort_race: vec![b"A".to_vec(); 9],
+            race_over: vec![b"A".to_vec(); 9],
         },
         shop: shop_texts(),
+        help: deadrally_gamedata::text::HelpTexts {
+            global: vec![b"G".to_vec(); 8],
+            keyboard: b"K".to_vec(),
+            gamepad: b"P".to_vec(),
+            controls: vec![b"C".to_vec(); 8],
+            key_names: vec![b"N".to_vec(); 256],
+            pad_names: vec![b"D".to_vec(); 9],
+        },
     }
 }
 
@@ -330,5 +339,17 @@ pub fn race_archives() -> deadrally_gamedata::race::RaceArchives {
         engine: empty("ENGINE.BPA"),
         ib_files: empty("IBFILES.BPA"),
         musics: empty("MUSICS.BPA"),
+        handling: deadrally_gamedata::handling::HandlingTables {
+            engine: vec![2.5; 120],
+            tires: vec![0.5; 120],
+            steering: vec![1.5; 24],
+            armour: vec![300; 24],
+            armour_upgrade: vec![400; 20],
+            size: vec![9.0; 6],
+            tough: b"TOUGH\0".to_vec(),
+            balance: vec![0.1; 12],
+            guns: vec![deadrally_gamedata::handling::Guns::default(); 6],
+            gun_damage: vec![0.5; 7],
+        },
     }
 }

@@ -13,6 +13,7 @@ mod config;
 pub mod dr_cfg;
 pub mod exe;
 pub mod haf;
+pub mod handling;
 pub mod image;
 mod known_versions;
 mod locate;

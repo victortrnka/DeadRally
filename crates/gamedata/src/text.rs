@@ -66,6 +66,18 @@ const MORE_NAMED_KEYS: [u8; 17] = [
 ];
 const NAMELESS_KEY: u32 = 0x44_30D0;
 
+/// The race's help (`keyMenuInRace` 0x407330): the global keys' heading and seven lines (32
+/// bytes apart), the keyboard's and the gamepad's headings, the eight controls' labels (20
+/// apart), and its own names of the keys and of the gamepad's inputs (16 apart).
+const HELP_GLOBAL: u32 = 0x44_1830;
+const HELP_GLOBAL_LINES: u32 = 8;
+const HELP_KEYBOARD: u32 = 0x44_1734;
+const HELP_GAMEPAD: u32 = 0x44_1678;
+const HELP_CONTROLS: u32 = 0x44_1720;
+const HELP_KEY_NAMES: u32 = 0x44_1EA4;
+const HELP_PAD_NAMES: u32 = 0x44_1F34;
+const HELP_NAME: usize = 15;
+
 /// The Hall of Fame (spec M2c §3): the 18 circuits' names (15 bytes apart), the six cars'
 /// names (in the car table, 1760 bytes apart, car 5 last), the difficulties' names (24 bytes
 /// apart) and the order the records screen steps through the circuits.
@@ -210,6 +222,8 @@ const LAPS: u32 = 0x44_4088;
 const BOX_BLANK: u32 = 0x44_251C;
 const ABORT_RACE: u32 = 0x44_23FC;
 const YES_NO: u32 = 0x44_23D8;
+const RACE_OVER: u32 = 0x44_24B0;
+const PRESS_ENTER: u32 = 0x44_24D4;
 const BOX_LINE: usize = 32;
 const PRIZE: u32 = 0x44_4078;
 
@@ -262,6 +276,34 @@ fn key_name(code: u8) -> u32 {
             None => NAMELESS_KEY,
         },
     }
+}
+
+/// The address of scancode `code`'s name on the race's help page, `None` for a key the help
+/// leaves nameless: the menu's keys, without the menu's skip after 0xCB.
+fn help_key_name(code: u8) -> Option<u32> {
+    match code {
+        0x01..=0x54 => Some(HELP_KEY_NAMES - 16 * (u32::from(code) - 1)),
+        _ => MORE_NAMED_KEYS
+            .iter()
+            .position(|&named| named == code)
+            .map(|k| HELP_KEY_NAMES - 16 * (0x54 + k as u32)),
+    }
+}
+
+/// The race's help page's texts (`keyMenuInRace` 0x407330).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HelpTexts {
+    /// The global keys' heading, then their seven lines.
+    pub global: Vec<Vec<u8>>,
+    /// The keyboard's and the gamepad's headings.
+    pub keyboard: Vec<u8>,
+    pub gamepad: Vec<u8>,
+    /// The eight controls' labels, each followed by its key's name.
+    pub controls: Vec<Vec<u8>>,
+    /// `key_names[scancode]`, all 256, empty for a key without one.
+    pub key_names: Vec<Vec<u8>>,
+    /// The gamepad's nine inputs.
+    pub pad_names: Vec<Vec<u8>>,
 }
 
 /// Configure's texts (spec M2b §3.2).
@@ -351,6 +393,9 @@ pub struct CampaignTexts {
     /// The race's pause box (0x417641): its nine lines, blank but for the fourth, asking
     /// whether to abort the race, and the sixth, how to answer.
     pub abort_race: Vec<Vec<u8>>,
+    /// The box at the race's end (0x4172EF): its nine lines, blank but for the fourth, the
+    /// race over, and the ninth, how to go on.
+    pub race_over: Vec<Vec<u8>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -429,6 +474,7 @@ pub struct Texts {
     pub hall_of_fame: HallOfFameTexts,
     pub campaign: CampaignTexts,
     pub shop: ShopTexts,
+    pub help: HelpTexts,
 }
 
 impl Texts {
@@ -602,6 +648,12 @@ impl Texts {
                 .chain([BOX_BLANK; 3])
                 .map(|address| text(address, BOX_LINE))
                 .collect::<Result<_, _>>()?,
+                race_over: [BOX_BLANK, BOX_BLANK, BOX_BLANK, RACE_OVER]
+                    .into_iter()
+                    .chain([BOX_BLANK; 4])
+                    .chain([PRESS_ENTER])
+                    .map(|address| text(address, BOX_LINE))
+                    .collect::<Result<_, _>>()?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
                     .map(|warning| {
@@ -715,6 +767,25 @@ impl Texts {
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
             small: metrics(SMALL_METRICS, 96, SMALL_SIZE)?,
             medium: metrics(MEDIUM_METRICS, 62, MEDIUM_SIZE)?,
+            help: HelpTexts {
+                global: (0..HELP_GLOBAL_LINES)
+                    .map(|line| shown(HELP_GLOBAL - 32 * line, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                keyboard: shown(HELP_KEYBOARD, MAX_LINE)?,
+                gamepad: shown(HELP_GAMEPAD, MAX_LINE)?,
+                controls: (0..8)
+                    .map(|control| shown(HELP_CONTROLS - 20 * control, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                key_names: (0..=255)
+                    .map(|code| match help_key_name(code) {
+                        Some(address) => shown(address, HELP_NAME),
+                        None => Ok(Vec::new()),
+                    })
+                    .collect::<Result<_, _>>()?,
+                pad_names: (0..PAD_INPUTS as u32)
+                    .map(|input| shown(HELP_PAD_NAMES - 16 * input, HELP_NAME))
+                    .collect::<Result<_, _>>()?,
+            },
         })
     }
 }
@@ -795,6 +866,28 @@ mod tests {
         for input in 0..PAD_INPUTS as u32 {
             put(PAD_NAMES - 16 * input, format!("pad {input}").as_bytes());
         }
+        for code in 0..=255 {
+            if let Some(address) = help_key_name(code) {
+                put(address, format!("help {code:02x}").as_bytes());
+            }
+        }
+        for input in 0..PAD_INPUTS as u32 {
+            put(
+                HELP_PAD_NAMES - 16 * input,
+                format!("hpad {input}").as_bytes(),
+            );
+        }
+        for line in 0..HELP_GLOBAL_LINES {
+            put(HELP_GLOBAL - 32 * line, format!("global {line}").as_bytes());
+        }
+        for control in 0..8 {
+            put(
+                HELP_CONTROLS - 20 * control,
+                format!("label {control}").as_bytes(),
+            );
+        }
+        put(HELP_KEYBOARD, b"keys");
+        put(HELP_GAMEPAD, b"pad");
         for c in 0..CIRCUITS as u32 {
             put(CIRCUIT_NAMES + 15 * c, format!("circuit {c}").as_bytes());
         }
@@ -936,6 +1029,32 @@ mod tests {
         assert_eq!(texts.configure.pad_names[8], b"pad 8");
         assert_eq!(texts.configure.controls.len(), 8);
         assert_eq!(texts.configure.pad_prompts.len(), 7);
+    }
+
+    #[test]
+    fn the_race_helps_names_come_from_a_dot_padded_table_of_its_own() {
+        // The help's page names the controls' keys and the gamepad's inputs from tables of its
+        // own, without the menu's skip after 0xCB: a slot off names every key after it wrongly.
+        assert_eq!(help_key_name(0x01), Some(0x44_1EA4));
+        assert_eq!(help_key_name(0x54), Some(0x44_1EA4 - 16 * 0x53));
+        assert_eq!(help_key_name(0x57), Some(0x44_1964));
+        assert_eq!(help_key_name(0xCB), Some(0x44_18C4));
+        assert_eq!(help_key_name(0xCD), Some(0x44_18B4));
+        assert_eq!(help_key_name(0xD3), Some(0x44_1864));
+        for code in [0x00, 0x55, 0x56, 0xCC, 0xD4, 0xFF] {
+            assert_eq!(help_key_name(code), None, "{code:#x}");
+        }
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let help = &texts.help;
+        assert_eq!(help.key_names[0x1E], b"help 1e");
+        assert!(help.key_names[0x55].is_empty());
+        assert_eq!(help.pad_names[8], b"hpad 8");
+        assert_eq!(help.controls[7], b"label 7");
+        assert_eq!(help.global[7], b"global 7");
+        assert_eq!(
+            (help.keyboard.as_slice(), help.gamepad.as_slice()),
+            (b"keys".as_slice(), b"pad".as_slice())
+        );
     }
 
     #[test]

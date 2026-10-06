@@ -161,6 +161,40 @@ impl Menu {
 
     /// The race on the sign-up's circuit, the player in their place on the grid; without its
     /// data (as in the tests) the stand-in race.
+    /// What a money power-up is worth in race `race` (0x433361): $50 in the first race; in the
+    /// others by the player's rank, more the higher the rank and the harder the race; $400
+    /// when the player leads everyone on points (the Adversary's race).
+    fn pickup_money(&self, race: usize) -> i32 {
+        let drivers = &self.campaign.drivers;
+        let leader = (0..drivers.len())
+            .filter(|&driver| driver != PLAYER)
+            .map(|driver| drivers[driver].points)
+            .fold(0, i32::max);
+        if drivers[PLAYER].points > leader {
+            return 400;
+        }
+        let rank = drivers[PLAYER].rank;
+        let by_race = |second: i32, third: i32| match race {
+            1 => Some(second),
+            2 => Some(third),
+            _ => None,
+        };
+        let mut money = if race == 0 { 50 } else { 0 };
+        for (ranks, second, third) in [
+            (1..6, 260, 500),
+            (6..11, 200, 300),
+            (11..16, 120, 150),
+            (16..21, 60, 80),
+        ] {
+            if ranks.contains(&rank)
+                && let Some(value) = by_race(second, third)
+            {
+                money = value;
+            }
+        }
+        money
+    }
+
     fn start_race(&mut self) -> State {
         let race = self.campaign.entered_race.expect("the player is in a race");
         let circuit = self
@@ -190,7 +224,16 @@ impl Menu {
                     colour: colours.0[record.colour.clamp(0, 255) as usize],
                     name: record.name().to_ascii_uppercase(),
                     car: record.car.clamp(0, 5) as usize,
+                    level: if racer.driver == PLAYER {
+                        3
+                    } else {
+                        self.config.difficulty().min(2) as usize
+                    },
+                    engine: record.engine,
+                    tires: record.tires,
+                    armour: record.armour,
                     damage: record.damage,
+                    rocket: racer.rocket,
                     mines: racer.mines,
                     spikes: racer.spikes != 0,
                 }
@@ -199,18 +242,32 @@ impl Menu {
         let laps = LAPS[race];
         let weapons = self.campaign.use_weapons;
         let lines = self.assets.menu.texts.campaign.abort_race.clone();
-        let race = crate::race::Race::new(
-            &self.assets.race,
-            (circuit, laps),
-            drivers,
-            (player, weapons),
-            lines,
-            &mut self.campaign.rand,
-        );
+        let controls = std::array::from_fn(|control| self.config.key(control));
+        let record = &self.campaign.drivers[PLAYER];
+        let setup = crate::race::Setup {
+            circuit,
+            race,
+            laps,
+            player,
+            weapons,
+            pause_lines: lines,
+            race_over_lines: self.assets.menu.texts.campaign.race_over.clone(),
+            help: self.assets.menu.texts.help.clone(),
+            pads: std::array::from_fn(|control| self.config.pad(control)),
+            controls,
+            pickup_money: self.pickup_money(race),
+            lap_record: self
+                .config
+                .record(circuit, record.car.clamp(0, 5) as usize)
+                .1
+                .map(|part| part as i32),
+        };
+        let race =
+            crate::race::Race::new(&self.assets.race, setup, drivers, &mut self.campaign.rand);
         match race {
             Ok(mut race) => {
                 let volumes = (self.config.music_volume(), self.config.effects_volume());
-                race.begin(&mut self.sound, volumes);
+                race.begin(&mut self.sound, volumes, &mut self.campaign.rand);
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }
@@ -227,8 +284,8 @@ impl Menu {
         race.present(self.shown.pixels_mut());
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
-        if outcome == crate::race::Outcome::Aborted {
-            // The race's end (the zoom out, the results) comes with M4c and M5.
+        if outcome != crate::race::Outcome::Racing {
+            // The race's results come with M5.
             self.race = None;
             return self.after_race();
         }
@@ -236,10 +293,12 @@ impl Menu {
     }
 
     /// The race over (abandoned, or its data not loading): the menus' music and sounds back as
-    /// the original brings them back after a race (0x434617), and the menus' background under
+    /// the original brings them back after a race (0x434617), at the full volume the race's
+    /// fades took away and the results would give back (M5), and the menus' background under
     /// the stand-in's shop with nothing of the preview or the race left on it.
     fn after_race(&mut self) -> State {
         self.sound.stop();
+        self.sound.set_mask(FULL_MASK);
         self.sound.load_effects(&self.assets.menu.effects);
         self.sound
             .play_music(&self.assets.menu_music, 0, self.config.music_volume());
