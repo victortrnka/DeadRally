@@ -4,7 +4,7 @@
 # tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
 #   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
-#                            [--sabotage-clock N] [--no-ai] SCENARIO OUT_DIR
+#                            [--sabotage-clock N] [--no-ai] [--watch] SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -22,6 +22,9 @@
 # With --sabotage-clock the sabotage after a sign-up seeds its random numbers with N instead of
 # the clock (spec M3c section 3); DeadRally's clock there is the seed plus 14 ms a tick.
 #
+# With --watch the race's state is read from the original's memory each time its frame counter
+# moves and logged to OUT_DIR/watch.log (scripts/reference-watch.py; spec M4c).
+#
 # With --no-ai the opponents never drive in a race (spec M4, decision 2): the race loop's call
 # of calculateIAMovements is taken out, so they stay where DeadRally keeps them until M5.
 #
@@ -37,7 +40,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -47,6 +50,7 @@ cfg=
 seed=
 sabotage_clock=
 no_ai=false
+watch=false
 saves=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -81,6 +85,10 @@ while [[ "${1:-}" == --* ]]; do
             ;;
         --no-ai)
             no_ai=true
+            shift
+            ;;
+        --watch)
+            watch=true
             shift
             ;;
         *) usage ;;
@@ -222,7 +230,12 @@ if $sound; then
     export PULSE_SINK=$sink
 fi
 
-(cd "$run" && exec wine dr.exe -window -nogl "${sound_args[@]}") >>"$log" 2>&1 &
+launch=(wine)
+if $watch; then
+    launch=(python3 "$repo/scripts/reference-watch.py" "$out/watch.log" -- wine)
+    echo "watching the race's state into watch.log" >>"$log"
+fi
+(cd "$run" && exec "${launch[@]}" dr.exe -window -nogl "${sound_args[@]}") >>"$log" 2>&1 &
 game=$!
 window=$(timeout 30 xdotool search --sync --onlyvisible --name '.' | head -n1) || {
     echo "error: the original did not open a window within 30 s; see $log" >&2

@@ -4,9 +4,11 @@
 
 mod buffer;
 mod cars;
+mod collisions;
 mod driving;
 mod hud;
 mod intro;
+mod laps;
 mod marks;
 mod pause;
 mod pedestrians;
@@ -50,8 +52,8 @@ pub(crate) struct Driver {
     /// The name, upper-cased.
     pub(crate) name: Vec<u8>,
     pub(crate) car: usize,
-    /// The race's level the car is set up for: the race's (0 to 2) for an opponent, 3 for the
-    /// player (0x4330A5).
+    /// The level the car is set up for: the game's difficulty (0 to 2, 0x456738) for an
+    /// opponent, 3 for the player (0x4330A5).
     pub(crate) level: usize,
     /// The engine, tires and armour upgrades.
     pub(crate) engine: i32,
@@ -166,6 +168,11 @@ pub(crate) struct Race {
     squealing: bool,
     /// Whether the start has been given (`0x456AD4` at 2).
     started: bool,
+    /// The laps' clocks, times and calls, and the wrecks in the order they were wrecked.
+    laps_state: laps::Laps,
+    wrecks: Vec<usize>,
+    /// The car of the driver whose armour counts 2.2 times, who has a call when winning.
+    tough: Option<usize>,
 }
 
 /// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
@@ -199,11 +206,11 @@ const WALL_SOUNDS: [u8; 3] = [10, 15, 16];
 const MAX_HURT: i32 = 10_000;
 /// The countdown's frames: the cars move from the next.
 const START_FRAME: i32 = 190;
+/// The race's calls: the last lap, a record, being lapped (`laps`).
+const CALL_CHANNEL: usize = 2;
+const CALL_PITCH: u32 = 0x5_0000;
 /// The tires' squeal (on the fire's channel).
 const SQUEAL_SOUND: u8 = 37;
-/// What each logic tick leaves of a car's push back and spin (0x442168, 0x442160).
-const PUSH_EASE: f64 = 0.869_565_217_391_304_4;
-const SPIN_EASE: f64 = 0.833_333_333_333_333_4;
 
 /// The race's clocks: its frame count (`raceFrame` 0x481E14, the countdown under 190), the
 /// ticks the timer has counted (0x503500, and at the HUD's last frame 0x4A7CFC), the ticks
@@ -354,6 +361,12 @@ impl Race {
                 hud::decoded(&archives.engine, "SPLAT4.BPK")?,
             ],
         );
+        let tough = drivers.iter().position(|driver| {
+            let tough = &archives.handling.tough;
+            let mut name = driver.name.clone();
+            name.push(0);
+            name.get(..tough.len()) == Some(tough.as_slice())
+        });
         let mut palette = track.palette.clone();
         for (driver, &first) in drivers.iter().zip(&RAMPS) {
             car_ramp(&mut palette, first, driver.colour);
@@ -403,6 +416,9 @@ impl Race {
             squeal: 0,
             squealing: false,
             started: false,
+            laps_state: laps::Laps::default(),
+            wrecks: Vec::new(),
+            tough,
         })
     }
 
@@ -430,6 +446,15 @@ impl Race {
     fn frame(&mut self, sound: &mut Sound, rand: &mut Rand) {
         let steps = self.clock.waiting as usize;
         self.clock.waiting = 0;
+        // 0x4163AD: the lap's call when its wait is over.
+        let laps = &mut self.laps_state;
+        if laps.call > 0 {
+            laps.call -= self.clock.between;
+            if laps.call <= 0 {
+                sound.trigger_at(CALL_CHANNEL, laps::RECORD, FULL, CALL_PITCH);
+                laps.call = 0;
+            }
+        }
         // The samples since the last pass, oldest first (0x41641F).
         let mut at = self.sampled;
         for k in 0..steps {
@@ -471,11 +496,8 @@ impl Race {
         for car in &mut self.cars {
             car.knocks = [0, 0];
         }
-        // `sub_40CD10` first eases every car's push back and spin.
-        for car in &mut self.cars {
-            car.push = car.push.map(|d| (f64::from(d) * PUSH_EASE) as f32);
-            car.spin = (f64::from(car.spin) * SPIN_EASE) as f32;
-        }
+        let spikes: Vec<bool> = self.drivers.iter().map(|driver| driver.spikes).collect();
+        collisions::collide(&mut self.cars, &self.sprites, &spikes);
     }
 
     /// What every tick does after the cars' steps (0x41661A): the counters of walls and
@@ -491,11 +513,11 @@ impl Race {
             if car.wall == 1 {
                 car.stuck += 2;
             }
-            if car.knocks[0] == 1 {
+            if car.knocks[0] == collisions::KNOCKED_BACK {
                 car.x = car.previous[0];
                 car.knocked += 2;
             }
-            if car.knocks[1] == 1 {
+            if car.knocks[1] == collisions::KNOCKED_BACK {
                 car.y = car.previous[1];
                 car.knocked += 2;
             }
@@ -547,6 +569,23 @@ impl Race {
             let squeal = (slot == self.player).then_some(&mut self.squeal);
             marks::roll(car, keys, &mut track, rand, squeal, self.weapons);
         }
+        let zones = laps::Zones {
+            map: &self.track.zones.pixels,
+            width: self.track.zones.width as i32,
+            count: self.track.info.zones,
+        };
+        let race = laps::Race {
+            player: self.player,
+            laps: self.laps,
+            intro_track: self.number == 0,
+            // 0x413274 reads the first driver's car: the Adversary's in the last race.
+            special: self.drivers[0].car == 6,
+            tough: self.tough,
+        };
+        for laps::Call(effect) in laps::check(&mut self.cars, &zones, &mut self.laps_state, &race) {
+            sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
+        }
+        laps::place_wrecks(&mut self.cars, &mut self.wrecks);
     }
 
     /// 0x41674F: the player's car against a wall or a car, its sounds as loud as the push
@@ -699,6 +738,48 @@ impl Race {
         }
     }
 
+    /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
+    /// the frame, then for each car its numbers in the original's layout, floats as their
+    /// bits.
+    pub(crate) fn trace(&self) -> String {
+        let mut line = format!("{}", self.clock.frame);
+        for car in &self.cars {
+            let h = &car.handling;
+            line += &format!(
+                " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
+                 g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
+                 e{:08x} dm{} tb{}",
+                car.zone,
+                car.direction,
+                car.sprite,
+                car.wall,
+                car.knocks[0],
+                car.knocks[1],
+                car.turn.to_bits(),
+                car.angle.to_bits(),
+                car.speed.to_bits(),
+                car.x.to_bits(),
+                car.y.to_bits(),
+                car.slide.to_bits(),
+                car.grip.to_bits(),
+                car.push[0].to_bits(),
+                car.push[1].to_bits(),
+                car.spin.to_bits(),
+                car.lap,
+                car.place,
+                i32::from(car.finished),
+                car.step[0].to_bits(),
+                car.step[1].to_bits(),
+                car.stuck,
+                car.knocked,
+                h.engine.to_bits(),
+                h.damage,
+                h.turbo,
+            );
+        }
+        line
+    }
+
     /// The palette as shown.
     pub(crate) fn shown(&self) -> &Palette {
         &self.shown
@@ -834,6 +915,11 @@ impl Race {
         }
         self.clock.between = self.clock.ticks - self.clock.seen;
         self.clock.seen = self.clock.ticks;
+        // 0x41425D: the race's and the lap's clocks run from the start to the finish.
+        if self.clock.frame > START_FRAME && !self.cars[self.player].finished {
+            self.laps_state.race_clock += self.clock.between;
+            self.laps_state.lap_clock += self.clock.between;
+        }
         let player = &self.cars[self.player];
         let gauge = hud::Player {
             speed: player.speed,

@@ -198,6 +198,10 @@ pub(super) struct Car {
     /// next puff (0x4A804C).
     pub(super) bloody: i32,
     pub(super) skids: i32,
+    /// The zone it last reached (`actualVaiZone` 0x4A7D00).
+    pub(super) zone: i32,
+    /// The ticks a power-up's effect on the player's view lasts (0x4A8050).
+    pub(super) effect: i32,
     /// The smoke puffs off its rear wheels, left and right: age (0 for none) and place
     /// (0x4A7EE4, 0x4A7F20).
     pub(super) puffs: [[[i32; 3]; super::marks::PUFFS]; 2],
@@ -246,6 +250,8 @@ impl Car {
             trail: [[0.0; 2]; 4],
             bloody: 0,
             skids: 0,
+            zone: 0,
+            effect: 0,
             puffs: [[[0; 3]; super::marks::PUFFS]; 2],
             handling,
         }

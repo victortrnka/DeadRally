@@ -190,7 +190,11 @@ impl Menu {
                     colour: colours.0[record.colour.clamp(0, 255) as usize],
                     name: record.name().to_ascii_uppercase(),
                     car: record.car.clamp(0, 5) as usize,
-                    level: if racer.driver == PLAYER { 3 } else { race },
+                    level: if racer.driver == PLAYER {
+                        3
+                    } else {
+                        self.config.difficulty().min(2) as usize
+                    },
                     engine: record.engine,
                     tires: record.tires,
                     armour: record.armour,

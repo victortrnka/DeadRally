@@ -105,6 +105,16 @@ impl Game {
         }
     }
 
+    /// While a race runs, its frame and each car's state in the original's layout, for
+    /// comparing with the original's memory (`scripts/reference-watch.py`, spec M4c).
+    #[must_use]
+    pub fn race_trace(&self) -> Option<String> {
+        match &self.scene {
+            Scene::Menu(scene) => scene.race_trace(),
+            _ => None,
+        }
+    }
+
     /// The player chose to exit the game and its end screen is over: the frontend should close.
     #[must_use]
     pub fn quit_requested(&self) -> bool {

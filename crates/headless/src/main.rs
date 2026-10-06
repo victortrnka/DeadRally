@@ -35,6 +35,7 @@ const USAGE: &str = "usage:
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
   deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... --out FILE.png
+  deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]...
   deadrally-headless compare A.png B.png
   deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--ticks N] SHOT.png...
   deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--seconds S] --out FILE.wav
@@ -91,6 +92,14 @@ enum Command {
     Compare {
         a: PathBuf,
         b: PathBuf,
+    },
+    Trace {
+        data: Option<PathBuf>,
+        tick: u64,
+        keys: Vec<Press>,
+        seed: u32,
+        saves: Vec<(usize, PathBuf)>,
+        clock: Option<u32>,
     },
     Find {
         data: Option<PathBuf>,
@@ -155,6 +164,14 @@ fn main() -> ExitCode {
         } => render(data.as_deref(), tick, &keys, (seed, &saves, clock), &out)
             .map(|()| ExitCode::SUCCESS),
         Command::Compare { a, b } => compare(&a, &b),
+        Command::Trace {
+            data,
+            tick,
+            keys,
+            seed,
+            saves,
+            clock,
+        } => trace(data.as_deref(), tick, &keys, (seed, &saves, clock)).map(|()| ExitCode::SUCCESS),
         Command::Find {
             data,
             keys,
@@ -211,6 +228,14 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             "--out",
         ],
         "compare" => &[],
+        "trace" => &[
+            "--data",
+            "--tick",
+            "--key-at",
+            "--seed",
+            "--save",
+            "--sabotage-clock",
+        ],
         "find" => &[
             "--data",
             "--key-at",
@@ -315,6 +340,14 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             saves,
             clock,
             out: out.ok_or("render needs --out FILE.png")?,
+        }),
+        "trace" => Ok(Command::Trace {
+            data,
+            tick: tick.ok_or("trace needs --tick T")?,
+            keys,
+            seed,
+            saves,
+            clock,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
             Ok([a, b]) => Ok(Command::Compare { a, b }),
@@ -583,6 +616,19 @@ fn render(
     let mut game = started(&located, start)?;
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame())?.write_png(out)
+}
+
+/// The race's state after every tick up to `tick` (`tick race-frame | car | ...`), to compare
+/// with the original's memory as `scripts/reference-watch.py` logs it.
+fn trace(data: Option<&Path>, tick: u64, keys: &[Press], start: Start) -> Result<(), String> {
+    let located = locate_data(data)?;
+    let mut game = started(&located, start)?;
+    play(&mut game, tick, keys, |done, game| {
+        if let Some(state) = game.race_trace() {
+            println!("{done} {state}");
+        }
+    });
+    Ok(())
 }
 
 /// Exit status 0 only when the pictures are identical.

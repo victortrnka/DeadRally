@@ -817,6 +817,77 @@ const DRIVE_SHOTS: [(u64, &str); 61] = [
     (3789, "d60"),
 ];
 
+/// The keys held in `scripts/reference/collide.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched): Down from before the start for 250 ticks, the car reversing
+/// into the one behind, then Up for 57.
+const COLLIDE_HELD: [Held; 2] = [(3359, Key::Down, 250), (3673, Key::Up, 57)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the car reversing,
+/// knocking the car behind back again and again, pulling away.
+const COLLIDE_SHOTS: [(u64, &str); 61] = [
+    (3321, "race"),
+    (3366, "c01"),
+    (3373, "c02"),
+    (3379, "c03"),
+    (3386, "c04"),
+    (3393, "c05"),
+    (3400, "c06"),
+    (3408, "c07"),
+    (3415, "c08"),
+    (3422, "c09"),
+    (3429, "c10"),
+    (3436, "c11"),
+    (3442, "c12"),
+    (3451, "c13"),
+    (3457, "c14"),
+    (3465, "c15"),
+    (3472, "c16"),
+    (3479, "c17"),
+    (3486, "c18"),
+    (3493, "c19"),
+    (3500, "c20"),
+    (3508, "c21"),
+    (3515, "c22"),
+    (3522, "c23"),
+    (3529, "c24"),
+    (3535, "c25"),
+    (3543, "c26"),
+    (3551, "c27"),
+    (3558, "c28"),
+    (3565, "c29"),
+    (3572, "c30"),
+    (3579, "c31"),
+    (3586, "c32"),
+    (3593, "c33"),
+    (3600, "c34"),
+    (3609, "c35"),
+    (3613, "c36"),
+    (3622, "c37"),
+    (3627, "c38"),
+    (3636, "c39"),
+    (3643, "c40"),
+    (3649, "c41"),
+    (3657, "c42"),
+    (3664, "c43"),
+    (3671, "c44"),
+    (3679, "c45"),
+    (3686, "c46"),
+    (3693, "c47"),
+    (3700, "c48"),
+    (3708, "c49"),
+    (3715, "c50"),
+    (3722, "c51"),
+    (3730, "c52"),
+    (3736, "c53"),
+    (3743, "c54"),
+    (3750, "c55"),
+    (3758, "c56"),
+    (3765, "c57"),
+    (3772, "c58"),
+    (3779, "c59"),
+    (3786, "c60"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1342,6 +1413,25 @@ fn the_drive_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("drive-run.sha256", &lines, "the drive run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_collide_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong push, knock or spin between cars moves them apart differently within ticks.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &COLLIDE_HELD),
+        &COLLIDE_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("collide-run.sha256", &lines, "the collide run");
 }
 
 #[test]

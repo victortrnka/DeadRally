@@ -56,6 +56,9 @@ pub struct Track {
     pub image: Image,
     pub palette: Palette,
     pub mask: Image,
+    /// The zones round the track for laps (`-VAI.BPK`, 0x5034D0): a byte for each 4x4
+    /// pixels.
+    pub zones: Image,
     pub lit: [u8; 256],
     /// What the tires' skid marks and bloody tracks turn the track's colours into
     /// (`-SKI.TAB` at 0x501AA0, `-BLO.TAB` at 0x479D40).
@@ -79,6 +82,7 @@ impl Track {
         self.palette = flip;
         self.image.pixels.reverse();
         self.mask.pixels.reverse();
+        self.zones.pixels.reverse();
         for spot in &mut self.info.power_ups {
             if spot[0] > 0 {
                 spot[0] = width - spot[0] - 1;
@@ -200,6 +204,7 @@ impl Track {
             })?;
         let (image, palette) = decode("IMA.BPK", info.width, info.height)?;
         let (mask, _) = decode("MAS.BPK", info.width, info.height)?;
+        let (zones, _) = decode("VAI.BPK", info.width >> 2, info.height >> 2)?;
         // Read into a table of 256 as the original reads it (0x4A9EE0).
         let table = |suffix: &str| -> Result<[u8; 256], RaceError> {
             let mut table = [0; 256];
@@ -238,6 +243,7 @@ impl Track {
             image,
             palette,
             mask,
+            zones,
             lit,
             skid,
             blood,
@@ -432,6 +438,7 @@ mod tests {
             },
             palette: Palette::BLACK,
             mask: picture(vec![1, 2, 3]),
+            zones: picture(vec![4, 5]),
             lit: [0; 256],
             skid: [0; 256],
             blood: [0; 256],
@@ -465,6 +472,7 @@ mod tests {
         assert_eq!(turned.palette, flip);
         assert_eq!(*turned.image.pixels.last().unwrap(), first);
         assert_eq!(turned.mask.pixels, [3, 2, 1]);
+        assert_eq!(turned.zones.pixels, [5, 4]);
         assert_eq!(turned.info.power_ups[0], [89, 29]);
         assert_eq!(turned.info.power_ups[1], [0, 0]);
         assert_eq!(&turned.info.pedestrians[0][..2], &[73, 13]);
