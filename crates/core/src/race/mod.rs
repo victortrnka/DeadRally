@@ -7,6 +7,7 @@ mod cars;
 mod collisions;
 mod driving;
 mod guns;
+mod help;
 mod hud;
 mod intro;
 mod laps;
@@ -24,6 +25,7 @@ use deadrally_gamedata::image::Palette;
 use deadrally_gamedata::race::{RaceArchives, RaceError, Track};
 use deadrally_gamedata::s3m::Module;
 use deadrally_gamedata::sound;
+use deadrally_gamedata::text::HelpTexts;
 use deadrally_gamedata::xm::Bank;
 
 use crate::audio::Sound;
@@ -73,6 +75,20 @@ pub(crate) struct Driver {
 
 /// The car colours' ramps: ten entries a driver from 15 (`initRaceValues_409F90`).
 const RAMPS: [usize; 4] = [15, 25, 35, 45];
+
+/// A help page's picture (`NAME.BPK`, 320x200) and palette (`NAME.PAL`) in `ENGINE.BPA`.
+fn page(
+    engine: &deadrally_gamedata::bpa::Archive,
+    name: &str,
+) -> Result<(Vec<u8>, Palette), RaceError> {
+    let picture = hud::decoded(engine, &format!("{name}.BPK"))?;
+    let bytes = engine.read(&format!("{name}.PAL"))?;
+    let palette = Palette::from_bytes(bytes).map_err(|error| RaceError::Track {
+        name: format!("{name}.PAL"),
+        error: deadrally_gamedata::track::TrackError::Palette(error),
+    })?;
+    Ok((picture, palette))
+}
 
 /// `setCircuitPaletteValues` (0x409E50): five entries from a tenth of the colour up to it,
 /// five from the colour towards 63; the blue's first step kept as a float, as the original
@@ -154,6 +170,12 @@ pub(crate) struct Race {
     /// (0x4AA508): the race ends past 300.
     race_over_lines: Vec<Vec<u8>>,
     over_ticks: i32,
+    /// The help's pages and texts, the gamepad's inputs for the controls (`dr.cfg`), and
+    /// whether the pause asked for the help (F1 left held, 0x4069BA).
+    help_pages: help::Pages,
+    help_texts: HelpTexts,
+    pads: [u32; 7],
+    help_asked: bool,
     /// The scancodes of the eight controls in `dr.cfg`.
     controls: [u32; 8],
     /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
@@ -217,7 +239,9 @@ pub(crate) struct Setup {
     pub(crate) weapons: bool,
     pub(crate) pause_lines: Vec<Vec<u8>>,
     pub(crate) race_over_lines: Vec<Vec<u8>>,
+    pub(crate) help: HelpTexts,
     pub(crate) controls: [u32; 8],
+    pub(crate) pads: [u32; 7],
     pub(crate) pickup_money: i32,
     pub(crate) lap_record: [i32; 3],
 }
@@ -315,6 +339,11 @@ enum Stage {
         first: bool,
         ending: bool,
     },
+    /// The help (F1), and the music's order it interrupted.
+    Help {
+        help: Box<help::Help>,
+        order: usize,
+    },
     /// The race ended, abandoned or over: the loop's last frame shown, the view tilting away
     /// from the next tick.
     Ended(Outcome),
@@ -344,6 +373,12 @@ const CHANNELS: usize = 13;
 const OVER_TICKS: i32 = 300;
 const END_CHANNELS: usize = 14;
 const END_CALL: u8 = 5;
+/// F1's scancode, the music's orders the help plays by the track (`TR0` to `TR9`, 0x416B6E),
+/// and the sound's masks during the help and after.
+const HELP_KEY: u8 = 0x3B;
+const HELP_ORDERS: [usize; 10] = [0x1E, 0x37, 0x2D, 0x32, 0x2D, 0x37, 0x32, 0x32, 0x32, 0x32];
+const HELP_MASK: u32 = 0x8000 >> 8;
+const FULL_MASK: u32 = 0x1_0000 >> 8;
 const PAUSE_CHANNEL: usize = 5;
 const PAUSE_PITCH: u32 = 0x2_8000;
 
@@ -364,7 +399,9 @@ impl Race {
             weapons,
             pause_lines,
             race_over_lines,
+            help,
             controls,
+            pads,
             pickup_money,
             lap_record,
         } = setup;
@@ -487,6 +524,13 @@ impl Race {
             pause_lines,
             race_over_lines,
             over_ticks: 0,
+            help_pages: help::Pages {
+                keys: page(&archives.engine, "KEYCOM3")?,
+                info: page(&archives.engine, "INFO2")?,
+            },
+            help_texts: help,
+            pads,
+            help_asked: false,
             controls,
             samples: [0; 16],
             sampled: 0,
@@ -552,6 +596,7 @@ impl Race {
         let car = self.drivers[self.player].car as u8;
         sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
         self.frame(sound, rand);
+        self.draw(sound);
     }
 
     /// A pass of the race loop up to its wait (0x416390): the player's keys of the ticks
@@ -604,7 +649,6 @@ impl Race {
         if self.drivers[0].car != 6 {
             self.balance();
         }
-        self.draw(sound);
     }
 
     /// `balanceIAEngineInRace` (0x40B920) once a pass: an opponent a zone or two behind the
@@ -931,7 +975,9 @@ impl Race {
                     self.stage = Stage::Ended(Outcome::Aborted);
                     return Outcome::Racing;
                 }
-                // 0x41771D: the engine again; the help F1 asks for comes with the race's keys.
+                // 0x41771D: the engine again; F1 left held for the race's pass, which opens the
+                // help.
+                self.help_asked = answer == pause::Answer::Help;
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
                 if first {
@@ -939,6 +985,30 @@ impl Race {
                     self.start_intro(sound);
                     return Outcome::Racing;
                 }
+            }
+            Stage::Help { help, order } => {
+                let waiting = help.waiting();
+                let pressed = waiting && (0..=255).any(|code| keys.held(code));
+                let going = help.wait(pressed);
+                self.screen.copy_from_slice(help.screen());
+                self.shown = help.palette().clone();
+                if !waiting && help.waiting() {
+                    keys.release_all();
+                }
+                if going {
+                    return Outcome::Racing;
+                }
+                // 0x416CC2: the music back where it was, at full volume, and the engine; then
+                // the pass the help came in is drawn.
+                let order = *order;
+                keys.release_all();
+                sound.set_music_order(order);
+                sound.set_mask(FULL_MASK);
+                let car = self.drivers[self.player].car as u8;
+                sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
+                self.stage = Stage::Loop { first: false };
+                self.draw_pass(sound, keys, rand);
+                return Outcome::Racing;
             }
             Stage::Ended(outcome) => {
                 let outcome = *outcome;
@@ -961,11 +1031,46 @@ impl Race {
         }
         self.stage = Stage::Loop { first: false };
         self.frame(sound, rand);
-        // 0x417283: the race over, its box.
+        // 0x416B21: F1 opens the help before the pass is drawn.
+        if keys.held(HELP_KEY) || self.help_asked {
+            self.help_asked = false;
+            self.start_help(sound);
+            return Outcome::Racing;
+        }
+        self.draw_pass(sound, keys, rand);
+        Outcome::Racing
+    }
+
+    /// The pass drawn, then the race over (0x417283) its box.
+    fn draw_pass(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
+        self.draw(sound);
         if self.over_ticks > OVER_TICKS {
             self.end_box(sound, keys, rand);
         }
-        Outcome::Racing
+    }
+
+    /// The help (0x416B30): every channel but the last two silenced, the track's music on to
+    /// a calmer order at half volume, up to the help's first wait.
+    fn start_help(&mut self, sound: &mut Sound) {
+        for channel in 1..=END_CHANNELS {
+            sound.stop_channel(channel);
+        }
+        let order = sound.music_order();
+        if let Some(&calm) = HELP_ORDERS.get(self.number) {
+            sound.set_music_order(calm);
+        }
+        sound.set_mask(HELP_MASK);
+        let help = help::Help::new(
+            (&self.screen, &self.palette),
+            &self.help_pages,
+            &self.hud.small_font,
+            &self.help_texts,
+            (&self.controls, &self.pads),
+        );
+        self.stage = Stage::Help {
+            help: Box::new(help),
+            order,
+        };
     }
 
     /// The view tilting away (`sub_4055A0`, 0x417963) from the loop's last frame in the

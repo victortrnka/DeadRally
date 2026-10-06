@@ -203,6 +203,18 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         (configure.key_names.len(), configure.pad_names.len()),
         (256, 9)
     );
+    // The race's help names 101 keys (0x407330 fills its table for them, as running the
+    // original's code shows) and the gamepad's nine inputs.
+    let help = &menu.texts.help;
+    let named = help
+        .key_names
+        .iter()
+        .filter(|name| !name.is_empty())
+        .count();
+    assert_eq!(
+        (named, help.pad_names.len(), help.controls.len()),
+        (101, 9, 8)
+    );
     // The defaults dr.exe's defaultConfig writes, as a fresh dr.cfg of the original holds
     // them (docs/verification/m2b.md): A, Z, the arrows, left shift, left control, left alt
     // and space; button 1, down, left, right, buttons 2 to 4; gamepad off.

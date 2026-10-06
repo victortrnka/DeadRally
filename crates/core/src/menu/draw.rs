@@ -499,6 +499,14 @@ pub(crate) mod tests {
                 race_over: vec![b"A".to_vec(); 9],
             },
             shop: shop_texts(),
+            help: deadrally_gamedata::text::HelpTexts {
+                global: vec![b"G".to_vec(); 8],
+                keyboard: b"K".to_vec(),
+                gamepad: b"P".to_vec(),
+                controls: vec![b"C".to_vec(); 8],
+                key_names: vec![b"N".to_vec(); 256],
+                pad_names: vec![b"D".to_vec(); 9],
+            },
         }
     }
 
