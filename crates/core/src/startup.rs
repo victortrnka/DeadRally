@@ -88,6 +88,8 @@ pub(crate) struct Startup {
     save: bool,
     /// What `mainMenu` seeds `rand()` with once the intro is under way (0x43A191).
     seed: u32,
+    /// The saved games' files, slot by slot.
+    pub(crate) slot_files: Vec<Option<Vec<u8>>>,
 }
 
 impl Startup {
@@ -111,6 +113,7 @@ impl Startup {
             config,
             save: true,
             seed,
+            slot_files: vec![None; deadrally_gamedata::save_game::SLOTS],
         };
         if startup.assets.intro.is_empty() {
             // `openAnimation` plays nothing when the file has no frames.
@@ -145,7 +148,7 @@ impl Startup {
             self.audio,
             &self.palette,
             (self.config, self.save),
-            self.seed,
+            (self.seed, self.slot_files),
         )
     }
 

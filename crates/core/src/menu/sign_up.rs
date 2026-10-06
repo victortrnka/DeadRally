@@ -475,14 +475,14 @@ impl Menu {
     }
 
     /// Until races exist (M4), the race the player signed up for ends at once: back to the
-    /// Start Racing menu with nothing changed but the welcome, which the shop would have
-    /// shown by now (spec M3a §2).
+    /// shop with nothing changed but the welcome, which the shop shows once after the first
+    /// race (spec M3a §2, M3b §2).
     fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;
         self.palette.set_colour(self.player_copper());
         self.palette.compose();
         self.palette.fade(100);
-        self.start_wipe()
+        self.open_shop()
     }
 }

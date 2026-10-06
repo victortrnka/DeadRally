@@ -115,6 +115,34 @@ const CONTINUE: u32 = 0x44_292C;
 const NO_SIGN_UP: u32 = 0x44_40D8;
 const RACE_WARNINGS: u32 = 0x45_0890;
 const SPEEDS: u32 = 0x44_DED8;
+/// Saved games (`loadGame` 0x42F2E0, `savegameWithName` 0x42F6E0): an empty slot's row,
+/// the quicksave slot's row, the confirmations (`confirmationPopup` 0x42DC70) and the name
+/// prompt.
+const EMPTY_SLOT: u32 = 0x44_3D18;
+const QUICKSAVE_SLOT: u32 = 0x44_3444;
+const GAME_LOADED: u32 = 0x44_3CE0;
+const GAME_SAVED: u32 = 0x44_3D24;
+const SAVE_PROMPT: u32 = 0x44_3D30;
+/// The shop's texts (`reloadCarAnimation2` 0x420250 and the functions after it): six lines of
+/// 40 bytes for each item. The car's own and its engine levels' sit in the car's record (at
+/// +0x10 without weapons, +0x100 with, the engine's at +0x2E0 + 240 level); the others in
+/// tables of 240 bytes a level or step.
+const SHOP_LINES: u32 = 6;
+const SHOP_LINE: u32 = 40;
+const CAR_INFO: u32 = 0x10;
+const CAR_INFO_WEAPONS: u32 = 0x100;
+const ENGINE_INFO: u32 = 0x2E0;
+const ENGINE_MAX: u32 = 0x45_0AE8;
+const TIRE_INFO: u32 = 0x45_1178;
+const TIRE_MAX: u32 = 0x45_0BD8;
+const ARMOUR_INFO: u32 = 0x45_18F8;
+const ARMOUR_MAX: u32 = 0x45_0CC8;
+const REPAIR_INFO: u32 = 0x45_3E28;
+const REPAIR_STEPS: u32 = 12;
+const REPAIR_TEN: u32 = 0x44_33D4;
+const CONTINUE_INFO: u32 = 0x45_4968;
+const CONTINUE_INFO_WEAPONS: u32 = 0x45_4A58;
+const UPGRADE_LEVELS: u32 = 4;
 /// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
 const END_GAME: u32 = 0x44_4280;
 
@@ -237,6 +265,35 @@ pub struct CampaignTexts {
     /// `speeds[car][engine]`: the top speed the side panel shows.
     pub speeds: Vec<[i32; 5]>,
     pub end_game: Vec<u8>,
+    pub empty_slot: Vec<u8>,
+    pub quicksave_slot: Vec<u8>,
+    pub game_loaded: Vec<u8>,
+    pub game_saved: Vec<u8>,
+    pub save_prompt: Vec<u8>,
+}
+
+/// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
+pub type ShopInfo = Vec<Vec<u8>>;
+
+/// The shop's descriptions (spec M3b §3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShopTexts {
+    /// `cars[car][weapons]`.
+    pub cars: Vec<[ShopInfo; 2]>,
+    /// `engines[car][level]`, then the one shown when no upgrade is left.
+    pub engines: Vec<Vec<ShopInfo>>,
+    pub engine_max: ShopInfo,
+    /// `tires[level]`, `armours[level]`.
+    pub tires: Vec<ShopInfo>,
+    pub tire_max: ShopInfo,
+    pub armours: Vec<ShopInfo>,
+    pub armour_max: ShopInfo,
+    /// `repairs[step]`: 0 for a wreck, 11 for no damage.
+    pub repairs: Vec<ShopInfo>,
+    /// What the repair box shows when the damage is 10 % or more.
+    pub repair_ten: Vec<u8>,
+    /// `continues[weapons]`.
+    pub continues: [ShopInfo; 2],
 }
 
 /// A font's cell size and the pen advance of each glyph, character 32 first.
@@ -263,6 +320,7 @@ pub struct Texts {
     pub configure: ConfigureTexts,
     pub hall_of_fame: HallOfFameTexts,
     pub campaign: CampaignTexts,
+    pub shop: ShopTexts,
 }
 
 impl Texts {
@@ -409,6 +467,11 @@ impl Texts {
                     .collect::<Result<_, _>>()?,
                 continue_word: shown(CONTINUE, MAX_LINE)?,
                 end_game: shown(END_GAME, MAX_LINE)?,
+                empty_slot: shown(EMPTY_SLOT, MENU_ROW_BYTES as usize - 1)?,
+                quicksave_slot: shown(QUICKSAVE_SLOT, MENU_ROW_BYTES as usize - 1)?,
+                game_loaded: shown(GAME_LOADED, MAX_LINE)?,
+                game_saved: shown(GAME_SAVED, MAX_LINE)?,
+                save_prompt: shown(SAVE_PROMPT, MAX_LINE)?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
                     .map(|warning| {
@@ -430,6 +493,40 @@ impl Texts {
                         }))
                     })
                     .collect::<Result<_, _>>()?,
+            },
+            shop: {
+                let info = |base: u32| -> Result<ShopInfo, TextError> {
+                    (0..SHOP_LINES)
+                        .map(|line| text(base + SHOP_LINE * line, SHOP_LINE as usize - 1))
+                        .collect()
+                };
+                let car = |k: u32| CAR_TABLE + CAR_BYTES * k;
+                ShopTexts {
+                    cars: (0..CARS as u32)
+                        .map(|k| Ok([info(car(k) + CAR_INFO)?, info(car(k) + CAR_INFO_WEAPONS)?]))
+                        .collect::<Result<_, TextError>>()?,
+                    engines: (0..CARS as u32)
+                        .map(|k| {
+                            (0..UPGRADE_LEVELS)
+                                .map(|level| info(car(k) + ENGINE_INFO + 240 * level))
+                                .collect()
+                        })
+                        .collect::<Result<_, TextError>>()?,
+                    engine_max: info(ENGINE_MAX)?,
+                    tires: (0..UPGRADE_LEVELS)
+                        .map(|level| info(TIRE_INFO + 240 * level))
+                        .collect::<Result<_, _>>()?,
+                    tire_max: info(TIRE_MAX)?,
+                    armours: (0..UPGRADE_LEVELS)
+                        .map(|level| info(ARMOUR_INFO + 240 * level))
+                        .collect::<Result<_, _>>()?,
+                    armour_max: info(ARMOUR_MAX)?,
+                    repairs: (0..REPAIR_STEPS)
+                        .map(|step| info(REPAIR_INFO + 240 * step))
+                        .collect::<Result<_, _>>()?,
+                    repair_ten: shown(REPAIR_TEN, MAX_LINE)?,
+                    continues: [info(CONTINUE_INFO)?, info(CONTINUE_INFO_WEAPONS)?],
+                }
             },
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
             small: metrics(SMALL_METRICS, 96, SMALL_SIZE)?,
@@ -567,6 +664,12 @@ mod tests {
         }
         put(CONTINUE, b"go");
         put(END_GAME, b"end?");
+        put(EMPTY_SLOT, b"empty");
+        put(QUICKSAVE_SLOT, b"quick");
+        put(GAME_LOADED, b"loaded");
+        put(GAME_SAVED, b"saved");
+        put(SAVE_PROMPT, b"name?");
+        put(REPAIR_TEN, b"10");
         put(NO_SIGN_UP, b"none");
         for warning in 0..2u32 {
             for line in 1..5u32 {

@@ -30,7 +30,7 @@ const KNOB_Y: usize = 251;
 const NAME_CHARACTERS: usize = 10;
 const NAME_PIXELS: usize = 300;
 /// The colour slider starts in the middle of `COPPER.PAL` and moves 2 a key.
-const START_COLOUR: i32 = 128;
+pub(super) const START_COLOUR: i32 = 128;
 /// The car turns through 64 frames.
 const TURNING_FRAMES: usize = 64;
 /// The difficulty popup's rows.
@@ -45,14 +45,68 @@ const DUKE_FACE: i32 = 2;
 const DUKE_VOICE: u8 = 6;
 const DIFFICULTY_VOICES: [u8; 3] = [1, 2, 3];
 
-/// What `readKeyboard` keeps while the nickname is typed.
+/// What `readKeyboard` keeps while a name is typed: the licence's nickname, or a saved
+/// game's name.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Nickname {
-    text: Vec<u8>,
+    pub(super) text: Vec<u8>,
     /// The typed text's width in the big font.
-    width: usize,
+    pub(super) width: usize,
     face: i32,
     colour: i32,
+    /// Where the text starts, how many characters and pixels it may take, and whether the
+    /// licence's face and colour keys work (and its car turns).
+    at: (usize, usize),
+    max_characters: usize,
+    max_pixels: usize,
+    licence: bool,
+}
+
+impl Nickname {
+    /// A saved game's name entry (`savegameWithName`): `text` prefilled, 15 characters, 320
+    /// pixels, from (130, 298), no face or colour.
+    pub(super) fn save_name(text: Vec<u8>, width: usize) -> Nickname {
+        Nickname {
+            text,
+            width,
+            face: 0,
+            colour: START_COLOUR,
+            at: (130, 298),
+            max_characters: 15,
+            max_pixels: 320,
+            licence: false,
+        }
+    }
+}
+
+/// `drawInGamePrices` (0x41A370) centred in a 96-pixel box from `x`
+/// (`getBoxTextOffset`, 0x41FAB0): "$" is glyph 0, the digits 1 to 10, drawn opaque.
+pub(super) fn draw_price(
+    canvas: &mut Canvas,
+    menu: &deadrally_gamedata::assets::MenuAssets,
+    text: &[u8],
+    x: usize,
+    y: usize,
+) {
+    let advances = &menu.texts.campaign.price.advances;
+    let index = |c: u8| -> usize {
+        if c == b'$' {
+            0
+        } else {
+            usize::from(c.wrapping_sub(b'/'))
+        }
+    };
+    let width: i32 = text
+        .iter()
+        .map(|&c| i32::from(advances.get(index(c)).copied().unwrap_or(0)))
+        .sum();
+    let mut pen = (x as i32 + (96 - width) / 2) as usize;
+    for &c in text {
+        if let Some(glyph) = menu.price_digits.get(index(c)) {
+            canvas.draw(glyph, at(pen, y), false);
+        }
+        pen += usize::from(advances.get(index(c)).copied().unwrap_or(0));
+    }
 }
 
 /// The characters of set-1 scancodes on the original's table (`readKeyboard`, 0x45EEE0).
@@ -131,6 +185,10 @@ impl Menu {
             width: 0,
             face: 0,
             colour: START_COLOUR,
+            at: NAME,
+            max_characters: NAME_CHARACTERS,
+            max_pixels: NAME_PIXELS,
+            licence: true,
         };
         self.palette.set_player_ramp(self.copper(START_COLOUR));
         State::Nickname
@@ -153,33 +211,14 @@ impl Menu {
     }
 
     /// `drawInGamePrices` (0x41A370) centred in a 96-pixel box from `x`
-    /// (`getBoxTextOffset`, 0x41FAB0): "$" is glyph 0, the digits 1 to 10, drawn opaque.
+    /// (`getBoxTextOffset`, 0x41FAB0) on the screen.
     pub(super) fn draw_price(&mut self, text: &[u8], x: usize, y: usize) {
-        let menu = &self.assets.menu;
-        let advances = &menu.texts.campaign.price.advances;
-        let index = |c: u8| -> usize {
-            if c == b'$' {
-                0
-            } else {
-                usize::from(c.wrapping_sub(b'/'))
-            }
-        };
-        let width: i32 = text
-            .iter()
-            .map(|&c| i32::from(advances.get(index(c)).copied().unwrap_or(0)))
-            .sum();
-        let mut pen = (x as i32 + (96 - width) / 2) as usize;
-        for &c in text {
-            if let Some(glyph) = menu.price_digits.get(index(c)) {
-                self.screen.draw(glyph, at(pen, y), false);
-            }
-            pen += usize::from(advances.get(index(c)).copied().unwrap_or(0));
-        }
+        draw_price(&mut self.screen, &self.assets.menu, text, x, y);
     }
 
     /// The turning car's current frame, drawn and shown.
     fn draw_turning_car(&mut self) {
-        let frame: &Image = &self.assets.menu.car_turning[self.car_frame];
+        let frame: &Image = &self.assets.menu.car_turning[0][self.car_frame];
         self.screen
             .draw(frame, at(CAR_TURNING.0, CAR_TURNING.1), false);
         self.shown
@@ -190,25 +229,28 @@ impl Menu {
     /// 11), and every second wait the car turns a frame.
     fn nickname_wait(&mut self) {
         self.palette.after_wait();
-        let x = NAME.0 + self.nickname.width;
+        let (x, y) = self.nickname.at;
+        let x = x + self.nickname.width;
         if self.blink <= 9 {
             let cursor = self.assets.menu.texts.campaign.text_cursor.clone();
             self.graphics
                 .big_b
-                .draw(&mut self.screen, &cursor, at(x, NAME.1));
+                .draw(&mut self.screen, &cursor, at(x, y));
         } else {
-            self.screen.fill(at(x, NAME.1 + 2), 20, 30, POPUP_FILL);
+            self.screen.fill(at(x, y + 2), 20, 30, POPUP_FILL);
         }
         self.blink += 1;
         if self.blink > 20 {
             self.blink = 0;
         }
-        self.shown.copy_from(&self.screen, at(x, NAME.1), 20, 32);
+        self.shown.copy_from(&self.screen, at(x, y), 20, 32);
         if self.car_toggle {
             self.car_toggle = false;
         } else {
-            self.draw_turning_car();
-            self.car_frame = (self.car_frame + 1) % TURNING_FRAMES;
+            if self.nickname.licence {
+                self.draw_turning_car();
+                self.car_frame = (self.car_frame + 1) % TURNING_FRAMES;
+            }
             self.car_toggle = true;
         }
     }
@@ -217,18 +259,34 @@ impl Menu {
     pub(super) fn nickname_tick(&mut self) -> State {
         self.nickname_wait();
         let key = self.keys.take();
+        let licence = self.nickname.licence;
         match key {
-            keys::ESCAPE => return self.licence_cancelled(),
+            keys::ESCAPE if licence => return self.licence_cancelled(),
+            keys::ESCAPE => return self.save_name_cancelled(),
             keys::ENTER | 0x9C => {
-                let player = self.campaign.player_mut();
-                player.face = self.nickname.face;
-                player.colour = self.nickname.colour;
+                if licence {
+                    let player = self.campaign.player_mut();
+                    player.face = self.nickname.face;
+                    player.colour = self.nickname.colour;
+                }
                 if !self.nickname.text.is_empty() {
+                    if !licence {
+                        return self.save_name_done();
+                    }
                     let text = self.nickname.text.clone();
                     self.campaign.player_mut().set_name(&text);
                     return self.nickname_done();
                 }
             }
+            keys::UP
+            | keys::PAD_UP
+            | keys::DOWN
+            | keys::PAD_DOWN
+            | keys::LEFT
+            | keys::PAD_LEFT
+            | keys::RIGHT
+            | keys::PAD_RIGHT
+                if !licence => {}
             keys::UP | keys::PAD_UP | keys::DOWN | keys::PAD_DOWN => {
                 let up = matches!(key, keys::UP | keys::PAD_UP);
                 self.sound(MOVE_SOUND);
@@ -287,11 +345,11 @@ impl Menu {
         };
         let advance = self.graphics.big_b.width(&[last]);
         self.nickname.width -= advance;
-        let x = NAME.0 + self.nickname.width;
-        self.screen
-            .fill(at(x, NAME.1), advance + 20, 32, POPUP_FILL);
+        let (x, y) = self.nickname.at;
+        let x = x + self.nickname.width;
+        self.screen.fill(at(x, y), advance + 20, 32, POPUP_FILL);
         self.shown
-            .copy_from(&self.screen, at(x, NAME.1), advance + 20, 32);
+            .copy_from(&self.screen, at(x, y), advance + 20, 32);
         self.nickname.text.pop();
     }
 
@@ -301,20 +359,18 @@ impl Menu {
         };
         let allowed = &self.assets.menu.texts.campaign.name_characters;
         if !allowed[usize::from(c)]
-            || self.nickname.text.len() >= NAME_CHARACTERS
-            || self.nickname.width >= NAME_PIXELS
+            || self.nickname.text.len() >= self.nickname.max_characters
+            || self.nickname.width >= self.nickname.max_pixels
         {
             return;
         }
         let c = c.to_ascii_lowercase();
-        let x = NAME.0 + self.nickname.width;
-        self.screen.fill(at(x, NAME.1), 32, 32, POPUP_FILL);
-        self.graphics
-            .big_b
-            .draw(&mut self.screen, &[c], at(x, NAME.1));
+        let (x, y) = self.nickname.at;
+        let x = x + self.nickname.width;
+        self.screen.fill(at(x, y), 32, 32, POPUP_FILL);
+        self.graphics.big_b.draw(&mut self.screen, &[c], at(x, y));
         let advance = self.graphics.big_b.width(&[c]);
-        self.shown
-            .copy_from(&self.screen, at(x, NAME.1), advance, 32);
+        self.shown.copy_from(&self.screen, at(x, y), advance, 32);
         self.nickname.text.push(c);
         self.nickname.width += advance;
     }

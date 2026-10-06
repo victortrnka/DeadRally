@@ -6,7 +6,7 @@ use deadrally_gamedata::assets::{MenuAssets, Picture};
 use deadrally_gamedata::dr_cfg::{DrCfg, HEADER_BYTES, PAYLOAD_BYTES};
 use deadrally_gamedata::image::{Image, Palette};
 use deadrally_gamedata::text::{
-    CampaignTexts, CarSpec, ConfigureTexts, HallOfFameTexts, Metrics, Texts,
+    CampaignTexts, CarSpec, ConfigureTexts, HallOfFameTexts, Metrics, ShopTexts, Texts,
 };
 use deadrally_gamedata::xm::{Bank, Instrument, Looping};
 
@@ -46,6 +46,8 @@ pub const LICENCE: u8 = 203;
 pub const FACE: u8 = 76;
 pub const TURNING: u8 = 231;
 pub const SIGN_UP: u8 = 239;
+/// The shop's pictures from 53 on.
+pub const SHOP: u8 = 53;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -155,10 +157,33 @@ fn texts() -> Texts {
             welcome: vec![b"w".to_vec(); 10],
             continue_word: b"C".to_vec(),
             end_game: b"E".to_vec(),
+            empty_slot: b"-".to_vec(),
+            quicksave_slot: b"Q".to_vec(),
+            game_loaded: b"L".to_vec(),
+            game_saved: b"S".to_vec(),
+            save_prompt: b"?".to_vec(),
             no_sign_up: b"0".to_vec(),
             race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
             speeds: vec![[55, 60, 65, 70, 75]; 6],
         },
+        shop: shop_texts(),
+    }
+}
+
+/// Every shop description one line of one letter.
+pub fn shop_texts() -> ShopTexts {
+    let info = || vec![b"i".to_vec(); 6];
+    ShopTexts {
+        cars: (0..6).map(|_| [info(), info()]).collect(),
+        engines: (0..6).map(|_| (0..4).map(|_| info()).collect()).collect(),
+        engine_max: info(),
+        tires: (0..4).map(|_| info()).collect(),
+        tire_max: info(),
+        armours: (0..4).map(|_| info()).collect(),
+        armour_max: info(),
+        repairs: (0..12).map(|_| info()).collect(),
+        repair_ten: b"10".to_vec(),
+        continues: [info(), info()],
     }
 }
 
@@ -222,7 +247,9 @@ pub fn menu_assets() -> MenuAssets {
         face_arrows: (0..4).map(|k| solid(68, 16, LICENCE + 2 + k)).collect(),
         car_box: solid(96, 96, LICENCE + 6),
         car_names: (0..6).map(|k| solid(96, 16, LICENCE + 7 + k)).collect(),
-        car_turning: (0..64).map(|k| solid(96, 64, TURNING + k % 8)).collect(),
+        car_turning: (0..6)
+            .map(|_| (0..64).map(|k| solid(96, 64, TURNING + k % 8)).collect())
+            .collect(),
         colour_slider: solid(294, 16, LICENCE + 13),
         colour_knob: solid(10, 24, LICENCE + 14),
         price_digits: (0..11).map(|k| solid(16, 13, LICENCE + 15 + k)).collect(),
@@ -231,5 +258,20 @@ pub fn menu_assets() -> MenuAssets {
         side_cars: (0..6).map(|k| solid(96, 64, SIGN_UP + 2 + k)).collect(),
         upgrade_lamps: (0..6).map(|k| solid(20, 10, SIGN_UP + 8 + k)).collect(),
         sign_line: solid(136, 2, SIGN_UP + 14),
+        shop_title: solid(640, 16, SHOP),
+        car_arrows: (0..4).map(|k| solid(16, 64, SHOP + 1 + k)).collect(),
+        item_boxes: (0..5).map(|k| solid(96, 96, SHOP + 5 + k)).collect(),
+        engines: (0..4)
+            .map(|_| (0..24).map(|_| solid(96, 64, SHOP + 10)).collect())
+            .collect(),
+        tires: (0..4)
+            .map(|_| (0..12).map(|_| solid(96, 64, SHOP + 11)).collect())
+            .collect(),
+        armours: (0..4)
+            .map(|_| (0..16).map(|_| solid(96, 64, SHOP + 12)).collect())
+            .collect(),
+        repair: (0..24).map(|_| solid(96, 64, SHOP + 13)).collect(),
+        continue_flag: (0..23).map(|_| solid(96, 64, SHOP + 14)).collect(),
+        maxed: (0..12).map(|_| solid(96, 64, SHOP + 15)).collect(),
     }
 }

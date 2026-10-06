@@ -870,8 +870,8 @@ fn the_best_tens_names_are_written_upper_case_once_shown() {
 }
 
 /// From the main menu through the licence (nickname "A", weapons, the difficulty), the
-/// sign-up's welcome, Escape at the sign-up and its "no race" popup, back to the Start Racing
-/// menu with a game on.
+/// sign-up's welcome, Escape at the sign-up and its "no race" popup, the shop after the
+/// stand-in race, and Escape back to the Start Racing menu with a game on.
 fn through_a_new_game(game: &mut Game) {
     step(game, Key::Enter);
     step(game, Key::Enter);
@@ -887,8 +887,10 @@ fn through_a_new_game(game: &mut Game) {
     run(game, 4);
     step(game, Key::Escape);
     step(game, Key::Space);
-    // The fade to black, then the menus wiped in.
+    // The fade to black, then the shop wiped in.
     run(game, 120);
+    step(game, Key::Escape);
+    run(game, 60);
 }
 
 #[test]
@@ -922,4 +924,97 @@ fn a_damaged_difficulty_in_dr_cfg_does_not_crash_the_licence() {
     config.set_difficulty(7);
     let mut game = in_menu_with(assets(), config);
     through_a_new_game(&mut game);
+}
+
+/// A saved game: the player (driver 19) in a Vagabond, everyone else zero, named "s".
+fn saved_game() -> Vec<u8> {
+    let mut drivers = vec![0u8; 0x870];
+    // Driver 19's name and rank 20.
+    drivers[19 * 108] = b'p';
+    drivers[19 * 108 + 72] = 20;
+    let mut name = [0; 15];
+    name[0] = b's';
+    deadrally_gamedata::save_game::SaveGame {
+        driver_id: 19,
+        use_weapons: 1,
+        difficulty: 1,
+        name,
+        drivers,
+    }
+    .encode(3)
+}
+
+/// From the main menu to the Start Racing menu's "load game" row and its slots.
+fn to_the_slots(game: &mut Game) {
+    step(game, Key::Enter);
+    step(game, Key::Down);
+    step(game, Key::Enter);
+}
+
+#[test]
+fn a_loaded_game_opens_the_shop_and_escape_comes_back_to_the_start_menu() {
+    // Loading ends in the shop, as the original's loadGame and postLoadedOrLicense do; Escape
+    // there returns to the menu with the game's rows active.
+    let mut game = Game::new(assets(), common::config());
+    game.set_saved_games(vec![Some(saved_game())]);
+    run(&mut game, MENU_SHOWN);
+    to_the_slots(&mut game);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Space);
+    // The wipe, then a pass of the shop.
+    run(&mut game, 60);
+    assert_eq!(
+        pixel(&game, (300, 95)),
+        common::SHOP,
+        "the shop's title is shown"
+    );
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    assert_eq!(
+        row_fonts(&game, START),
+        [BIG_B, BIG_B, BIG_B, BIG_A, BIG_B, BIG_B],
+        "back on the load row, with the game's rows active"
+    );
+}
+
+#[test]
+fn an_empty_slot_loads_nothing() {
+    // Choosing an empty slot only sounds; the slots stay.
+    let mut game = in_menu(assets());
+    to_the_slots(&mut game);
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    assert_ne!(pixel(&game, (300, 95)), common::SHOP, "no shop");
+}
+
+#[test]
+fn saving_writes_the_game_under_the_typed_name_into_the_chosen_slot() {
+    // The file must be the original's format: driver 19, the drivers' records, the name the
+    // player typed, lower-cased as the entry types it.
+    let mut game = Game::new(assets(), common::config());
+    game.set_saved_games(vec![Some(saved_game())]);
+    run(&mut game, MENU_SHOWN);
+    to_the_slots(&mut game);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Space);
+    run(&mut game, 60);
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    // From the load row down to "save game", its slots, slot 2.
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (slot, file) = game.take_saved_game().expect("a game was saved");
+    assert_eq!(slot, 2);
+    let saved = deadrally_gamedata::save_game::SaveGame::decode(&file);
+    assert_eq!(saved.driver_id, 19);
+    assert_eq!(&saved.name[..2], b"q\0");
+    assert_eq!(
+        saved.drivers,
+        deadrally_gamedata::save_game::SaveGame::decode(&saved_game()).drivers
+    );
 }

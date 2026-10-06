@@ -314,15 +314,94 @@ const NEW_GAME_SHOTS: [(u64, &str); 36] = [
     (3225, "filling-5"),
 ];
 
+/// The keys of `scripts/reference/saved-games.scenario` in the run of
+/// `docs/verification/m3b.md`: the intro skipped, a saved game loaded, the shop's items and
+/// car arrows, back to the menu, and a save into slot 1 named "xyz".
+const SAVED_GAMES_KEYS: [(u64, Key); 26] = [
+    (130, Key::Space),
+    (1727, Key::Enter),
+    (1813, Key::Down),
+    (1885, Key::Enter),
+    (1970, Key::Enter),
+    (2062, Key::Space),
+    (2190, Key::Left),
+    (2269, Key::Left),
+    (2348, Key::Left),
+    (2426, Key::Left),
+    (2504, Key::Left),
+    (2583, Key::Up),
+    (2661, Key::Right),
+    (2740, Key::Left),
+    (2818, Key::Down),
+    (2898, Key::Right),
+    (2975, Key::Escape),
+    (3090, Key::Down),
+    (3161, Key::Enter),
+    (3247, Key::Down),
+    (3318, Key::Enter),
+    (3404, Key::X),
+    (3426, Key::Y),
+    (3447, Key::Z),
+    (3497, Key::Enter),
+    (3583, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const SAVED_GAMES_SHOTS: [(u64, &str); 31] = [
+    (1689, "idle"),
+    (1783, "start"),
+    (1855, "load-row"),
+    (1941, "slots"),
+    (2026, "loaded"),
+    (2068, "shop-wipe-1"),
+    (2075, "shop-wipe-2"),
+    (2082, "shop-wipe-3"),
+    (2090, "shop-wipe-4"),
+    (2097, "shop-wipe-5"),
+    (2104, "shop-wipe-6"),
+    (2111, "shop-wipe-7"),
+    (2154, "shop"),
+    (2240, "left-1"),
+    (2318, "left-2"),
+    (2397, "left-3"),
+    (2475, "left-4"),
+    (2554, "left-5"),
+    (2632, "up"),
+    (2711, "car-next"),
+    (2790, "car-back"),
+    (2868, "down"),
+    (2947, "right"),
+    (3059, "menu"),
+    (3129, "save-row"),
+    (3216, "save-slots"),
+    (3287, "slot-1"),
+    (3319, "prompt"),
+    (3448, "named"),
+    (3498, "saved"),
+    (3640, "after"),
+];
+
 /// The seed the reference runs were made with (`scripts/reference-run.sh --seed 1`).
 const SEED: u32 = 1;
 
 /// One line per screenshot (the frame's pixels and palette), one for the run's sound and one
 /// for the last `dr.cfg` it wrote. The run stops at `ticks`, or earlier when the game quits.
 fn manifest(keys: &[(u64, Key)], shots: &[(u64, &str)], ticks: u64) -> String {
+    manifest_with(keys, shots, ticks, Vec::new())
+}
+
+/// [`manifest`] with saved games in the slots, and a line for each game the run saves.
+fn manifest_with(
+    keys: &[(u64, Key)],
+    shots: &[(u64, &str)],
+    ticks: u64,
+    slots: Vec<Option<Vec<u8>>>,
+) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
+    game.set_saved_games(slots);
+    let mut saved = Vec::new();
     let mut lines = String::new();
     let mut audio = Vec::new();
     let mut written = None;
@@ -336,6 +415,7 @@ fn manifest(keys: &[(u64, Key)], shots: &[(u64, &str)], ticks: u64) -> String {
         game.tick();
         game.take_audio(&mut audio);
         written = game.take_config().or(written);
+        saved.extend(game.take_saved_game());
         done += 1;
         for &(_, name) in shots.iter().filter(|(at, _)| *at == done) {
             let frame = game.frame();
@@ -348,6 +428,18 @@ fn manifest(keys: &[(u64, Key)], shots: &[(u64, &str)], ticks: u64) -> String {
     let mut hasher = Sha256::new();
     hash(&audio, &mut hasher);
     writeln!(lines, "{}  sound of {done} ticks", hex(hasher)).unwrap();
+    for (slot, file) in saved {
+        if let Some(dir) = std::env::var_os("DEADRALLY_DUMP_SAVES") {
+            std::fs::write(
+                std::path::Path::new(&dir).join(format!("DR.SG{slot}")),
+                &file,
+            )
+            .unwrap();
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(&file);
+        writeln!(lines, "{}  saved game in slot {slot}", hex(hasher)).unwrap();
+    }
     let written = written.expect("dr.cfg is written at start-up");
     if let Some(path) = std::env::var_os("DEADRALLY_DUMP_CFG") {
         std::fs::write(path, &written).unwrap();
@@ -399,4 +491,110 @@ fn the_new_game_run_matches_the_committed_manifest() {
     // follow the original's random numbers; a change to any of them shows here.
     let lines = manifest(&NEW_GAME_KEYS, &NEW_GAME_SHOTS, 3_300);
     check_manifest("new-game-run.sha256", &lines, "the new game run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_saved_games_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick and the game
+    // it saved equalled the original's file byte for byte (docs/verification/m3b.md).
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_with(&SAVED_GAMES_KEYS, &SAVED_GAMES_SHOTS, 3_700, slots);
+    assert!(
+        lines.contains("saved game in slot 1"),
+        "the run saves into slot 1"
+    );
+    check_manifest("saved-games-run.sha256", &lines, "the saved games run");
+}
+
+/// The saved game `scripts/reference/saved-games.scenario` starts from (the reference run
+/// loads the same file): seed 1's drivers as `initDrivers` sets them up, recomputed here, and
+/// a player part-way through a game.
+fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let campaign = &texts.campaign;
+    let mut state: u32 = 1;
+    let mut rand = || {
+        state = state.wrapping_mul(214_013).wrapping_add(2_531_011);
+        ((state >> 16) & 0x7FFF) as i32
+    };
+    const CARS: [i32; 19] = [5, 5, 5, 4, 4, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 0, 0];
+    const POINTS: [i32; 19] = [
+        100, 86, 77, 69, 63, 57, 51, 46, 42, 37, 33, 28, 25, 20, 17, 13, 9, 5, 2,
+    ];
+    const PLAYER_FACE: usize = 5;
+    // name, then damage, engine, tires, armour, car, 3 unused, colour, money, loan, loan
+    // races, car's price, face, points, rank, wins, races, last and total income, mines,
+    // spikes, rocket, sabotage.
+    let record = |name: &[u8], numbers: [i32; 24]| {
+        let mut bytes = name.to_vec();
+        bytes.resize(12, 0);
+        for number in numbers {
+            bytes.extend_from_slice(&number.to_le_bytes());
+        }
+        bytes
+    };
+    let mut drivers = Vec::new();
+    let mut taken = [false; 20];
+    for index in 0..19 {
+        let car = CARS[index];
+        let spec = campaign.cars[car as usize];
+        let money = rand() % 100_000;
+        let engine = rand() % spec.upgrades[0];
+        let tires = rand() % spec.upgrades[1];
+        let armour = rand() % spec.upgrades[2];
+        let mut face = index;
+        while taken[face] || face == PLAYER_FACE {
+            face += 1;
+        }
+        taken[face] = true;
+        let f = face as i32;
+        drivers.extend(record(
+            &campaign.driver_names[face],
+            [
+                0,
+                engine,
+                tires,
+                armour,
+                car,
+                0,
+                0,
+                0,
+                f,
+                money,
+                0,
+                0,
+                spec.price,
+                f,
+                POINTS[index],
+                index as i32 + 1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        ));
+    }
+    let price = campaign.cars[1].price;
+    drivers.extend(record(
+        b"Tester",
+        [
+            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+    ));
+    let mut name = [0; 15];
+    name[..9].copy_from_slice(b"save test");
+    deadrally_gamedata::save_game::SaveGame {
+        driver_id: 19,
+        use_weapons: 1,
+        difficulty: 1,
+        name,
+        drivers,
+    }
+    .encode(77)
 }
