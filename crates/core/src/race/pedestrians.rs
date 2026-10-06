@@ -31,14 +31,28 @@ struct Pedestrian {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Pedestrians {
     people: Vec<Pedestrian>,
+    /// On a reversed circuit, whose sprites are turned half round.
+    reversed: bool,
     sprites: Vec<u8>,
     splats: [Vec<u8>; 2],
 }
 
 impl Pedestrians {
     /// The track's pedestrians (0x409DED: x, y, kind and facing from `INF.BIN`), with
-    /// `PEDESTR.BPK`'s sprites and the splats `SPLAT3.BPK` and `SPLAT4.BPK`.
-    pub(crate) fn new(info: &TrackInfo, sprites: Vec<u8>, splats: [Vec<u8>; 2]) -> Pedestrians {
+    /// `PEDESTR.BPK`'s sprites and the splats `SPLAT3.BPK` and `SPLAT4.BPK`; on a reversed
+    /// circuit the sprites' first 36 frames turned half round (0x40AC60).
+    pub(crate) fn new(
+        info: &TrackInfo,
+        reversed: bool,
+        mut sprites: Vec<u8>,
+        splats: [Vec<u8>; 2],
+    ) -> Pedestrians {
+        if reversed {
+            let turned = sprites.len().min(36 * FRAME);
+            for frame in sprites[..turned].chunks_mut(FRAME) {
+                frame.reverse();
+            }
+        }
         let people = info
             .pedestrians
             .iter()
@@ -52,6 +66,7 @@ impl Pedestrians {
             .collect();
         Pedestrians {
             people,
+            reversed,
             sprites,
             splats,
         }
@@ -93,17 +108,23 @@ impl Pedestrians {
             }
             let (left_of, right_of) = (car_x < person.x, car_x > person.x);
             let (above, below) = (car_y < person.y, car_y > person.y);
+            // On a reversed circuit the sprites are turned round and so are the directions.
+            let [up_left, up_right, down_left, down_right] = if self.reversed {
+                [0, 1, 3, 2]
+            } else {
+                [2, 3, 1, 0]
+            };
             if left_of && above {
-                person.facing = 2;
+                person.facing = up_left;
             }
             if right_of && above {
-                person.facing = 3;
+                person.facing = up_right;
             }
             if left_of && below {
-                person.facing = 1;
+                person.facing = down_left;
             }
             if right_of && below {
-                person.facing = 0;
+                person.facing = down_right;
             }
         }
         for person in &self.people {
@@ -156,7 +177,7 @@ mod tests {
         info.pedestrians[0] = [x, y, 0, 0];
         // Each 16x16 frame filled with its own number.
         let sprites = (0..12u8).flat_map(|frame| vec![frame + 1; FRAME]).collect();
-        Pedestrians::new(&info, sprites, [vec![], vec![]])
+        Pedestrians::new(&info, false, sprites, [vec![], vec![]])
     }
 
     fn shown(people: &mut Pedestrians, now: u32, car: (f32, f32)) -> u8 {

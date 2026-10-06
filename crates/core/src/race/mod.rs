@@ -242,17 +242,50 @@ impl Race {
         rand: &mut Rand,
     ) -> Result<Race, RaceError> {
         let number = circuit % 9 + 1;
+        // The second half's circuits run their tracks the other way round (0x432532).
+        let reversed = circuit > 8;
         let mut track = Track::load(&archives.tracks[number], number)?;
-        let obstacles = hud::decoded(&archives.engine, "OBSTACLE.BPK")?;
+        // The scene's lights and pictures are worked out before the track is turned round
+        // (0x4161EC and 0x416206 come before 0x416304).
+        let scene = scene::Setup::new(&track.scene);
+        if reversed {
+            let name = format!("TR{number}-FLIP.PAL");
+            let flip =
+                Palette::from_bytes(archives.tracks[number].read(&name)?).map_err(|error| {
+                    RaceError::Track {
+                        name,
+                        error: deadrally_gamedata::track::TrackError::Palette(error),
+                    }
+                })?;
+            track = track.reversed(flip);
+        }
+        let obstacles = hud::decoded(
+            &archives.engine,
+            if reversed {
+                "OBST_REV.BPK"
+            } else {
+                "OBSTACLE.BPK"
+            },
+        )?;
         let spots = track.info.power_ups;
         // The power-ups' values matter once the race picks them up (M4c).
         power_ups::place(&mut track.image, &spots, &obstacles, rand);
-        let scene = scene::Setup::new(&track.scene);
         let cars = drivers
             .iter()
             .enumerate()
             .map(|(slot, driver)| {
-                let [x, y, rotation] = track.info.starts[slot];
+                let [mut x, mut y, mut rotation] = track.info.starts[slot];
+                if reversed {
+                    // 0x40ACC0: across the track, and half round (one step short of it from
+                    // the first half of the directions, as the original counts).
+                    x = track.info.width as i32 - x - 1;
+                    y = track.info.height as i32 - y - 1;
+                    rotation = if rotation < 48 {
+                        rotation + 47
+                    } else {
+                        rotation - 48
+                    };
+                }
                 Car {
                     x: x as f32,
                     y: y as f32,
@@ -268,7 +301,7 @@ impl Race {
             .collect();
         let hud = hud::HudImages::load(&archives.ib_files, player, drivers[player].car, weapons)?;
         let looks: Vec<(usize, bool)> = drivers.iter().map(|d| (d.car, d.spikes)).collect();
-        let sprites = cars::sprites(&archives.engine, &looks)?;
+        let sprites = cars::sprites(&archives.engine, &looks, reversed)?;
         let mut shade = [0; 256];
         let table = archives.engine.read("VARJO.TAB")?;
         shade[..table.len().min(256)].copy_from_slice(&table[..table.len().min(256)]);
@@ -278,6 +311,7 @@ impl Race {
             sound::load_effects(&archives.musics, "GEN-EFE.CMF").map_err(RaceError::Sound)?;
         let pedestrians = pedestrians::Pedestrians::new(
             &track.info,
+            reversed,
             hud::decoded(&archives.engine, "PEDESTR.BPK")?,
             [
                 hud::decoded(&archives.engine, "SPLAT3.BPK")?,

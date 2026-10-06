@@ -23,8 +23,12 @@ const COLOUR: std::ops::RangeInclusive<u8> = 15..=24;
 const ROWS: i64 = 200;
 
 /// `sub_403050`: every driver's sprites one after another (0x5034FC), their colour's entries
-/// moved to the driver's own.
-pub(crate) fn sprites(engine: &Archive, cars: &[(usize, bool)]) -> Result<Vec<u8>, RaceError> {
+/// moved to the driver's own; on a reversed circuit turned half round (0x40AB40).
+pub(crate) fn sprites(
+    engine: &Archive,
+    cars: &[(usize, bool)],
+    reversed: bool,
+) -> Result<Vec<u8>, RaceError> {
     let mut all = vec![0; cars.len() * SPRITES];
     for (slot, &(car, spikes)) in cars.iter().enumerate() {
         let suffix = if spikes && car < SPECIAL {
@@ -38,8 +42,23 @@ pub(crate) fn sprites(engine: &Archive, cars: &[(usize, bool)]) -> Result<Vec<u8
         let len = decoded.len().min(SPRITES);
         own[..len].copy_from_slice(&decoded[..len]);
         recolour(own, slot);
+        if reversed {
+            turn_round(own);
+        }
     }
     Ok(all)
+}
+
+/// A car's sprites turned half round, as `calculateCircuitReversed` turns them: all read
+/// backwards, then each half's frames in the other order, so that the frame for a direction
+/// holds the old frame for the opposite direction upside down.
+fn turn_round(sprites: &mut [u8]) {
+    sprites.reverse();
+    for half in sprites.chunks_mut(SPRITES / 2) {
+        let mut frames: Vec<Vec<u8>> = half.chunks(FRAME).map(<[u8]>::to_vec).collect();
+        frames.reverse();
+        half.copy_from_slice(&frames.concat());
+    }
 }
 
 /// The car's colour entries in driver `slot`'s sprites moved to the driver's own ten.
@@ -91,6 +110,28 @@ pub(crate) fn headlights(buffer: &mut Buffer, (x, y): (i32, i32), angle: f32, ta
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// On a reversed circuit a car's frame for a direction shows the old frame for the
+    /// opposite direction (48 steps round) turned upside down, so the cars still face the way
+    /// they drive.
+    #[test]
+    fn reversed_sprites_face_the_other_way() {
+        let mut sprites: Vec<u8> = (0..FRAMES)
+            .flat_map(|frame| (0..FRAME).map(move |i| (frame * 7 + i % 5) as u8))
+            .collect();
+        let old = sprites.clone();
+        turn_round(&mut sprites);
+        for frame in [0, 10, 47, 48, 95] {
+            let was = (frame + 48) % FRAMES;
+            let mut expected = old[was * FRAME..(was + 1) * FRAME].to_vec();
+            expected.reverse();
+            assert_eq!(
+                &sprites[frame * FRAME..(frame + 1) * FRAME],
+                &expected[..],
+                "{frame}"
+            );
+        }
+    }
 
     /// Each driver's car shows in their own colour: the sprites' ten colour entries move ten
     /// along a place on the grid, and nothing else in them moves.

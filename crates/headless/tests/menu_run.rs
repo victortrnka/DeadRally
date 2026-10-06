@@ -819,6 +819,94 @@ const ABORT_SHOTS: [(u64, &str); 9] = [
     (3632, "a08"),
 ];
 
+/// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
+/// the preview run with the medium race chosen (Right at the sign-up), circuit 17.
+const REVERSED_KEYS: [(u64, Key); 11] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2597, Key::Right),
+    (2608, Key::Enter),
+    (2783, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview held,
+/// its fade, the reversed track's intro and countdown.
+const REVERSED_SHOTS: [(u64, &str); 67] = [
+    (2862, "r01"),
+    (2869, "r02"),
+    (2876, "r03"),
+    (2883, "r04"),
+    (2890, "r05"),
+    (2897, "r06"),
+    (2904, "r07"),
+    (2911, "r08"),
+    (2918, "r09"),
+    (2925, "r10"),
+    (2932, "r11"),
+    (2939, "r12"),
+    (2946, "r13"),
+    (2953, "r14"),
+    (2960, "r15"),
+    (2967, "r16"),
+    (2974, "r17"),
+    (2981, "r18"),
+    (2988, "r19"),
+    (2995, "r20"),
+    (3003, "r21"),
+    (3010, "r22"),
+    (3016, "r23"),
+    (3023, "r24"),
+    (3030, "r25"),
+    (3037, "r26"),
+    (3044, "r27"),
+    (3052, "r28"),
+    (3059, "r29"),
+    (3066, "r30"),
+    (3073, "r31"),
+    (3080, "r32"),
+    (3087, "r33"),
+    (3094, "r34"),
+    (3102, "r35"),
+    (3109, "r36"),
+    (3116, "r37"),
+    (3123, "r38"),
+    (3130, "r39"),
+    (3137, "r40"),
+    (3144, "r41"),
+    (3151, "r42"),
+    (3159, "r43"),
+    (3166, "r44"),
+    (3173, "r45"),
+    (3180, "r46"),
+    (3187, "r47"),
+    (3194, "r48"),
+    (3202, "r49"),
+    (3209, "r50"),
+    (3216, "r51"),
+    (3223, "r52"),
+    (3230, "r53"),
+    (3237, "r54"),
+    (3244, "r55"),
+    (3252, "r56"),
+    (3259, "r57"),
+    (3266, "r58"),
+    (3273, "r59"),
+    (3280, "r60"),
+    (3287, "r61"),
+    (3294, "r62"),
+    (3301, "r63"),
+    (3309, "r64"),
+    (3316, "r65"),
+    (3323, "r66"),
+    (3330, "r67"),
+];
+
 /// The keys of `scripts/reference/sabotage.scenario` in the run of `docs/verification/m3c.md`
 /// (its sabotage's clock fixed at 31375): the test game, the sabotage bought in the Underground
 /// Market, the sign-up and the sabotage's popup.
@@ -1178,6 +1266,25 @@ fn the_abort_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("abort-run.sha256", &lines, "the abort run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_reversed_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the ninth track turned half round, its own palette, the
+    // cars facing back, the scene lit as before turning, the countdown.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&REVERSED_KEYS, &[]),
+        &REVERSED_SHOTS,
+        3_340,
+        slots,
+    );
+    check_manifest("reversed-run.sha256", &lines, "the reversed run");
 }
 
 #[test]

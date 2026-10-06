@@ -59,6 +59,76 @@ pub struct Track {
     pub scene: Scene,
 }
 
+impl Track {
+    /// The track turned half round for a reversed circuit (`calculateCircuitReversed`
+    /// 0x40A9A0), with its reversed palette `flip` (`-FLIP.PAL`, which `loadCircuitPalette`
+    /// 0x402CF0 reads in place of the picture's): the picture and the mask read backwards; the
+    /// pedestrians' (16 square, from their corner), the power-ups' spots and the shadows' points
+    /// across from where they were; the scene's objects and pictures likewise, their points
+    /// turned round their places and the pictures' pixels read backwards.
+    #[must_use]
+    pub fn reversed(mut self, flip: Palette) -> Track {
+        let width = self.info.width as i32;
+        let height = self.info.height as i32;
+        self.palette = flip;
+        self.image.pixels.reverse();
+        self.mask.pixels.reverse();
+        for spot in &mut self.info.power_ups {
+            if spot[0] > 0 {
+                spot[0] = width - spot[0] - 1;
+            }
+            if spot[1] > 0 {
+                spot[1] = height - spot[1] - 1;
+            }
+        }
+        for person in &mut self.info.pedestrians {
+            if person[0] > 0 {
+                person[0] = width - person[0] - 17;
+            }
+            if person[1] > 0 {
+                person[1] = height - person[1] - 17;
+            }
+        }
+        for point in &mut self.shadows.points {
+            *point = (width - point.0 - 1, height - point.1 - 1);
+        }
+        for object in &mut self.scene.objects {
+            for point in &mut object.points {
+                point[0] = point[0].wrapping_neg();
+                point[1] = point[1].wrapping_neg();
+            }
+            let [least_x, most_x, least_y, most_y] = object.bounds;
+            object.bounds = [
+                most_x.wrapping_neg(),
+                least_x.wrapping_neg(),
+                most_y.wrapping_neg(),
+                least_y.wrapping_neg(),
+            ];
+            object.position = (
+                width - object.position.0 - 1,
+                height - object.position.1 - 1,
+            );
+        }
+        for picture in &mut self.scene.textures {
+            let across = (width - 1) * 256;
+            let down = (height - 1) * 256;
+            picture.position = (
+                across - picture.position.0 - picture.width.wrapping_mul(picture.depth),
+                down - picture.position.1 - picture.height.wrapping_mul(picture.depth),
+            );
+        }
+        for picture in &self.scene.textures {
+            let len = picture.width.wrapping_mul(picture.height);
+            let start = usize::try_from(picture.offset).unwrap_or(0);
+            let end = start.saturating_add(usize::try_from(len).unwrap_or(0));
+            if let Some(pixels) = self.scene.pixels.get_mut(start..end) {
+                pixels.reverse();
+            }
+        }
+        self
+    }
+}
+
 /// A track's shadows (`-SHA.BPK`, read by 0x4034F0): triangles between points of the track
 /// that darken what passes under them. The stream holds the counts of points and triangles,
 /// the points' x, y and an unused third coordinate, then the triangles' three corners.
@@ -316,6 +386,82 @@ mod tests {
         let shadows = Shadows::parse(&bytes).unwrap();
         assert_eq!(shadows.points, [(10, 11), (20, 21), (30, 31)]);
         assert_eq!(shadows.triangles, [[0, 2, 1], [1, 0, 2]]);
+    }
+
+    /// A reversed circuit's track is the same track turned half round: what stood at (x, y)
+    /// stands at (width - 1 - x, height - 1 - y), pedestrians (16 square, placed by their
+    /// corner) at 17 less, spots left empty (0) stay empty, the scene's points turn round their
+    /// objects' places, and the pictures' pixels read backwards.
+    #[test]
+    fn a_reversed_track_is_turned_half_round() {
+        let mut info = TrackInfo {
+            width: 100,
+            height: 50,
+            zones: 0,
+            starts: [[0; 3]; 4],
+            power_ups: [[0; 2]; 16],
+            pedestrians: [[0; 4]; 20],
+        };
+        info.power_ups[0] = [10, 20];
+        info.pedestrians[0] = [10, 20, 1, 2];
+        let picture = |pixels: Vec<u8>| Image {
+            width: 3,
+            height: 1,
+            pixels,
+        };
+        let track = Track {
+            info,
+            image: Image {
+                width: 100,
+                height: 50,
+                pixels: (0..5000).map(|i| (i % 251) as u8).collect(),
+            },
+            palette: Palette::BLACK,
+            mask: picture(vec![1, 2, 3]),
+            lit: [0; 256],
+            shadows: Shadows {
+                points: vec![(0, 0)],
+                triangles: vec![],
+            },
+            scene: Scene {
+                objects: vec![SceneObject {
+                    points: vec![[256, -512, 300]],
+                    triangles: vec![],
+                    bounds: [-512, 256, -768, 0],
+                    position: (30, 40),
+                }],
+                textures: vec![SceneTexture {
+                    width: 2,
+                    height: 1,
+                    offset: 1,
+                    position: (2560, 5120),
+                    depth: 256,
+                    object: 0,
+                    triangle: 0,
+                }],
+                pixels: vec![9, 1, 2, 9],
+            },
+        };
+        let first = track.image.pixels[0];
+        let mut flip = Palette::BLACK;
+        flip.0[1] = [1, 2, 3];
+        let turned = track.reversed(flip.clone());
+        assert_eq!(turned.palette, flip);
+        assert_eq!(*turned.image.pixels.last().unwrap(), first);
+        assert_eq!(turned.mask.pixels, [3, 2, 1]);
+        assert_eq!(turned.info.power_ups[0], [89, 29]);
+        assert_eq!(turned.info.power_ups[1], [0, 0]);
+        assert_eq!(&turned.info.pedestrians[0][..2], &[73, 13]);
+        assert_eq!(turned.shadows.points, [(99, 49)]);
+        let object = &turned.scene.objects[0];
+        assert_eq!(object.points, [[-256, 512, 300]]);
+        assert_eq!(object.bounds, [-256, 512, 0, 768]);
+        assert_eq!(object.position, (69, 9));
+        assert_eq!(
+            turned.scene.textures[0].position,
+            (99 * 256 - 2560 - 512, 49 * 256 - 5120 - 256)
+        );
+        assert_eq!(turned.scene.pixels, [9, 2, 1, 9]);
     }
 
     #[test]
