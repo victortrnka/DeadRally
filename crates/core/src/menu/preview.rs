@@ -251,6 +251,7 @@ impl Menu {
             player,
             weapons,
             pause_lines: lines,
+            race_over_lines: self.assets.menu.texts.campaign.race_over.clone(),
             controls,
             pickup_money: self.pickup_money(race),
             lap_record: self
@@ -281,8 +282,8 @@ impl Menu {
         race.present(self.shown.pixels_mut());
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
-        if outcome == crate::race::Outcome::Aborted {
-            // The race's end (the zoom out, the results) comes with M4c and M5.
+        if outcome != crate::race::Outcome::Racing {
+            // The race's results come with M5.
             self.race = None;
             return self.after_race();
         }

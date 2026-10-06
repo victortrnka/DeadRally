@@ -1125,45 +1125,102 @@ const ROCKET_SHOTS: [(u64, &str); 22] = [
 
 /// The keys held in `scripts/reference/wreck.scenario`'s run of `docs/verification/m4c.md`
 /// (`--no-ai`, its state watched, the test game at 99 % damage with a mine): the mine key,
-/// then Down backing over the mine.
-const WRECK_HELD: [Held; 2] = [(3639, Key::LeftAlt, 7), (3696, Key::Down, 50)];
+/// Down backing over the mine, and Enter once the race is over.
+const WRECK_HELD: [Held; 3] = [
+    (3638, Key::LeftAlt, 7),
+    (3695, Key::Down, 50),
+    (4180, Key::Enter, 7),
+];
 
 /// The ticks after which our frame equalled each screenshot of that run: the blast wrecking
-/// the car, its fire's pictures, the medals rolling to the new places.
-const WRECK_SHOTS: [(u64, &str); 33] = [
+/// the car, its fire's pictures, the medals rolling to the new places, 300 ticks on the box
+/// saying the race is over flying in and apart, and the view tilting away.
+const WRECK_SHOTS: [(u64, &str); 85] = [
     (3323, "race"),
     (3610, "w00"),
-    (3703, "w01"),
-    (3710, "w02"),
-    (3716, "w03"),
+    (3701, "w01"),
+    (3708, "w02"),
+    (3715, "w03"),
     (3723, "w04"),
-    (3731, "w05"),
-    (3738, "w06"),
-    (3746, "w07"),
-    (3752, "w08"),
-    (3759, "w09"),
-    (3767, "w10"),
-    (3773, "w11"),
-    (3781, "w12"),
-    (3788, "w13"),
-    (3794, "w14"),
-    (3802, "w15"),
-    (3809, "w16"),
-    (3816, "w17"),
-    (3823, "w18"),
-    (3830, "w19"),
-    (3838, "w20"),
-    (3845, "w21"),
-    (3851, "w22"),
-    (3859, "w23"),
-    (3866, "w24"),
+    (3730, "w05"),
+    (3737, "w06"),
+    (3745, "w07"),
+    (3751, "w08"),
+    (3757, "w09"),
+    (3765, "w10"),
+    (3772, "w11"),
+    (3780, "w12"),
+    (3787, "w13"),
+    (3793, "w14"),
+    (3801, "w15"),
+    (3808, "w16"),
+    (3815, "w17"),
+    (3822, "w18"),
+    (3829, "w19"),
+    (3837, "w20"),
+    (3844, "w21"),
+    (3850, "w22"),
+    (3858, "w23"),
+    (3865, "w24"),
     (3873, "w25"),
     (3880, "w26"),
-    (3887, "w27"),
-    (3895, "w28"),
-    (3902, "w29"),
-    (3909, "w30"),
+    (3886, "w27"),
+    (3894, "w28"),
+    (3901, "w29"),
+    (3907, "w30"),
     (3916, "w31"),
+    (3922, "w32"),
+    (3930, "w33"),
+    (3937, "w34"),
+    (3943, "w35"),
+    (3951, "w36"),
+    (3958, "w37"),
+    (3967, "w38"),
+    (3973, "w39"),
+    (3979, "w40"),
+    (3987, "w41"),
+    (3994, "w42"),
+    (4000, "w43"),
+    (4008, "w44"),
+    (4015, "w45"),
+    (4023, "w46"),
+    (4030, "w47"),
+    (4037, "w48"),
+    (4044, "w49"),
+    (4051, "w50"),
+    (4058, "w51"),
+    (4065, "w52"),
+    (4073, "w53"),
+    (4080, "w54"),
+    (4087, "w55"),
+    (4094, "w56"),
+    (4101, "w57"),
+    (4108, "w58"),
+    (4115, "w59"),
+    (4123, "w60"),
+    (4130, "w61"),
+    (4137, "w62"),
+    (4144, "w63"),
+    (4151, "w64"),
+    (4158, "w65"),
+    (4165, "w66"),
+    (4172, "w67"),
+    (4179, "w68"),
+    (4187, "w69"),
+    (4193, "w70"),
+    (4200, "w71"),
+    (4207, "w72"),
+    (4215, "w73"),
+    (4222, "w74"),
+    (4229, "w75"),
+    (4236, "w76"),
+    (4243, "w77"),
+    (4250, "w78"),
+    (4257, "w79"),
+    (4265, "w80"),
+    (4272, "w81"),
+    (4279, "w82"),
+    (4284, "w83"),
 ];
 
 /// The keys held in `scripts/reference/spikes.scenario`'s run of `docs/verification/m4c.md`
@@ -1266,9 +1323,9 @@ const PAUSE_SHOTS: [(u64, &str); 50] = [
 /// The keys held in `scripts/reference/abort.scenario`'s run: Escape, then Y.
 const ABORT_HELD: [Held; 2] = [(3397, Key::Escape, 7), (3576, Key::Y, 7)];
 
-/// The ticks after which our frame equalled each screenshot of that run: the box landed, and
-/// flying apart before the race ends.
-const ABORT_SHOTS: [(u64, &str); 9] = [
+/// The ticks after which our frame equalled each screenshot of that run: the box landed,
+/// flying apart, the race's last frame and the view tilting away (spec M4c).
+const ABORT_SHOTS: [(u64, &str); 16] = [
     (3555, "box"),
     (3584, "a01"),
     (3589, "a02"),
@@ -1278,6 +1335,13 @@ const ABORT_SHOTS: [(u64, &str); 9] = [
     (3618, "a06"),
     (3625, "a07"),
     (3632, "a08"),
+    (3639, "a09"),
+    (3648, "a10"),
+    (3655, "a11"),
+    (3662, "a12"),
+    (3669, "a13"),
+    (3676, "a14"),
+    (3680, "a15"),
 ];
 
 /// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
@@ -1830,7 +1894,8 @@ fn the_rocket_run_matches_the_committed_manifest() {
 fn the_wreck_run_matches_the_committed_manifest() {
     // Written after every screenshot of the run equalled our frame at its tick, and every
     // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
-    // wreck's fire or the HUD's medals rolling to the new places show here.
+    // wreck's fire, the HUD's medals rolling to the new places, the race's end 300 ticks on
+    // and the view tilting away show here.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
     slots[0] = Some(armed_save(&assets.menu.texts, 99, [1, 0, 0]));
@@ -1838,7 +1903,7 @@ fn the_wreck_run_matches_the_committed_manifest() {
         (SEED, None),
         (&RACE_START_KEYS, &WRECK_HELD),
         &WRECK_SHOTS,
-        3_920,
+        4_290,
         slots,
     );
     check_manifest("wreck-run.sha256", &lines, "the wreck run");
@@ -1886,8 +1951,9 @@ fn the_guns_run_matches_the_committed_manifest() {
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_abort_run_matches_the_committed_manifest() {
     // Written after every screenshot of the run equalled our frame at its tick
-    // (docs/verification/m4b.md): the box landed, Y, the tiles flying apart. The run goes on
-    // into the stand-in's shop, so its sound pins the menus' music coming back after the race.
+    // (docs/verification/m4b.md, m4c.md): the box landed, Y, the tiles flying apart, the race's
+    // last frame and the view tilting away. The run goes on into the stand-in's shop, so its
+    // sound pins the menus' music coming back after the race.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
     slots[0] = Some(test_save(&assets.menu.texts));

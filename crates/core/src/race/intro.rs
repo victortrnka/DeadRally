@@ -7,28 +7,70 @@
 use deadrally_gamedata::image::Palette;
 
 /// The screen's size, and the view's and the HUD's widths on it.
-const WIDTH: usize = 320;
-const HEIGHT: usize = 200;
-const VIEW: usize = 256;
-const HUD: usize = 64;
+pub(super) const WIDTH: usize = 320;
+pub(super) const HEIGHT: usize = 200;
+pub(super) const VIEW: usize = 256;
+pub(super) const HUD: usize = 64;
 
 /// 1/90 as the f32 at 0x441628: the zoom keeps its colours divided by 90.
-const NINETIETH: u32 = 0x3C36_0B61;
+pub(super) const NINETIETH: u32 = 0x3C36_0B61;
 /// The zoom's factor: from 1 up to 90 (degrees of tilt, and 90ths of the colours).
 const FACTOR_END: f32 = 90.0;
 /// What the factor's step starts at and grows by a tick (0x44509C, 0x4415D8).
-const STEP_START: f32 = 0.9;
-const STEP_GROWTH: f64 = 1.02;
+pub(super) const STEP_START: f32 = 0.9;
+pub(super) const STEP_GROWTH: f64 = 1.02;
 /// Degrees to radians as the original has it (0x4412B0), and the HUD's width a degree
 /// (0x4415E8, 5/7).
 const RADIANS: f64 = 0.017_453_292_519_944_444;
-const HUD_PER_DEGREE: f64 = 0.714_285_714_285_714_3;
+pub(super) const HUD_PER_DEGREE: f64 = 0.714_285_714_285_714_3;
 /// The flash's top, 1.7 times the colour (0x4415D0 negated).
 const FLASH: f64 = 1.7;
 
 /// The grey a colour fades from (0x404CE3): `(b·11.3 + r·29.9 + g·58.8) · 0.01` truncated.
 fn grey([r, g, b]: [u8; 3]) -> i32 {
     ((f64::from(b) * 11.3 + f64::from(r) * 29.9 + f64::from(g) * 58.8) * 0.01) as i32
+}
+
+/// The view tilted `factor` degrees from edge-on: a row of the screen is `256 / sin` 256ths
+/// of a row of the view further down it, and each row is narrowed by `170 * cos` 65536ths of
+/// its distance down.
+pub(super) fn tilt(factor: f64) -> (i32, i32) {
+    let angle = factor * RADIANS;
+    let row_step = (51200.0 / (crate::trig::sin(angle) * 200.0)) as i32;
+    let narrowing = (crate::trig::cos(angle) * 170.0) as i32;
+    (row_step, narrowing)
+}
+
+/// Row `y` of the screen right of the HUD from the view (200 rows of 256 and a blank one)
+/// `down` 256ths of a row down it, narrowed by `narrowing` and centred, black beyond the
+/// view's last row.
+pub(super) fn view_row(screen: &mut [u8], view: &[u8], y: usize, down: i32, narrowing: i32) {
+    let row = y * WIDTH + HUD;
+    let from = (down & !0xFF).min((HEIGHT * VIEW) as i32);
+    let narrow = (from * narrowing) >> 16;
+    // Ten pixels cleared each side of the row, as far as the view's edges.
+    for x in (narrow >> 1) - 10..narrow >> 1 {
+        if x >= 0 {
+            screen[row + x as usize] = 0;
+        }
+    }
+    // 256 pixels from the one before the row's start (`sub_43B370`), each written where the
+    // last was until 256 steps of `255 - narrow` have passed.
+    let mut x = (narrow >> 1) as usize;
+    let mut passed = 0;
+    for i in 0..VIEW as i32 {
+        let at = from + i - 1;
+        screen[row + x] = if at < 0 { 0 } else { view[at as usize] };
+        passed += 255 - narrow;
+        if passed & 0x100 != 0 {
+            passed &= 0xFF;
+            x += 1;
+        }
+    }
+    let right = 255 - (narrow - (narrow >> 1));
+    for x in right..(right + 10).min(VIEW as i32) {
+        screen[row + x as usize] = 0;
+    }
 }
 
 /// Where the intro is: at one of its waits.
@@ -175,37 +217,10 @@ impl Intro {
             self.screen[y * WIDTH..y * WIDTH + width]
                 .copy_from_slice(&self.hud[from..from + width]);
         }
-        let angle = factor * RADIANS;
-        let row_step = (51200.0 / (crate::trig::sin(angle) * 200.0)) as i32;
-        let narrowing = (crate::trig::cos(angle) * 170.0) as i32;
+        let (row_step, narrowing) = tilt(factor);
         let mut down = 0i32;
         for y in 0..HEIGHT {
-            let row = y * WIDTH + HUD;
-            let from = (down & !0xFF).min((HEIGHT * VIEW) as i32);
-            let narrow = (from * narrowing) >> 16;
-            // Ten pixels cleared each side of the row, as far as the view's edges.
-            for x in (narrow >> 1) - 10..narrow >> 1 {
-                if x >= 0 {
-                    self.screen[row + x as usize] = 0;
-                }
-            }
-            // 256 pixels from the one before the row's start (`sub_43B370`), each written
-            // where the last was until 256 steps of `255 - narrow` have passed.
-            let mut x = (narrow >> 1) as usize;
-            let mut passed = 0;
-            for i in 0..VIEW as i32 {
-                let at = from + i - 1;
-                self.screen[row + x] = if at < 0 { 0 } else { self.view[at as usize] };
-                passed += 255 - narrow;
-                if passed & 0x100 != 0 {
-                    passed &= 0xFF;
-                    x += 1;
-                }
-            }
-            let right = 255 - (narrow - (narrow >> 1));
-            for x in right..(right + 10).min(VIEW as i32) {
-                self.screen[row + x as usize] = 0;
-            }
+            view_row(&mut self.screen, &self.view, y, down, narrowing);
             down += row_step;
         }
     }

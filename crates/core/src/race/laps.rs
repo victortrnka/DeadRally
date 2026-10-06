@@ -224,6 +224,37 @@ pub(super) fn place_wrecks(cars: &mut [Car], wrecks: &mut Vec<usize>) {
     }
 }
 
+/// The ticks the race's end comes nearer this tick (0x416A38, counted in 0x4AA508; the race
+/// ends past 300): one once the player has finished or is wrecked, one more while every car
+/// but one stands (0.5 or slower) finished or wrecked.
+pub(super) fn ending(cars: &[Car], player: usize) -> i32 {
+    let done = |car: &Car| car.finished || car.handling.damage <= 0;
+    let mut nearer = i32::from(done(&cars[player]));
+    let standing = cars
+        .iter()
+        .filter(|car| f64::from(car.speed) <= 0.5 && done(car))
+        .count();
+    if standing + 1 >= cars.len() {
+        nearer += 1;
+    }
+    nearer
+}
+
+/// `sub_413300`, when the player abandons the race: while racing, the player swaps places
+/// with each car still racing behind them, in the cars' order, and so ends behind them all.
+pub(super) fn abandon(cars: &mut [Car], player: usize) {
+    for slot in 0..cars.len() {
+        if slot == player || cars[slot].finished || cars[player].finished {
+            continue;
+        }
+        let (mine, theirs) = (cars[player].place, cars[slot].place);
+        if (mine as u8) < (theirs as u8) {
+            cars[slot].place = mine;
+            cars[player].place = theirs;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +387,38 @@ mod tests {
     #[test]
     fn lap_times_count_seventy_ticks_a_second() {
         assert_eq!(time(70 * 61 + 35), [1, 1, 49]);
+    }
+
+    /// The race ends 300 ticks after the player is done: a tick counts once the player has
+    /// finished or is wrecked, and once more while every car but one stands (0.5 or slower)
+    /// finished or wrecked; cars standing still in the race count for nothing.
+    #[test]
+    fn the_end_comes_nearer_once_the_player_is_done() {
+        let mut cars = vec![car(0), car(1), car(2)];
+        assert_eq!(ending(&cars, 0), 0);
+        cars[0].handling.damage = 0;
+        assert_eq!(ending(&cars, 0), 1);
+        cars[1].finished = true;
+        assert_eq!(ending(&cars, 0), 2);
+        cars[1].speed = 0.6;
+        assert_eq!(ending(&cars, 0), 1);
+        cars[0].handling.damage = 5;
+        cars[0].finished = true;
+        cars[1].speed = -3.0;
+        assert_eq!(ending(&cars, 0), 2);
+    }
+
+    /// The player who abandons the race drops behind every car still racing; a car that has
+    /// finished keeps its place.
+    #[test]
+    fn an_abandoning_player_drops_behind_the_cars_still_racing() {
+        let mut cars = vec![car(0), car(1), car(2), car(3)];
+        for (slot, place) in [(0, 2), (1, 1), (2, 3), (3, 4)] {
+            cars[slot].place = place;
+        }
+        cars[1].finished = true;
+        abandon(&mut cars, 0);
+        let places: Vec<i32> = cars.iter().map(|car| car.place).collect();
+        assert_eq!(places, [4, 1, 2, 3]);
     }
 }

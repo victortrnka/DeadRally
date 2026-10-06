@@ -12,6 +12,7 @@ mod intro;
 mod laps;
 mod marks;
 mod mines;
+mod outro;
 mod pause;
 mod pedestrians;
 mod power_ups;
@@ -149,6 +150,10 @@ pub(crate) struct Race {
     /// The pause's box (`GEN-MES.BPK`, 0x479688) and its nine lines.
     pause_box: Vec<u8>,
     pause_lines: Vec<Vec<u8>>,
+    /// The box's lines at the race's end, and the ticks the end has come nearer by
+    /// (0x4AA508): the race ends past 300.
+    race_over_lines: Vec<Vec<u8>>,
+    over_ticks: i32,
     /// The scancodes of the eight controls in `dr.cfg`.
     controls: [u32; 8],
     /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
@@ -211,6 +216,7 @@ pub(crate) struct Setup {
     pub(crate) player: usize,
     pub(crate) weapons: bool,
     pub(crate) pause_lines: Vec<Vec<u8>>,
+    pub(crate) race_over_lines: Vec<Vec<u8>>,
     pub(crate) controls: [u32; 8],
     pub(crate) pickup_money: i32,
     pub(crate) lap_record: [i32; 3],
@@ -303,10 +309,19 @@ enum Stage {
         first: bool,
     },
     Intro(Box<intro::Intro>),
-    /// The pause; whether it came before the intro.
+    /// The pause; whether it came before the intro, or is the box at the race's end.
     Pause {
         pause: Box<pause::Pause>,
         first: bool,
+        ending: bool,
+    },
+    /// The race ended, abandoned or over: the loop's last frame shown, the view tilting away
+    /// from the next tick.
+    Ended(Outcome),
+    /// The view tilting away, and how the race came to its end.
+    Outro {
+        outro: Box<outro::Outro>,
+        outcome: Outcome,
     },
 }
 
@@ -314,14 +329,21 @@ enum Stage {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     Racing,
-    /// The player answered Y to the pause's question.
+    /// The player answered Y to the pause's question, and the view has tilted away.
     Aborted,
+    /// The race over, its box answered, and the view tilted away.
+    Over,
 }
 
 /// Escape's scancode, which pauses the race.
 const ESCAPE: u8 = 0x01;
 /// The channels the pause silences first (1 to 13), and the one its own sounds play on.
 const CHANNELS: usize = 13;
+/// The race's end: past these ticks of its counter, the channels its box silences (1 to 14),
+/// and its call.
+const OVER_TICKS: i32 = 300;
+const END_CHANNELS: usize = 14;
+const END_CALL: u8 = 5;
 const PAUSE_CHANNEL: usize = 5;
 const PAUSE_PITCH: u32 = 0x2_8000;
 
@@ -341,6 +363,7 @@ impl Race {
             player,
             weapons,
             pause_lines,
+            race_over_lines,
             controls,
             pickup_money,
             lap_record,
@@ -462,6 +485,8 @@ impl Race {
             effects,
             pause_box: hud::decoded(&archives.engine, "GEN-MES.BPK")?,
             pause_lines,
+            race_over_lines,
+            over_ticks: 0,
             controls,
             samples: [0; 16],
             sampled: 0,
@@ -814,6 +839,7 @@ impl Race {
             sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
         }
         laps::place_wrecks(&mut self.cars, &mut self.wrecks);
+        self.over_ticks += laps::ending(&self.cars, self.player);
     }
 
     /// 0x41674F: the player's car against a wall or a car, its sounds as loud as the push
@@ -873,8 +899,12 @@ impl Race {
                 }
                 self.clock.restart();
             }
-            Stage::Pause { pause, first } => {
-                let first = *first;
+            Stage::Pause {
+                pause,
+                first,
+                ending,
+            } => {
+                let (first, ending) = (*first, *ending);
                 let mut asked = Vec::new();
                 let step = pause.wait(|code| keys.held(code), rand, &mut asked);
                 self.screen.copy_from_slice(pause.screen());
@@ -887,9 +917,19 @@ impl Race {
                     }
                     pause::Step::Over(answer) => answer,
                 };
+                if ending {
+                    // 0x417387: the loop's last frame, then the end.
+                    self.show_buffer();
+                    self.stage = Stage::Ended(Outcome::Over);
+                    return Outcome::Racing;
+                }
                 self.clock.restart();
                 if answer == pause::Answer::Abort {
-                    return Outcome::Aborted;
+                    // 0x4176F8: the player drops behind the cars racing, and the race ends.
+                    laps::abandon(&mut self.cars, self.player);
+                    self.show_buffer();
+                    self.stage = Stage::Ended(Outcome::Aborted);
+                    return Outcome::Racing;
                 }
                 // 0x41771D: the engine again; the help F1 asks for comes with the race's keys.
                 let car = self.drivers[self.player].car as u8;
@@ -900,14 +940,62 @@ impl Race {
                     return Outcome::Racing;
                 }
             }
+            Stage::Ended(outcome) => {
+                let outcome = *outcome;
+                self.start_outro(sound, outcome);
+                return Outcome::Racing;
+            }
+            Stage::Outro { outro, outcome } => {
+                let going = outro.wait();
+                sound.set_mask(outro.volume() >> 8);
+                self.screen.copy_from_slice(outro.screen());
+                self.shown = outro.palette().clone();
+                if going {
+                    return Outcome::Racing;
+                }
+                // 0x417969: the screen cleared once the view has tilted away.
+                let outcome = *outcome;
+                self.screen.fill(0);
+                return outcome;
+            }
         }
         self.stage = Stage::Loop { first: false };
         self.frame(sound, rand);
+        // 0x417283: the race over, its box.
+        if self.over_ticks > OVER_TICKS {
+            self.end_box(sound, keys, rand);
+        }
         Outcome::Racing
     }
 
-    /// The intro (0x41787C), over the loop's first frame, up to its first wait.
-    fn start_intro(&mut self, sound: &mut Sound) {
+    /// The view tilting away (`sub_4055A0`, 0x417963) from the loop's last frame in the
+    /// buffer and the race's palette (0x4A9BA0, the intro's too), over the screen as shown, up
+    /// to its first wait.
+    fn start_outro(&mut self, sound: &mut Sound, outcome: Outcome) {
+        let (view, hud) = self.view_and_hud();
+        let outro = outro::Outro::new(&self.palette, &self.screen, &view, &hud);
+        sound.set_mask(outro.volume() >> 8);
+        self.screen.copy_from_slice(outro.screen());
+        self.shown = outro.palette().clone();
+        self.stage = Stage::Outro {
+            outro: Box::new(outro),
+            outcome,
+        };
+    }
+
+    /// The race over (0x4172A7): every channel but the last two silenced, the end's call, and
+    /// the box saying so, up to its first wait.
+    fn end_box(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
+        for channel in 1..=END_CHANNELS {
+            sound.stop_channel(channel);
+        }
+        sound.trigger_at(CALL_CHANNEL, END_CALL, FULL, CALL_PITCH);
+        let lines = self.race_over_lines.clone();
+        self.open_box(&lines, keys, rand, false, true);
+    }
+
+    /// The buffer's track view (200 rows of 256) and HUD (200 rows of 64).
+    fn view_and_hud(&self) -> (Vec<u8>, Vec<u8>) {
         let mut view = Vec::with_capacity(VIEW_HEIGHT * TRACK_VIEW_WIDTH as usize);
         let mut hud = Vec::with_capacity(VIEW_HEIGHT * HUD_WIDTH as usize);
         for y in 0..VIEW_HEIGHT {
@@ -915,6 +1003,12 @@ impl Race {
             view.extend(columns.map(|x| self.buffer.pixel(x, y)));
             hud.extend((0..HUD_WIDTH as usize).map(|x| self.buffer.pixel(x, y)));
         }
+        (view, hud)
+    }
+
+    /// The intro (0x41787C), over the loop's first frame, up to its first wait.
+    fn start_intro(&mut self, sound: &mut Sound) {
+        let (view, hud) = self.view_and_hud();
         let intro = intro::Intro::new(&self.palette, self.player, &view, &hud);
         sound.set_mask(intro.volume() >> 8);
         self.show_intro(&intro);
@@ -927,9 +1021,24 @@ impl Race {
         for channel in 1..=CHANNELS {
             sound.stop_channel(channel);
         }
+        let lines = self.pause_lines.clone();
+        let asked = self.open_box(&lines, keys, rand, first, false);
+        Self::pause_sounds(sound, &asked);
+    }
+
+    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the screen as shown; the
+    /// sounds it asks for at its start.
+    fn open_box(
+        &mut self,
+        lines: &[Vec<u8>],
+        keys: &mut Keys,
+        rand: &mut Rand,
+        first: bool,
+        ending: bool,
+    ) -> Vec<pause::Sound> {
         let mut picture = self.pause_box.clone();
         picture.resize(204 * 76, 0);
-        for (line, text) in self.pause_lines.iter().enumerate() {
+        for (line, text) in lines.iter().enumerate() {
             for (column, &c) in text.iter().enumerate() {
                 let start = 36 * usize::from(c.saturating_sub(32));
                 let glyph = self.hud.small_font.get(start..start + 36).unwrap_or(&[]);
@@ -947,12 +1056,13 @@ impl Race {
         }
         keys.release_all();
         let (pause, asked) = pause::Pause::new(&self.screen, picture, rand);
-        Self::pause_sounds(sound, &asked);
         self.screen.copy_from_slice(pause.screen());
         self.stage = Stage::Pause {
             pause: Box::new(pause),
             first,
+            ending,
         };
+        asked
     }
 
     fn pause_sounds(sound: &mut Sound, asked: &[pause::Sound]) {
