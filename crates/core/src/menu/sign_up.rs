@@ -474,8 +474,8 @@ impl Menu {
     }
 
     /// The fade to black after the "no race" popup: 51 steps of 2 %, the music fading with it
-    /// when the sign-up was reached through the Underground Market (0x4355E6); then its music's
-    /// order back as an Escape from the market brings it (0x43568C), and the results.
+    /// when the sign-up was reached through the Underground Market (0x435C00); then its music's
+    /// order back as an Escape from the market brings it (0x435CA3), and the results.
     pub(super) fn no_sign_up_fade(&mut self, step: u32) -> State {
         let through_market = self.campaign.use_weapons && self.shop.continue_seen;
         if through_market {
