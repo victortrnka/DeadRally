@@ -44,9 +44,11 @@ def original(path):
     frames = {}
     for line in open(path):
         parts = line.split()
-        if len(parts) != 4:
+        if len(parts) not in (4, 5):
             continue
-        ms, frame, cars, handling = parts
+        ms, frame, cars, handling = parts[:4]
+        # The rocket flames' picture, in logs that have it.
+        phase = int(parts[4]) if len(parts) == 5 else None
         cars, handling = bytes.fromhex(cars), bytes.fromhex(handling)
         if len(cars) < 4 * 0x360 or len(handling) < 4 * 0x94:
             continue
@@ -59,7 +61,7 @@ def original(path):
             # The keys of the pass's first tick (0x4A7D20).
             fields["keys"] = number(cars, car * 0x360 + 0x20, "i")
             state.append(fields)
-        frames[int(frame)] = (int(ms), state)
+        frames[int(frame)] = (int(ms), state, phase)
     return frames
 
 
@@ -77,7 +79,8 @@ def ours(path):
     frames = {}
     for line in open(path):
         parts = line.split(" | ")
-        tick, frame = parts[0].split()
+        tick, frame, *rest = parts[0].split()
+        phase = next((int(item[2:]) for item in rest if item.startswith("fp")), None)
         state = []
         for car in parts[1:]:
             fields = {}
@@ -93,7 +96,7 @@ def ours(path):
                     fields[name] = int(value)
             state.append(fields)
         # The last tick's state of each frame is what the original shows after its pass.
-        frames[int(frame)] = (int(tick), state)
+        frames[int(frame)] = (int(tick), state, phase)
     return frames
 
 
@@ -116,9 +119,11 @@ def main():
     for frame in sorted(set(theirs) & set(mine)):
         if frame < first:
             continue
-        ms, their_state = theirs[frame]
-        tick, my_state = mine[frame]
+        ms, their_state, their_phase = theirs[frame]
+        tick, my_state, my_phase = mine[frame]
         differences = []
+        if None not in (their_phase, my_phase) and their_phase != my_phase:
+            differences.append(f"the flames' picture: {their_phase} / {my_phase}")
         for car, (a, b) in enumerate(zip(their_state, my_state)):
             for name in a:
                 if name != "keys" and name in b and a[name] != b[name] and name not in {"s"}:

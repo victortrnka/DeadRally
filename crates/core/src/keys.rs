@@ -256,6 +256,24 @@ impl Keys {
         input
     }
 
+    /// Whether the race's timer finds gamepad input `input` held (`sub_4138A0` from 0x413A3E):
+    /// 1 to 4 the stick past ±50 left, right, up and down, 5 to 8 buttons 1 to 4, as Define
+    /// Gamepad numbers them; nothing with the gamepad switched off or no gamepad to poll.
+    pub(crate) fn pad_held(&self, input: u32) -> bool {
+        if !self.pad_on || !self.pad_connected {
+            return false;
+        }
+        let [x, y] = self.stick;
+        match input {
+            1 => x < -STICK_THRESHOLD,
+            2 => x > STICK_THRESHOLD,
+            3 => y < -STICK_THRESHOLD,
+            4 => y > STICK_THRESHOLD,
+            5..=8 => self.buttons[input as usize - 5],
+            _ => false,
+        }
+    }
+
     /// One poll of the event loop, once per tick: SDL 1.2 repeats the held key.
     pub(crate) fn tick(&mut self) {
         self.ticks += 1;
@@ -450,6 +468,35 @@ mod tests {
         assert_eq!(keys.take(), 0);
         keys.set_pad_on(true);
         assert_eq!(keys.take(), ENTER);
+    }
+
+    /// The race reads the gamepad's inputs as Define Gamepad numbers them, the stick past 50
+    /// of its 128 each way and the four buttons, each on its own; nothing while the gamepad
+    /// is switched off in Configure or unplugged, so a pad left on the desk never drives.
+    #[test]
+    fn the_race_reads_each_gamepad_input_while_the_pad_is_on_and_plugged_in() {
+        let mut keys = Keys::default();
+        let stick = |keys: &mut Keys, axis, value| keys.event(InputEvent::PadAxis { axis, value });
+        stick(&mut keys, PadAxis::StickX, -12_900);
+        stick(&mut keys, PadAxis::StickY, 13_100);
+        keys.event(InputEvent::PadButton {
+            button: PadButton::X,
+            pressed: true,
+        });
+        let held = |keys: &Keys| {
+            (0..=9)
+                .filter(|&input| keys.pad_held(input))
+                .collect::<Vec<_>>()
+        };
+        assert!(held(&keys).is_empty(), "switched off");
+        keys.set_pad_on(true);
+        assert!(held(&keys).is_empty(), "unplugged");
+        keys.event(InputEvent::PadConnected { connected: true });
+        // -12900 / 256 is -50, not past it; 13100 / 256 is 51; X is the third button.
+        assert_eq!(held(&keys), [4, 7]);
+        stick(&mut keys, PadAxis::StickX, -13_100);
+        stick(&mut keys, PadAxis::StickY, -20_000);
+        assert_eq!(held(&keys), [1, 3, 7]);
     }
 
     #[test]

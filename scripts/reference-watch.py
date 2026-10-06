@@ -2,7 +2,8 @@
 """Runs a command (the original under Wine) as its child and, while it runs, logs the race's
 state from the original's memory each time the race's frame counter moves (spec M4c): the
 counter (0x481E14), the cars (0x4A7D00, 0x360 bytes each) and their handling (0x4A6880, 0x94
-bytes each), as hex. Reading another process's memory needs it to be a descendant
+bytes each), as hex, and the rocket flames' picture (0x456AFC). Reading another process's
+memory needs it to be a descendant
 (kernel.yama.ptrace_scope 1), so this script starts the game itself.
 
     scripts/reference-watch.py OUT_FILE -- COMMAND...
@@ -18,6 +19,8 @@ IMAGE = 0x400000
 FRAME = 0x481E14
 CARS = (0x4A7D00, 4 * 0x360)
 HANDLING = (0x4A6880, 4 * 0x94)
+# The rocket flames' picture, which no race sets back.
+FLAME_PHASE = 0x456AFC
 
 
 def descendants(root):
@@ -83,8 +86,10 @@ def main():
                     cars = mem.read(CARS[1])
                     mem.seek(HANDLING[0])
                     handling = mem.read(HANDLING[1])
+                    mem.seek(FLAME_PHASE)
+                    phase = int.from_bytes(mem.read(4), "little")
                     ms = int((time.monotonic() - start) * 1000)
-                    log.write(f"{ms} {frame} {cars.hex()} {handling.hex()}\n")
+                    log.write(f"{ms} {frame} {cars.hex()} {handling.hex()} {phase}\n")
                     log.flush()
                     last = frame
             except OSError:

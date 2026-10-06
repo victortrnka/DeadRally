@@ -303,6 +303,9 @@ pub(crate) struct Campaign {
     pub(crate) win_streak: i32,
     pub(crate) clean_race: bool,
     pub(crate) all_wrecked: bool,
+    /// The rocket flames' picture (0x456AFC), which only a flame's turn sets: the next race's
+    /// flames go on from the last race's.
+    pub(crate) flame_phase: usize,
 }
 
 /// A driver in the race as the preview sets them up (0x432F46): the opponents' weapons are
@@ -353,6 +356,7 @@ impl Campaign {
             win_streak: 0,
             clean_race: false,
             all_wrecked: false,
+            flame_phase: 0,
         }
     }
 
