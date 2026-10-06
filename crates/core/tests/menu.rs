@@ -98,6 +98,7 @@ fn assets() -> Assets {
         },
         menu_music: music(false),
         menu: common::menu_assets(),
+        race: common::race_archives(),
     }
 }
 

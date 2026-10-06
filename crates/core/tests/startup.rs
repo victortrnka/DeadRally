@@ -71,6 +71,7 @@ fn assets() -> Assets {
         intro_effects: effects(),
         menu_music: music(false),
         menu: common::menu_assets(),
+        race: common::race_archives(),
     }
 }
 

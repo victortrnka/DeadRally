@@ -163,6 +163,10 @@ enum State {
     PreviewHold {
         waits: u32,
     },
+    /// The race (M4b): its ticks so far.
+    Race {
+        ticks: u32,
+    },
     ToBlack {
         k: i32,
     },
@@ -339,6 +343,8 @@ pub(crate) struct Menu {
     ticks: u32,
     /// The palette `drawToBlackScreen` fades from.
     saved_palette: deadrally_gamedata::image::Palette,
+    /// The race under way.
+    race: Option<crate::race::Race>,
 }
 
 impl Menu {
@@ -407,6 +413,7 @@ impl Menu {
             shop: shop::Shop::default(),
             ticks: 0,
             saved_palette: deadrally_gamedata::image::Palette::BLACK,
+            race: None,
         }
     }
 
@@ -552,6 +559,7 @@ impl Menu {
             State::PreviewWait => self.preview_wait(),
             State::PreviewHold { waits } => self.preview_hold(waits),
             State::ToBlack { k } => self.fading_out(k),
+            State::Race { ticks } => self.race_tick(ticks),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),

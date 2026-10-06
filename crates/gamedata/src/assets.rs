@@ -45,6 +45,7 @@ pub struct Assets {
     /// `MEN-MUS.CMF`: the music that starts when the intro ends and goes on into the menus.
     pub menu_music: Module,
     pub menu: MenuAssets,
+    pub race: crate::race::RaceArchives,
 }
 
 /// What the main menu draws and plays.
@@ -71,6 +72,8 @@ pub struct MenuAssets {
     pub palette: Palette,
     /// `COPPER.PAL`: one colour per player colour, whose ramps the menu palette gets.
     pub copper: Palette,
+    /// `CARCOL.PAL`: the other drivers' car colours in a race.
+    pub car_colours: Palette,
     /// `BGCOP.PAL`: 512 colours for the background copper rows.
     pub background_copper: Vec<[u8; 3]>,
     /// `CREDIT1.BPK` and `CREDIT2.BPK` with their palettes.
@@ -252,6 +255,13 @@ impl Assets {
                 .map_err(AssetError::Sound)?,
             menu_music: sound::load_music(&musics, "MEN-MUS.CMF").map_err(AssetError::Sound)?,
             menu: menu_assets(&menu, &musics, &path("END.BMP"), &path("DR.EXE"))?,
+            race: crate::race::RaceArchives {
+                tracks: (0..10)
+                    .map(|n| Archive::open(&path(&format!("TR{n}.BPA"))))
+                    .collect::<Result<_, _>>()?,
+                engine: Archive::open(&path("ENGINE.BPA"))?,
+                ib_files: Archive::open(&path("IBFILES.BPA"))?,
+            },
         })
     }
 }
@@ -418,6 +428,7 @@ fn menu_assets(
         small_c: frames(menu, "F-SMA3C.BPK")?,
         palette: palette(menu, "MENU.PAL")?,
         copper: palette(menu, "COPPER.PAL")?,
+        car_colours: palette(menu, "CARCOL.PAL")?,
         background_copper: background_copper.as_chunks::<3>().0.to_vec(),
         credits: vec![
             picture(menu, "CREDIT1.BPK", "CREDIT1.PAL")?,

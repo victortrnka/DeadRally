@@ -147,10 +147,75 @@ impl Menu {
         self.sound
             .set_mask(((f64::from(k) * VOLUME_STEP) as u32) >> 8);
         if k == 0 {
-            return self.race_stand_in();
+            return self.start_race();
         }
         let from = self.saved_palette.clone();
         self.palette.darken(&from, k - 1);
         State::ToBlack { k: k - 1 }
+    }
+
+    /// The race on the sign-up's circuit, the player in their place on the grid; without its
+    /// data (as in the tests) the stand-in race.
+    fn start_race(&mut self) -> State {
+        let race = self.campaign.entered_race.expect("the player is in a race");
+        let circuit = self
+            .campaign
+            .sign_up
+            .as_ref()
+            .expect("a sign-up is on")
+            .circuits[race];
+        let player = self
+            .campaign
+            .racers
+            .iter()
+            .position(|racer| racer.driver == PLAYER)
+            .unwrap_or(0);
+        let drivers = self
+            .campaign
+            .racers
+            .iter()
+            .map(|racer| {
+                let record = &self.campaign.drivers[racer.driver];
+                let colours = if racer.driver == PLAYER {
+                    &self.assets.menu.copper
+                } else {
+                    &self.assets.menu.car_colours
+                };
+                crate::race::Driver {
+                    colour: colours.0[record.colour.clamp(0, 255) as usize],
+                    name: record.name().to_ascii_uppercase(),
+                    car: record.car.clamp(0, 5) as usize,
+                    damage: record.damage,
+                    mines: racer.mines,
+                    spikes: racer.spikes != 0,
+                }
+            })
+            .collect();
+        let laps = LAPS[race];
+        let weapons = self.campaign.use_weapons;
+        match crate::race::Race::new(&self.assets.race, (circuit, laps), drivers, player, weapons) {
+            Ok(mut race) => {
+                race.begin();
+                self.race = Some(race);
+                State::Race { ticks: 0 }
+            }
+            Err(_) => self.race_stand_in(),
+        }
+    }
+
+    /// A tick of the race; Escape leaves it for the stand-in until the pause menu (M4b).
+    pub(super) fn race_tick(&mut self, ticks: u32) -> State {
+        let Some(race) = self.race.as_mut() else {
+            return self.race_stand_in();
+        };
+        race.tick();
+        race.present(self.shown.pixels_mut());
+        let palette = race.shown().clone();
+        self.palette.show(&palette, 100);
+        if self.keys.take() == crate::keys::ESCAPE {
+            self.race = None;
+            return self.race_stand_in();
+        }
+        State::Race { ticks: ticks + 1 }
     }
 }
