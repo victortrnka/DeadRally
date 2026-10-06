@@ -20,8 +20,19 @@ CAR = [
     ("fi", 0x1DC, "i"), ("hn", 0x358, "i"), ("at", 0x180, "i"), ("bo", 0x184, "i"),
     ("av", 0x188, "i"), ("mw", 0x1A4, "i"), ("ho", 0x35C, "i"), ("ef", 0x350, "i"),
 ]
-# Its handling (0x4A6880, 0x94 bytes a car).
-HANDLING = [("e", 0x04, "f"), ("dm", 0x18, "i"), ("mn", 0x28, "i"), ("tb", 0x34, "i")]
+# Its handling (0x4A6880, 0x94 bytes a car), the gun firing next (0x4A68E0) with it.
+HANDLING = [
+    ("e", 0x04, "f"), ("dm", 0x18, "i"), ("mn", 0x28, "i"), ("tb", 0x34, "i"), ("ag", 0x60, "i"),
+]
+
+
+# The race's globals both log by name: the rocket flames' picture (0x456AFC), the ticks
+# between the HUD's last two frames (0x4A9EA4) and before the next power-up (0x456AC4).
+GLOBALS = [
+    ("fp", "the flames' picture"),
+    ("bt", "the ticks between frames"),
+    ("pw", "the power-ups' wait"),
+]
 
 
 # The trace's names, longest first so that no name is taken for another's start.
@@ -44,14 +55,20 @@ def original(path):
     frames = {}
     for line in open(path):
         parts = line.split()
-        if len(parts) not in (4, 5):
+        if len(parts) < 4:
             continue
         ms, frame, cars, handling = parts[:4]
-        # The rocket flames' picture, in logs that have it.
-        phase = int(parts[4]) if len(parts) == 5 else None
-        cars, handling = bytes.fromhex(cars), bytes.fromhex(handling)
+        try:
+            cars, handling = bytes.fromhex(cars), bytes.fromhex(handling)
+        except ValueError:
+            # A line written as the game closed, its memory gone.
+            continue
         if len(cars) < 4 * 0x360 or len(handling) < 4 * 0x94:
             continue
+        # The rocket flames' picture, and the ticks between frames and before the next
+        # power-up, in logs that have them.
+        named = {"fp": int(parts[4])} if len(parts) > 4 else {}
+        named.update({item[:2]: int(item[2:]) for item in parts[5:]})
         state = []
         for car in range(4):
             fields = {name: number(cars, car * 0x360 + offset, kind) for name, offset, kind in CAR}
@@ -61,7 +78,7 @@ def original(path):
             # The keys of the pass's first tick (0x4A7D20).
             fields["keys"] = number(cars, car * 0x360 + 0x20, "i")
             state.append(fields)
-        frames[int(frame)] = (int(ms), state, phase)
+        frames[int(frame)] = (int(ms), state, named)
     return frames
 
 
@@ -80,7 +97,7 @@ def ours(path):
     for line in open(path):
         parts = line.split(" | ")
         tick, frame, *rest = parts[0].split()
-        phase = next((int(item[2:]) for item in rest if item.startswith("fp")), None)
+        named = {item[:2]: int(item[2:]) for item in rest}
         state = []
         for car in parts[1:]:
             fields = {}
@@ -96,7 +113,7 @@ def ours(path):
                     fields[name] = int(value)
             state.append(fields)
         # The last tick's state of each frame is what the original shows after its pass.
-        frames[int(frame)] = (int(tick), state, phase)
+        frames[int(frame)] = (int(tick), state, named)
     return frames
 
 
@@ -119,11 +136,12 @@ def main():
     for frame in sorted(set(theirs) & set(mine)):
         if frame < first:
             continue
-        ms, their_state, their_phase = theirs[frame]
-        tick, my_state, my_phase = mine[frame]
+        ms, their_state, their_named = theirs[frame]
+        tick, my_state, my_named = mine[frame]
         differences = []
-        if None not in (their_phase, my_phase) and their_phase != my_phase:
-            differences.append(f"the flames' picture: {their_phase} / {my_phase}")
+        for name, label in GLOBALS:
+            if name in their_named and name in my_named and their_named[name] != my_named[name]:
+                differences.append(f"{label}: {their_named[name]} / {my_named[name]}")
         for car, (a, b) in enumerate(zip(their_state, my_state)):
             for name in a:
                 if name != "keys" and name in b and a[name] != b[name] and name not in {"s"}:

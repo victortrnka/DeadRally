@@ -2,7 +2,8 @@
 """Runs a command (the original under Wine) as its child and, while it runs, logs the race's
 state from the original's memory each time the race's frame counter moves (spec M4c): the
 counter (0x481E14), the cars (0x4A7D00, 0x360 bytes each) and their handling (0x4A6880, 0x94
-bytes each), as hex, and the rocket flames' picture (0x456AFC). Reading another process's
+bytes each), as hex, the rocket flames' picture (0x456AFC), and the ticks between frames and
+before the next power-up (`bt`, `pw`). Reading another process's
 memory needs it to be a descendant
 (kernel.yama.ptrace_scope 1), so this script starts the game itself.
 
@@ -29,6 +30,10 @@ CARS = (0x4A7D00, 4 * 0x360)
 HANDLING = (0x4A6880, 4 * 0x94)
 # The rocket flames' picture, which no race sets back.
 FLAME_PHASE = 0x456AFC
+# The ticks between the HUD's last two frames (0x4A9EA4), which the original's timer thread
+# counts apart from the loop's ticks, and the ticks before the next power-up (0x456AC4):
+# passes draw `rand()`, so these tell where its draws can part from DeadRally's.
+GLOBALS = (("bt", 0x4A9EA4), ("pw", 0x456AC4))
 # The player's place on the grid, and where a car keeps its angle, speed and place (floats).
 PLAYER = 0x4A9EA8
 ANGLE, SPEED, X, Y = 0xAC, 0xB0, 0xB4, 0xB8
@@ -158,8 +163,15 @@ def main():
                     handling = mem.read(HANDLING[1])
                     mem.seek(FLAME_PHASE)
                     phase = int.from_bytes(mem.read(4), "little")
+                    named = []
+                    for name, address in GLOBALS:
+                        mem.seek(address)
+                        value = int.from_bytes(mem.read(4), "little", signed=True)
+                        named.append(f"{name}{value}")
                     ms = int((time.monotonic() - start) * 1000)
-                    log.write(f"{ms} {frame} {cars.hex()} {handling.hex()} {phase}\n")
+                    log.write(
+                        f"{ms} {frame} {cars.hex()} {handling.hex()} {phase} {' '.join(named)}\n"
+                    )
                     log.flush()
                     last = frame
                     if driver is not None:

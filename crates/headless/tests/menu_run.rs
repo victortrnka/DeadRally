@@ -3084,12 +3084,27 @@ fn manifest_seeded(
 
 /// [`manifest_seeded`] with the opponents driving unless `still`.
 fn manifest_run(
+    start: (u32, Option<u32>),
+    keys: (&[(u64, Key)], &[Held]),
+    shots: &[(u64, &str)],
+    ticks: u64,
+    slots: Vec<Option<Vec<u8>>>,
+    still: bool,
+) -> String {
+    manifest_arena(start, keys, shots, ticks, slots, still, None)
+}
+
+/// [`manifest_run`] with the race in the Arena started after tick `arena`
+/// ([`Game::start_arena_now`]), where the original's run pressed Enter on the Adversary's
+/// screen, until DeadRally has that screen.
+fn manifest_arena(
     (seed, clock): (u32, Option<u32>),
     (keys, held): (&[(u64, Key)], &[Held]),
     shots: &[(u64, &str)],
     ticks: u64,
     slots: Vec<Option<Vec<u8>>>,
     still: bool,
+    arena: Option<u64>,
 ) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
@@ -3119,6 +3134,9 @@ fn manifest_run(
                     pressed: at == done,
                 });
             }
+        }
+        if arena == Some(done) {
+            game.start_arena_now();
         }
         game.tick();
         game.take_audio(&mut audio);

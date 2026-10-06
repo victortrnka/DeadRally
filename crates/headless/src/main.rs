@@ -541,9 +541,21 @@ fn locate_data(cli: Option<&Path>) -> Result<Located, String> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Press {
     tick: u64,
-    key: Key,
+    key: Action,
     held: u64,
 }
+
+/// What `--key-at` does: a key, or `arena`, the race in the Arena started at once
+/// ([`Game::start_arena_now`]), which stands in for Enter on the Adversary's screen until
+/// DeadRally has that screen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Action {
+    Key(Key),
+    Arena,
+}
+
+/// The name `--key-at T:arena` starts the race in the Arena with.
+const ARENA: &str = "arena";
 
 /// The keys `--key-at T:KEY` can name; `T` alone presses Space.
 const KEY_NAMES: [(&str, Key); 22] = [
@@ -595,6 +607,13 @@ fn press(text: &str) -> Result<Press, String> {
     let tick = tick
         .parse()
         .map_err(|_| format!("--key-at: not a number: {tick}"))?;
+    if name.eq_ignore_ascii_case(ARENA) {
+        return Ok(Press {
+            tick,
+            key: Action::Arena,
+            held,
+        });
+    }
     // The short names, then any key by its name in `Key` (letters, digits, Backspace, ...).
     let key = KEY_NAMES
         .iter()
@@ -607,28 +626,39 @@ fn press(text: &str) -> Result<Press, String> {
                 .find(|key| format!("{key:?}").eq_ignore_ascii_case(name))
         })
         .ok_or_else(|| {
-            let names: Vec<&str> = KEY_NAMES.iter().map(|(known, _)| *known).collect();
+            let mut names: Vec<&str> = KEY_NAMES.iter().map(|(known, _)| *known).collect();
+            names.push(ARENA);
             format!(
                 "--key-at: unknown key {name}; known keys: {}",
                 names.join(", ")
             )
         })?;
-    Ok(Press { tick, key, held })
+    Ok(Press {
+        tick,
+        key: Action::Key(key),
+        held,
+    })
 }
 
 /// Presses the keys due before tick `done + 1` and releases those whose time is up, in the
 /// order given.
 fn press_due(game: &mut Game, keys: &[Press], done: u64) {
     for press in keys {
+        let key = match press.key {
+            Action::Key(key) => key,
+            Action::Arena => {
+                if press.tick == done {
+                    game.start_arena_now();
+                }
+                continue;
+            }
+        };
         if press.tick == done {
-            game.input(InputEvent::Key {
-                key: press.key,
-                pressed: true,
-            });
+            game.input(InputEvent::Key { key, pressed: true });
         }
         if press.tick + press.held == done {
             game.input(InputEvent::Key {
-                key: press.key,
+                key,
                 pressed: false,
             });
         }
@@ -1069,6 +1099,25 @@ mod tests {
     }
 
     #[test]
+    fn arena_starts_the_race_in_the_arena_at_its_tick() {
+        // Runs of the original reach the Arena through the Adversary's screen; until DeadRally
+        // has it, `T:arena` starts the race there at the tick fitted to the original's Enter.
+        let Ok(Command::Trace { keys, .. }) =
+            parse(&args(&["trace", "--tick", "9", "--key-at", "4:Arena"]))
+        else {
+            panic!("trace parses");
+        };
+        assert_eq!(
+            keys,
+            [Press {
+                tick: 4,
+                key: Action::Arena,
+                held: 0
+            }]
+        );
+    }
+
+    #[test]
     fn parses_the_asset_commands() {
         assert_eq!(
             parse(&args(&["dump-assets"])),
@@ -1089,17 +1138,17 @@ mod tests {
                 keys: vec![
                     Press {
                         tick: 10,
-                        key: Key::Space,
+                        key: Action::Key(Key::Space),
                         held: 0
                     },
                     Press {
                         tick: 20,
-                        key: Key::Down,
+                        key: Action::Key(Key::Down),
                         held: 0
                     },
                     Press {
                         tick: 30,
-                        key: Key::F2,
+                        key: Action::Key(Key::F2),
                         held: 12
                     }
                 ],
