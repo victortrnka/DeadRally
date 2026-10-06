@@ -4,7 +4,8 @@
 # tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
 #   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
-#                            [--sabotage-clock N] [--no-ai] [--watch] SCENARIO OUT_DIR
+#                            [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO]
+#                            SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -23,7 +24,9 @@
 # the clock (spec M3c section 3); DeadRally's clock there is the seed plus 14 ms a tick.
 #
 # With --watch the race's state is read from the original's memory each time its frame counter
-# moves and logged to OUT_DIR/watch.log (scripts/reference-watch.py; spec M4c).
+# moves and logged to OUT_DIR/watch.log (scripts/reference-watch.py; spec M4c). With --drive
+# (which watches too) the player's car is also driven along PATH from the race's frame FROM to
+# the path's point TO by holding the arrows (scripts/reference-watch.py; spec M5).
 #
 # With --no-ai the opponents never drive in a race (spec M4, decision 2): the race loop's call
 # of calculateIAMovements is taken out, so they stay where DeadRally keeps them until M5.
@@ -40,7 +43,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -51,6 +54,7 @@ seed=
 sabotage_clock=
 no_ai=false
 watch=false
+drive=
 saves=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -90,6 +94,12 @@ while [[ "${1:-}" == --* ]]; do
         --watch)
             watch=true
             shift
+            ;;
+        --drive)
+            [[ $# -ge 2 && "$2" =~ ^[^:]+:[0-9]+:[0-9]+$ && -f "${2%%:*}" ]] || usage
+            drive="$(realpath "${2%%:*}"):${2#*:}"
+            watch=true
+            shift 2
             ;;
         *) usage ;;
     esac
@@ -232,7 +242,12 @@ fi
 
 launch=(wine)
 if $watch; then
-    launch=(python3 "$repo/scripts/reference-watch.py" "$out/watch.log" -- wine)
+    launch=(python3 "$repo/scripts/reference-watch.py" "$out/watch.log")
+    if [[ -n "$drive" ]]; then
+        launch+=(--drive "$drive")
+        echo "driving the player's car: $drive" >>"$log"
+    fi
+    launch+=(-- wine)
     echo "watching the race's state into watch.log" >>"$log"
 fi
 (cd "$run" && exec "${launch[@]}" dr.exe -window -nogl "${sound_args[@]}") >>"$log" 2>&1 &
