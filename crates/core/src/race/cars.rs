@@ -115,6 +115,35 @@ pub(crate) fn headlights(buffer: &mut Buffer, (x, y): (i32, i32), angle: f32, ta
     super::raster::light_triangle(buffer, [(x, y), far(from_170), near(from_162)], table);
 }
 
+/// The timer's ticks between a wreck's fire's pictures (`BURN1A.BPK`, eight), and the end
+/// of the rows the buffer's drawing reaches.
+const FIRE_TICKS: u32 = 3;
+const FIRES: usize = 8;
+const BUFFER_END: i64 = 0x19000;
+
+/// `sub_43AFC0` from `drawCarInRace`: a wreck's fire over its sprite, centred where the car
+/// shows, rows outside the buffer left out; the next picture once 3 ticks of the timer `now`
+/// have passed since the last move.
+pub(super) fn draw_fire(buffer: &mut Buffer, car: &mut Car, fire: &[u8], now: u32) {
+    let [x, y] = car.screen;
+    let picture = fire.get(car.fire * FLAME * FLAME..).unwrap_or(&[]);
+    for row in 0..FLAME {
+        let at = i64::from(y - 8 + row as i32) * STRIDE as i64 + i64::from(x - 8) + LEFT as i64;
+        if (0..BUFFER_END).contains(&at) {
+            let line = picture.get(row * FLAME..).unwrap_or(&[]);
+            buffer.draw(line, FLAME, 1, at);
+        }
+    }
+    if now >= car.fire_time.wrapping_add(FIRE_TICKS) {
+        car.fire = if car.fire + 1 >= FIRES {
+            0
+        } else {
+            car.fire + 1
+        };
+        car.fire_time = now;
+    }
+}
+
 /// `sub_40F450` for each car after the guns' flashes: a car whose rocket burned since the
 /// last frame, with turbo left, shows the rocket's flame 2.3 car sizes behind it, both
 /// offsets rounded half up; the flames' `phase` (0x456AFC), which all cars share, turns
@@ -141,9 +170,9 @@ pub(super) fn draw_flame(
             let picture = flames[*phase].get(start..).unwrap_or(&[]);
             let at = i64::from(y) * STRIDE as i64 + i64::from(x) + LEFT as i64;
             buffer.draw(picture, FLAME, FLAME, at);
-            if now >= car.flame_time.wrapping_add(FLAME_TICKS) {
+            if now >= car.fire_time.wrapping_add(FLAME_TICKS) {
                 *phase = if *phase + 1 > 1 { 0 } else { *phase + 1 };
-                car.flame_time = now;
+                car.fire_time = now;
             }
         }
     }
@@ -239,7 +268,7 @@ mod tests {
         assert_eq!(buffer.pixel(142, 109), 3);
         assert_eq!(buffer.pixel(141, 109), 0);
         assert_eq!(buffer.pixel(142, 108), 0);
-        assert_eq!((phase, car.flame_time), (1, 100));
+        assert_eq!((phase, car.fire_time), (1, 100));
         assert!(!car.handling.rocket_used);
 
         let mut buffer = Buffer::default();
@@ -251,6 +280,30 @@ mod tests {
         assert_eq!(phase, 1);
         car.handling.rocket_used = true;
         draw_flame(&mut buffer, &mut car, &flames, &mut phase, 104);
-        assert_eq!((phase, car.flame_time), (0, 104));
+        assert_eq!((phase, car.fire_time), (0, 104));
+    }
+
+    /// A wreck burns over its sprite: the fire's pictures one after another, the next 3 ticks
+    /// of the timer after the last move, round again after the eighth.
+    #[test]
+    fn a_wreck_burns_through_its_fires_pictures() {
+        let fire: Vec<u8> = (0..8u8).flat_map(|k| [k + 1; FLAME * FLAME]).collect();
+        let mut car = rocket_car();
+        let mut buffer = Buffer::default();
+        draw_fire(&mut buffer, &mut car, &fire, 100);
+        assert_eq!(buffer.pixel(142, 92), 1);
+        assert_eq!(buffer.pixel(157, 107), 1);
+        assert_eq!(buffer.pixel(158, 107), 0);
+        assert_eq!((car.fire, car.fire_time), (1, 100));
+        draw_fire(&mut buffer, &mut car, &fire, 102);
+        assert_eq!((car.fire, buffer.pixel(142, 92)), (1, 2));
+        let mut pictures = Vec::new();
+        for now in 103..130 {
+            draw_fire(&mut buffer, &mut car, &fire, now);
+            pictures.push(car.fire);
+        }
+        assert_eq!(&pictures[..1], &[2]);
+        assert!(pictures.contains(&7) && pictures.contains(&0));
+        assert!(pictures.iter().all(|&k| k < 8));
     }
 }

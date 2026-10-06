@@ -211,8 +211,10 @@ pub(super) struct Car {
     /// (0x4A8058).
     pub(super) mine_cooldown: i32,
     pub(super) horn: bool,
-    /// The timer's tick its rocket's flame last turned the flames' phase (0x4A7EE0).
-    pub(super) flame_time: u32,
+    /// The timer's tick its rocket's flame last turned the flames' phase, or its fire as a
+    /// wreck last moved on (0x4A7EE0), and the fire's picture (0x4A7EDC).
+    pub(super) fire_time: u32,
+    pub(super) fire: usize,
     /// Where it was a tick ago (0x4A7E50).
     pub(super) previous: [f32; 3],
     /// The keys it holds in each tick of the race loop's pass (0x4A7D20).
@@ -277,7 +279,8 @@ impl Car {
             finished: false,
             mine_cooldown: 0,
             horn: false,
-            flame_time: 0,
+            fire_time: 0,
+            fire: 0,
             previous: [x, y, angle],
             keys: [0; 16],
             lap: 1,

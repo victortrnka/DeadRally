@@ -1123,6 +1123,49 @@ const ROCKET_SHOTS: [(u64, &str); 22] = [
     (3537, "r20"),
 ];
 
+/// The keys held in `scripts/reference/wreck.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game at 99 % damage with a mine): the mine key,
+/// then Down backing over the mine.
+const WRECK_HELD: [Held; 2] = [(3639, Key::LeftAlt, 7), (3696, Key::Down, 50)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the blast wrecking
+/// the car, its fire's pictures, the medals rolling to the new places.
+const WRECK_SHOTS: [(u64, &str); 33] = [
+    (3323, "race"),
+    (3610, "w00"),
+    (3703, "w01"),
+    (3710, "w02"),
+    (3716, "w03"),
+    (3723, "w04"),
+    (3731, "w05"),
+    (3738, "w06"),
+    (3746, "w07"),
+    (3752, "w08"),
+    (3759, "w09"),
+    (3767, "w10"),
+    (3773, "w11"),
+    (3781, "w12"),
+    (3788, "w13"),
+    (3794, "w14"),
+    (3802, "w15"),
+    (3809, "w16"),
+    (3816, "w17"),
+    (3823, "w18"),
+    (3830, "w19"),
+    (3838, "w20"),
+    (3845, "w21"),
+    (3851, "w22"),
+    (3859, "w23"),
+    (3866, "w24"),
+    (3873, "w25"),
+    (3880, "w26"),
+    (3887, "w27"),
+    (3895, "w28"),
+    (3902, "w29"),
+    (3909, "w30"),
+    (3916, "w31"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1715,7 +1758,7 @@ fn the_mines_run_matches_the_committed_manifest() {
     // mine in the wrong place, a wrong blast or a horn that brakes shows here.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
-    slots[0] = Some(armed_save(&assets.menu.texts, [3, 0, 0]));
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [3, 0, 0]));
     let lines = manifest_seeded(
         (SEED, None),
         (&RACE_START_KEYS, &MINES_HELD),
@@ -1734,7 +1777,7 @@ fn the_rocket_run_matches_the_committed_manifest() {
     // flame in the wrong place or turning at the wrong time shows here.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
-    slots[0] = Some(armed_save(&assets.menu.texts, [0, 0, 1]));
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 0, 1]));
     let lines = manifest_seeded(
         (SEED, None),
         (&RACE_START_KEYS, &ROCKET_HELD),
@@ -1743,6 +1786,25 @@ fn the_rocket_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("rocket-run.sha256", &lines, "the rocket run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_wreck_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wreck's fire or the HUD's medals rolling to the new places show here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 99, [1, 0, 0]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &WRECK_HELD),
+        &WRECK_SHOTS,
+        3_920,
+        slots,
+    );
+    check_manifest("wreck-run.sha256", &lines, "the wreck run");
 }
 
 #[test]
@@ -1854,13 +1916,14 @@ fn the_shop_purchases_run_matches_the_committed_manifest() {
 /// loads the same file): seed 1's drivers as `initDrivers` sets them up, recomputed here, and
 /// a player part-way through a game.
 fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
-    armed_save(texts, [0, 0, 0])
+    armed_save(texts, 37, [0, 0, 0])
 }
 
-/// The test game with the player's mines, spikes and rocket (`captures/test.sg` with them
-/// changed).
+/// The test game with the player's damage (37 in it), mines, spikes and rocket
+/// (`captures/test.sg` with them changed).
 fn armed_save(
     texts: &deadrally_gamedata::text::Texts,
+    damage: i32,
     [mines, spikes, rocket]: [i32; 3],
 ) -> Vec<u8> {
     let campaign = &texts.campaign;
@@ -1934,7 +1997,7 @@ fn armed_save(
     drivers.extend(record(
         b"Tester",
         [
-            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, mines,
+            damage, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, mines,
             spikes, rocket, 0,
         ],
     ));

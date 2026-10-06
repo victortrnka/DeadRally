@@ -125,7 +125,8 @@ impl HudImages {
 pub(crate) struct Board {
     pub(crate) name: Vec<u8>,
     pub(crate) lap: i32,
-    pub(crate) place: i32,
+    /// The picture of its place's medal, rolling from place to place ([`Medals`]).
+    pub(crate) medal: usize,
     pub(crate) damage_bar: i32,
     pub(crate) finished: bool,
 }
@@ -139,6 +140,67 @@ pub(crate) struct Player {
     pub(crate) weapons_bar: i32,
     pub(crate) turbo_bar: i32,
     pub(crate) mines: i32,
+}
+
+/// The boards' medals rolling from place to place (`drawLeftRaceBar_414220` from 0x4147B0):
+/// each board's place at the last frame (0x46E8D0), the picture its medal stops at
+/// (0x4AA3F0), where it is (16.16 pictures, 0x4A8A90) and how far it rolls a tick (16.16
+/// places, 0x4A7CC0). A place's medal is picture 7 times the place less 7.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Medals {
+    last: Vec<i32>,
+    end: Vec<i32>,
+    at: Vec<i32>,
+    step: Vec<i32>,
+}
+
+/// The first picture of a place's medal.
+fn medal(place: i32) -> i32 {
+    place.wrapping_mul(7).wrapping_sub(7)
+}
+
+/// The original's 16.16 rounding to whole pictures.
+fn whole(at: i32) -> i32 {
+    at.wrapping_add(0x8000) >> 16
+}
+
+impl Medals {
+    /// Each medal standing at its board's place (`sub_4023C0` at the race's start).
+    pub(crate) fn new(places: &[i32]) -> Medals {
+        Medals {
+            last: places.to_vec(),
+            end: places.iter().map(|&place| medal(place)).collect(),
+            at: places.iter().map(|&place| medal(place) << 16).collect(),
+            step: vec![0; places.len()],
+        }
+    }
+
+    /// A frame `between` ticks after the last: a board whose place changed starts rolling
+    /// from its last place's medal; each rolls by its step for half of each tick
+    /// (0x4AA500), not past its place's medal. The pictures to show.
+    pub(crate) fn roll(&mut self, places: &[i32], between: i32) -> Vec<usize> {
+        let speed = i64::from(between) << 15;
+        let mut shown = Vec::with_capacity(places.len());
+        for (index, &place) in places.iter().enumerate() {
+            let last = self.last[index];
+            if place != last {
+                self.at[index] = medal(last) << 16;
+                self.end[index] = medal(place);
+                self.step[index] = (place - last) << 16;
+            }
+            let step = self.step[index];
+            let at = self.at[index].wrapping_add(((i64::from(step) * speed) >> 16) as i32);
+            let past = if step.wrapping_add(0x8000) & !0xFFFF > 0 {
+                whole(at) > self.end[index]
+            } else {
+                whole(at) < self.end[index]
+            };
+            self.at[index] = if past { medal(place) << 16 } else { at };
+            shown.push(usize::try_from(whole(self.at[index])).unwrap_or(0));
+            self.last[index] = place;
+        }
+        shown
+    }
 }
 
 /// `drawLeftRaceBar_414220` at `left` (`leftMenuInRaceWidth` 0x456AA0, 64 once slid in).
@@ -203,8 +265,7 @@ pub(crate) fn draw(
     for (index, board) in boards.iter().enumerate().skip(1) {
         text(buffer, left + 37923 + 0x4000 * index as i64, &board.name);
     }
-    let place = |n: i32| (7 * (n - 1)).max(0) as usize;
-    let own = place(boards[0].place) * 1024;
+    let own = boards[0].medal * 1024;
     buffer.draw_opaque(
         images.own_place.get(own..own + 1024).unwrap_or(&[]),
         32,
@@ -212,7 +273,7 @@ pub(crate) fn draw(
         left + 36928,
     );
     for (index, board) in boards.iter().enumerate().skip(1) {
-        let start = place(board.place) * 576;
+        let start = board.medal * 576;
         buffer.draw_opaque(
             images.other_place.get(start..start + 576).unwrap_or(&[]),
             24,
@@ -320,7 +381,7 @@ mod tests {
         Board {
             name: b"A".to_vec(),
             lap: 1,
-            place: 2,
+            medal: 7,
             damage_bar: (100 - damage) << 10,
             finished: false,
         }
@@ -341,5 +402,25 @@ mod tests {
         };
         let boards = [board(0), board(110), board(255), board(40)];
         draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
+    }
+
+    /// A place changed rolls the board's medal through the pictures between the old place
+    /// and the new (7 a place), half a picture a tick for each place it moves, and stops at
+    /// the new place's: a wrecked leader's medal rolls down to 4th over 14 frames while the
+    /// others roll up one place over 14 frames too.
+    #[test]
+    fn a_changed_place_rolls_the_medal_to_the_new_one() {
+        let mut medals = Medals::new(&[1, 2, 3, 4]);
+        assert_eq!(medals.roll(&[1, 2, 3, 4], 1), [0, 7, 14, 21]);
+        assert_eq!(medals.roll(&[4, 1, 2, 3], 1), [2, 7, 14, 21]);
+        assert_eq!(medals.roll(&[4, 1, 2, 3], 1), [3, 6, 13, 20]);
+        let mut last = Vec::new();
+        for _ in 0..20 {
+            last = medals.roll(&[4, 1, 2, 3], 1);
+        }
+        assert_eq!(last, [21, 0, 7, 14]);
+        // Two ticks between frames roll twice as far.
+        let mut medals = Medals::new(&[1, 2]);
+        assert_eq!(medals.roll(&[2, 1], 2), [1, 6]);
     }
 }

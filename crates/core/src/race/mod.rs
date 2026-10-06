@@ -190,6 +190,10 @@ pub(crate) struct Race {
     gun_hits: guns::Shared,
     /// The mines dropped (`MINES1A.BPK`) and their blasts (`BLOWI.BPK`).
     mines: mines::Mines,
+    /// A wreck's fire (`BURN1A.BPK`).
+    fire: Vec<u8>,
+    /// The HUD's medals of the places.
+    medals: hud::Medals,
     /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`) and the one shown (0x456AFC).
     rocket_flames: [Vec<u8>; 2],
     flame_phase: usize,
@@ -424,7 +428,7 @@ impl Race {
         for (driver, &first) in drivers.iter().zip(&RAMPS) {
             car_ramp(&mut palette, first, driver.colour);
         }
-        Ok(Race {
+        let mut race = Race {
             track,
             drivers,
             cars,
@@ -487,6 +491,8 @@ impl Race {
                 hud::decoded(&archives.engine, "MINES1A.BPK")?,
                 hud::decoded(&archives.engine, "BLOWI.BPK")?,
             ),
+            fire: hud::decoded(&archives.engine, "BURN1A.BPK")?,
+            medals: hud::Medals::new(&[]),
             rocket_flames: [
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
                 hud::decoded(&archives.engine, "ROCKET2.BPK")?,
@@ -494,7 +500,14 @@ impl Race {
             flame_phase: 0,
             wrecks: Vec::new(),
             tough,
-        })
+        };
+        let places: Vec<i32> = race
+            .board_order()
+            .iter()
+            .map(|&slot| race.cars[slot].place)
+            .collect();
+        race.medals = hud::Medals::new(&places);
+        Ok(race)
     }
 
     /// The race's sound set up (0x416215: the menu's stopped, the track's music started at
@@ -963,7 +976,7 @@ impl Race {
             line += &format!(
                 " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
                  g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
-                 e{:08x} dm{} tb{} mc{} hn{} mn{}",
+                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{}",
                 car.zone,
                 car.direction,
                 car.sprite,
@@ -993,6 +1006,7 @@ impl Race {
                 car.mine_cooldown,
                 i32::from(car.horn),
                 h.mines,
+                car.fire,
             );
         }
         line
@@ -1054,19 +1068,29 @@ impl Race {
     }
 
     /// The HUD's drivers: the player, then the others in their places.
-    fn boards(&self) -> Vec<hud::Board> {
-        let mut order = vec![self.player];
-        order.extend((0..self.cars.len()).filter(|&slot| slot != self.player));
+    /// Their medals roll on a frame's worth.
+    fn boards(&mut self) -> Vec<hud::Board> {
+        let order = self.board_order();
+        let places: Vec<i32> = order.iter().map(|&slot| self.cars[slot].place).collect();
+        let medals = self.medals.roll(&places, self.clock.between);
         order
             .into_iter()
-            .map(|slot| hud::Board {
+            .zip(medals)
+            .map(|(slot, medal)| hud::Board {
                 name: self.drivers[slot].name.clone(),
                 lap: self.cars[slot].lap,
-                place: self.cars[slot].place,
+                medal,
                 damage_bar: self.cars[slot].handling.damage,
                 finished: self.cars[slot].finished,
             })
             .collect()
+    }
+
+    /// The HUD's boards' cars: the player, then the others by their place on the grid.
+    fn board_order(&self) -> Vec<usize> {
+        let mut order = vec![self.player];
+        order.extend((0..self.cars.len()).filter(|&slot| slot != self.player));
+        order
     }
 
     /// A frame: the track under the camera copied right of the HUD (0x4170C1), the HUD.
@@ -1257,6 +1281,16 @@ impl Race {
             on_screen[self.player],
             player.sprite,
         );
+        // A wreck burns over its sprite: the player's wherever it is, another's near the view.
+        let now = self.clock.timer;
+        if player.handling.damage <= 0 {
+            cars::draw_fire(
+                &mut self.buffer,
+                &mut self.cars[self.player],
+                &self.fire,
+                now,
+            );
+        }
         for slot in others {
             let (x, y) = on_screen[slot];
             if x > left - 20 && x < 340 && y > -20 && y < VIEW_HEIGHT as i32 + 20 {
@@ -1266,6 +1300,10 @@ impl Race {
                     (x, y),
                     self.cars[slot].sprite,
                 );
+            }
+            let near = x > left - 8 && x < 328 && y > -8 && y < VIEW_HEIGHT as i32 + 8;
+            if near && self.cars[slot].handling.damage <= 0 {
+                cars::draw_fire(&mut self.buffer, &mut self.cars[slot], &self.fire, now);
             }
         }
     }
