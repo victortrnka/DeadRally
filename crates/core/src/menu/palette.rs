@@ -116,6 +116,23 @@ impl MenuPalette {
         &self.shown
     }
 
+    /// The player's colour, `COPPER.PAL`'s entry for it, for the next [`MenuPalette::compose`].
+    pub(crate) fn set_colour(&mut self, colour: [u8; 3]) {
+        self.colour = colour;
+    }
+
+    /// `setPaletteValueWithFloats` (0x4189C0): the player ramp of `colour` written straight
+    /// to the shown entries 64..=95, the composed palette untouched.
+    pub(crate) fn set_player_ramp(&mut self, colour: [u8; 3]) {
+        self.shown.0[64..96].copy_from_slice(&player_ramp(colour));
+    }
+
+    /// Composed entries `range` shown at 100 % (`convertColorToPaletteColor`, rounded).
+    pub(crate) fn show_composed(&mut self, range: std::ops::Range<usize>) {
+        let full = fade(&self.composed, 100 << 16);
+        self.shown.0[range.clone()].copy_from_slice(&full.0[range]);
+    }
+
     /// The whole composed palette at `percent` %, as the menu's fades show it.
     pub(crate) fn fade(&mut self, percent: i64) {
         self.shown = fade(&self.composed, percent << 16);

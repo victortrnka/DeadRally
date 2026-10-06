@@ -77,6 +77,47 @@ const DIFFICULTY_NAMES: u32 = 0x44_7340;
 const DIFFICULTIES: usize = 4;
 const CIRCUIT_ORDER: u32 = 0x45_673C;
 
+/// The twenty drivers' names as `initDrivers` (0x428930) copies them, by face.
+const DRIVER_NAMES: [u32; DRIVERS] = [
+    0x44_3AE8, 0x44_36E8, 0x44_1250, 0x44_36DC, 0x44_36D0, 0x44_3AE0, 0x44_36B8, 0x44_36AC,
+    0x44_3AD4, 0x44_3694, 0x44_3AC8, 0x44_3ABC, 0x44_3AB0, 0x44_3AA4, 0x44_3A98, 0x44_3A8C,
+    0x44_3A80, 0x44_3A74, 0x44_3A68, 0x44_3A5C,
+];
+pub const DRIVERS: usize = 20;
+const DRIVER_NAME_MAX: usize = 10;
+/// The cars' records, 0x6E0 bytes each from car 0: price at +0xC, the engine, tire and armour
+/// upgrade counts at +0x6A0, their prices at +0x6AC (4 each), the repair price at +0x6DC.
+const CAR_TABLE: u32 = 0x44_DF50;
+const CAR_BYTES: u32 = 0x6E0;
+/// The rows the Start Racing menu and the main menu get when a game starts or ends
+/// (`startRacingMenu`, 0x439CD0).
+const NEW_GAME_ROW: u32 = 0x44_3B04;
+const START_RACING_ROW: u32 = 0x44_3AF4;
+const ENTER_SHOP_ROW: u32 = 0x44_3D00;
+const CONTINUE_RACING_ROW: u32 = 0x44_3CF0;
+/// The licence (`licenseScreen` 0x434800, `readKeyboard` 0x42E7F0): the text cursor's glyph,
+/// the difficulty popup's title, which characters a nickname may hold (one flag a byte), and
+/// the price digits' cell and advances ("$", then 0 to 9).
+const TEXT_CURSOR: u32 = 0x44_3C40;
+const SELECT_DIFFICULTY: u32 = 0x44_40B4;
+const NAME_CHARACTERS: u32 = 0x44_55B0;
+const PRICE_METRICS: u32 = 0x44_5914;
+const PRICE_SIZE: (u8, u8) = (16, 13);
+/// The sign-up (`selectRaceScreen` 0x4357F0, `drawSelectRaceScreen` 0x423F40): the races'
+/// prices, the welcome popup's lines (`welcomePopup` 0x41C840, 80 bytes apart) and its
+/// "continue", the popup when the player signs up for no race, the warnings for a race too
+/// hard for the car (`selectRaceWarningPopup` 0x42B1B0: five lines of 60 bytes each), and the
+/// cars' top speeds by engine level (`drawCarRightSide` 0x41FC20).
+const RACE_PRICES: [u32; 3] = [0x44_3500, 0x44_34F8, 0x44_34F0];
+const WELCOME: u32 = 0x44_C1A8;
+const WELCOME_LINES: u32 = 10;
+const CONTINUE: u32 = 0x44_292C;
+const NO_SIGN_UP: u32 = 0x44_40D8;
+const RACE_WARNINGS: u32 = 0x45_0890;
+const SPEEDS: u32 = 0x44_DED8;
+/// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
+const END_GAME: u32 = 0x44_4280;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
     Exe(ExeError),
@@ -159,6 +200,45 @@ pub struct HallOfFameTexts {
     pub circuit_order: Vec<u8>,
 }
 
+/// A car's prices and upgrades, as the original's car table holds them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CarSpec {
+    pub price: i32,
+    /// How many engine, tire and armour upgrades the car takes (1 to 4).
+    pub upgrades: [i32; 3],
+    pub upgrade_prices: [[i32; 4]; 3],
+    pub repair_price: i32,
+}
+
+/// What the campaign reads from `dr.exe` (spec M3a §3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CampaignTexts {
+    /// `driver_names[face]`.
+    pub driver_names: Vec<Vec<u8>>,
+    /// `cars[k]`, car 0 to 5.
+    pub cars: Vec<CarSpec>,
+    pub new_game_row: Vec<u8>,
+    pub start_racing_row: Vec<u8>,
+    pub enter_shop_row: Vec<u8>,
+    pub continue_racing_row: Vec<u8>,
+    pub text_cursor: Vec<u8>,
+    pub select_difficulty: Vec<u8>,
+    /// `name_characters[c]`: whether a nickname may hold character `c`.
+    pub name_characters: Vec<bool>,
+    /// The price digits' cell, and the advances of "$" and of 0 to 9.
+    pub price: Metrics,
+    pub race_prices: Vec<Vec<u8>>,
+    /// The welcome popup's ten lines (some empty), with `writeTextInScreen`'s font codes.
+    pub welcome: Vec<Vec<u8>>,
+    pub continue_word: Vec<u8>,
+    pub no_sign_up: Vec<u8>,
+    /// `race_warnings[w][line]`: the medium race's warning (0) and the hard race's (1).
+    pub race_warnings: Vec<Vec<Vec<u8>>>,
+    /// `speeds[car][engine]`: the top speed the side panel shows.
+    pub speeds: Vec<[i32; 5]>,
+    pub end_game: Vec<u8>,
+}
+
 /// A font's cell size and the pen advance of each glyph, character 32 first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Metrics {
@@ -182,6 +262,7 @@ pub struct Texts {
     pub medium: Metrics,
     pub configure: ConfigureTexts,
     pub hall_of_fame: HallOfFameTexts,
+    pub campaign: CampaignTexts,
 }
 
 impl Texts {
@@ -193,7 +274,7 @@ impl Texts {
     pub fn read(exe: &Exe) -> Result<Texts, TextError> {
         let text = |address: u32, max: usize| -> Result<Vec<u8>, TextError> {
             let bytes = exe.string_at(address, max)?;
-            if bytes.iter().all(|&b| (32..127).contains(&b) || b == GAP) {
+            if bytes.iter().all(|&b| (32..=127).contains(&b) || b == GAP) {
                 Ok(bytes.to_vec())
             } else {
                 Err(TextError::Unprintable { address })
@@ -284,11 +365,90 @@ impl Texts {
                     order
                 },
             },
+            campaign: CampaignTexts {
+                driver_names: DRIVER_NAMES
+                    .iter()
+                    .map(|&address| shown(address, DRIVER_NAME_MAX))
+                    .collect::<Result<_, _>>()?,
+                cars: (0..CARS as u32)
+                    .map(|k| car_spec(exe, CAR_TABLE + CAR_BYTES * k))
+                    .collect::<Result<_, _>>()?,
+                new_game_row: shown(NEW_GAME_ROW, MENU_ROW_BYTES as usize - 1)?,
+                start_racing_row: shown(START_RACING_ROW, MENU_ROW_BYTES as usize - 1)?,
+                enter_shop_row: shown(ENTER_SHOP_ROW, MENU_ROW_BYTES as usize - 1)?,
+                continue_racing_row: shown(CONTINUE_RACING_ROW, MENU_ROW_BYTES as usize - 1)?,
+                text_cursor: shown(TEXT_CURSOR, 1)?,
+                select_difficulty: shown(SELECT_DIFFICULTY, MAX_LINE)?,
+                name_characters: exe
+                    .bytes_at(NAME_CHARACTERS, 256)?
+                    .iter()
+                    .map(|&flag| flag == 1)
+                    .collect(),
+                price: metrics(PRICE_METRICS, 11, PRICE_SIZE)?,
+                race_prices: RACE_PRICES
+                    .iter()
+                    .map(|&address| shown(address, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                welcome: (0..WELCOME_LINES)
+                    .map(|line| text(WELCOME + 80 * line, 79))
+                    .collect::<Result<_, _>>()?,
+                continue_word: shown(CONTINUE, MAX_LINE)?,
+                end_game: shown(END_GAME, MAX_LINE)?,
+                no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
+                race_warnings: (0..2)
+                    .map(|warning| {
+                        (0..5)
+                            .map(|line| text(RACE_WARNINGS + 300 * warning + 60 * line, 59))
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .collect::<Result<_, _>>()?,
+                speeds: (0..CARS as u32)
+                    .map(|car| -> Result<[i32; 5], TextError> {
+                        let b = exe.bytes_at(SPEEDS + 20 * car, 20)?;
+                        Ok(std::array::from_fn(|level| {
+                            i32::from_le_bytes([
+                                b[4 * level],
+                                b[4 * level + 1],
+                                b[4 * level + 2],
+                                b[4 * level + 3],
+                            ])
+                        }))
+                    })
+                    .collect::<Result<_, _>>()?,
+            },
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
             small: metrics(SMALL_METRICS, 96, SMALL_SIZE)?,
             medium: metrics(MEDIUM_METRICS, 62, MEDIUM_SIZE)?,
         })
     }
+}
+
+/// Car record `base`; refused when its upgrade counts are not 1 to 4 or a price is negative.
+fn car_spec(exe: &Exe, base: u32) -> Result<CarSpec, TextError> {
+    let value = |offset: u32| -> Result<i32, TextError> {
+        let b = exe.bytes_at(base + offset, 4)?;
+        Ok(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let mut prices = [[0; 4]; 3];
+    for (kind, row) in prices.iter_mut().enumerate() {
+        for (level, price) in row.iter_mut().enumerate() {
+            *price = value(0x6AC + 16 * kind as u32 + 4 * level as u32)?;
+        }
+    }
+    let spec = CarSpec {
+        price: value(0xC)?,
+        upgrades: [value(0x6A0)?, value(0x6A4)?, value(0x6A8)?],
+        upgrade_prices: prices,
+        repair_price: value(0x6DC)?,
+    };
+    if spec.upgrades.iter().any(|count| !(1..=4).contains(count))
+        || spec.price < 0
+        || spec.repair_price < 0
+        || prices.iter().flatten().any(|&price| price < 0)
+    {
+        return Err(TextError::Unexpected { address: base });
+    }
+    Ok(spec)
 }
 
 #[cfg(test)]
@@ -297,12 +457,12 @@ mod tests {
 
     use crate::exe::tests::{build, build_at};
 
-    /// A section from 0x442000 to 0x457000 with every string and table where the known release
+    /// A section from 0x441000 to 0x457000 with every string and table where the known release
     /// keeps it: menu `m` row `r` reads "m.r", the other strings made-up words.
     fn known_layout() -> Vec<u8> {
-        let mut data = vec![0u8; 0x1_5000];
+        let mut data = vec![0u8; 0x1_6000];
         let mut put = |address: u32, bytes: &[u8]| {
-            let at = (address - 0x44_2000) as usize;
+            let at = (address - 0x44_1000) as usize;
             data[at..at + bytes.len()].copy_from_slice(bytes);
         };
         for menu in 0..MENUS as u32 {
@@ -352,7 +512,64 @@ mod tests {
             CIRCUIT_ORDER,
             &[0, 7, 5, 3, 4, 2, 8, 1, 6, 9, 16, 14, 12, 13, 11, 17, 10, 15],
         );
-        build_at(0x4_2000, 0x1_5000, &data)
+        for (face, &address) in DRIVER_NAMES.iter().enumerate() {
+            put(address, format!("d{face}").as_bytes());
+        }
+        for k in 0..CARS as u32 {
+            let base = CAR_TABLE + CAR_BYTES * k;
+            let k = k as i32;
+            put(base + 0xC, &(1000 * (k + 1)).to_le_bytes());
+            for (kind, count) in [(0, 1 + k % 4), (1, 2), (2, 1 + (k + 1) % 4)] {
+                put(base + 0x6A0 + 4 * kind, &count.to_le_bytes());
+                for level in 0..4 {
+                    let price = 100 * (k + 1) + 10 * kind as i32 + level;
+                    put(
+                        base + 0x6AC + 16 * kind + 4 * level as u32,
+                        &price.to_le_bytes(),
+                    );
+                }
+            }
+            put(base + 0x6DC, &(7 * (k + 1)).to_le_bytes());
+        }
+        put(NEW_GAME_ROW, b"new");
+        put(START_RACING_ROW, b"start");
+        put(ENTER_SHOP_ROW, b"shop");
+        put(CONTINUE_RACING_ROW, b"continue");
+        put(TEXT_CURSOR, &[0x7F]);
+        put(SELECT_DIFFICULTY, b"select");
+        let mut characters = [0u8; 256];
+        characters[32..127].fill(1);
+        put(NAME_CHARACTERS, &characters);
+        put(
+            PRICE_METRICS,
+            &[16, 13, 14, 13, 9, 13, 13, 13, 13, 13, 12, 13, 13],
+        );
+        for (race, &address) in RACE_PRICES.iter().enumerate() {
+            put(address, format!("${race}").as_bytes());
+        }
+        for line in 0..WELCOME_LINES {
+            put(WELCOME + 80 * line, format!("w{line}").as_bytes());
+        }
+        put(CONTINUE, b"go");
+        put(END_GAME, b"end?");
+        put(NO_SIGN_UP, b"none");
+        for warning in 0..2u32 {
+            for line in 1..5u32 {
+                put(
+                    RACE_WARNINGS + 300 * warning + 60 * line,
+                    format!("r{warning}{line}").as_bytes(),
+                );
+            }
+        }
+        for car in 0..CARS as u32 {
+            for level in 0..5u32 {
+                put(
+                    SPEEDS + 20 * car + 4 * level,
+                    &(10 * car + level).to_le_bytes(),
+                );
+            }
+        }
+        build_at(0x4_1000, 0x1_6000, &data)
     }
 
     #[test]
@@ -437,7 +654,56 @@ mod tests {
 
     /// Where `address` lies in the bytes of [`known_layout`]'s file.
     fn offset(bytes: &[u8], address: u32) -> usize {
-        bytes.len() - 0x1_5000 + (address - 0x44_2000) as usize
+        bytes.len() - 0x1_6000 + (address - 0x44_1000) as usize
+    }
+
+    #[test]
+    fn the_drivers_names_and_the_cars_prices_come_from_their_tables() {
+        // Each driver is named by face; a wrong address names a driver after another one's
+        // tail. A car read with the wrong stride or offset prices every purchase wrongly.
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let campaign = &texts.campaign;
+        assert_eq!(campaign.driver_names[0], b"d0");
+        assert_eq!(campaign.driver_names[19], b"d19");
+        assert_eq!(
+            campaign.cars[5],
+            CarSpec {
+                price: 6000,
+                upgrades: [2, 2, 3],
+                upgrade_prices: [
+                    [600, 601, 602, 603],
+                    [610, 611, 612, 613],
+                    [620, 621, 622, 623]
+                ],
+                repair_price: 42,
+            }
+        );
+        assert_eq!(campaign.enter_shop_row, b"shop");
+        assert_eq!(campaign.text_cursor, [0x7F], "the cursor is glyph 127");
+        assert_eq!(campaign.speeds[3][2], 32, "car 3 at engine level 2");
+        assert_eq!(campaign.race_warnings[1][4], b"r14");
+        assert!(campaign.race_warnings[0][0].is_empty());
+        assert!(campaign.name_characters[usize::from(b'a')]);
+        assert!(!campaign.name_characters[0x7F]);
+        assert_eq!(
+            (campaign.price.advances[0], campaign.price.advances[2]),
+            (14, 9),
+            "the dollar sign, then the digits from 0"
+        );
+    }
+
+    #[test]
+    fn a_car_with_impossible_upgrades_is_refused() {
+        // Upgrade counts index the shop's rows; a count past 4 is not the known release.
+        let mut bytes = known_layout();
+        let at = offset(&bytes, CAR_TABLE + CAR_BYTES * 2 + 0x6A4);
+        bytes[at] = 5;
+        assert_eq!(
+            Texts::read(&Exe::parse(bytes).unwrap()),
+            Err(TextError::Unexpected {
+                address: CAR_TABLE + CAR_BYTES * 2
+            })
+        );
     }
 
     #[test]

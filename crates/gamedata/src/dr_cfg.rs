@@ -54,6 +54,8 @@ const SHORTEST: usize = 7;
 /// Offsets in the payload.
 const MUSIC_VOLUME: usize = 0x00;
 const EFFECTS_VOLUME: usize = 0x04;
+/// The difficulty a new game is set to (0x456738): 0, 1 or 2.
+const DIFFICULTY: usize = 0x0C;
 const USE_JOYSTICK: usize = 0x10;
 /// Accelerate, brake, left, right, turbo, gun, mine, horn: set-1 scancodes.
 const KEYS: usize = 0xB36;
@@ -169,6 +171,20 @@ impl DrCfg {
 
     fn put(&mut self, offset: usize, value: u32) {
         self.payload[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    /// The difficulty the licence last chose.
+    pub fn difficulty(&self) -> u32 {
+        self.get(DIFFICULTY)
+    }
+
+    pub fn set_difficulty(&mut self, difficulty: u32) {
+        self.put(DIFFICULTY, difficulty);
+    }
+
+    /// The byte `saveConfiguration` writes from `rand()` after the header's values.
+    pub fn set_random_byte(&mut self, byte: u8) {
+        self.header[HEADER_BYTES - 1] = byte;
     }
 
     /// The music and effects volumes, 0..=0x10000.

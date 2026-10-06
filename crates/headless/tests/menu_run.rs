@@ -246,12 +246,83 @@ const HALL_OF_FAME_SHOTS: [(u64, &str); 78] = [
     (7527, "menu-back"),
 ];
 
+/// The keys of `scripts/reference/new-game.scenario` in the run of
+/// `docs/verification/m3a.md`: the intro skipped, a licence filled in, the sign-up's welcome,
+/// the medium race's warning and a sign-up for the easy race.
+const NEW_GAME_KEYS: [(u64, Key); 22] = [
+    (130, Key::Space),
+    (1727, Key::Enter),
+    (1799, Key::Enter),
+    (1885, Key::A),
+    (1906, Key::B),
+    (1927, Key::C),
+    (1985, Key::Backspace),
+    (2042, Key::C),
+    (2077, Key::Down),
+    (2160, Key::Right),
+    (2175, Key::Right),
+    (2189, Key::Right),
+    (2239, Key::Enter),
+    (2325, Key::Enter),
+    (2410, Key::Down),
+    (2482, Key::Enter),
+    (2660, Key::Enter),
+    (2746, Key::Right),
+    (2817, Key::Enter),
+    (2903, Key::Space),
+    (2975, Key::Left),
+    (3046, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const NEW_GAME_SHOTS: [(u64, &str); 36] = [
+    (1691, "idle"),
+    (1848, "licence"),
+    (1949, "typed"),
+    (2012, "erased"),
+    (2080, "face-early"),
+    (2102, "face-lit"),
+    (2130, "face"),
+    (2202, "colour"),
+    (2288, "weapons"),
+    (2374, "difficulty"),
+    (2444, "medium"),
+    (2488, "wipe-01"),
+    (2495, "wipe-02"),
+    (2502, "wipe-03"),
+    (2509, "wipe-04"),
+    (2516, "wipe-05"),
+    (2524, "wipe-06"),
+    (2531, "wipe-07"),
+    (2537, "wipe-08"),
+    (2545, "wipe-09"),
+    (2551, "wipe-10"),
+    (2559, "wipe-11"),
+    (2565, "wipe-12"),
+    (2609, "welcome"),
+    (2668, "sign-up"),
+    (2747, "right"),
+    (2825, "warning"),
+    (2938, "warned"),
+    (3007, "left"),
+    (3052, "signed"),
+    (3081, "filling-0"),
+    (3117, "filling-1"),
+    (3152, "filling-2"),
+    (3154, "filling-3"),
+    (3224, "filling-4"),
+    (3225, "filling-5"),
+];
+
+/// The seed the reference runs were made with (`scripts/reference-run.sh --seed 1`).
+const SEED: u32 = 1;
+
 /// One line per screenshot (the frame's pixels and palette), one for the run's sound and one
 /// for the last `dr.cfg` it wrote. The run stops at `ticks`, or earlier when the game quits.
 fn manifest(keys: &[(u64, Key)], shots: &[(u64, &str)], ticks: u64) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
-    let mut game = Game::new(assets, config);
+    let mut game = Game::with_seed(assets, config, SEED);
     let mut lines = String::new();
     let mut audio = Vec::new();
     let mut written = None;
@@ -277,8 +348,12 @@ fn manifest(keys: &[(u64, Key)], shots: &[(u64, &str)], ticks: u64) -> String {
     let mut hasher = Sha256::new();
     hash(&audio, &mut hasher);
     writeln!(lines, "{}  sound of {done} ticks", hex(hasher)).unwrap();
+    let written = written.expect("dr.cfg is written at start-up");
+    if let Some(path) = std::env::var_os("DEADRALLY_DUMP_CFG") {
+        std::fs::write(path, &written).unwrap();
+    }
     let mut hasher = Sha256::new();
-    hasher.update(written.expect("dr.cfg is written at start-up"));
+    hasher.update(written);
     writeln!(lines, "{}  dr.cfg written last", hex(hasher)).unwrap();
     lines
 }
@@ -314,4 +389,14 @@ fn the_hall_of_fame_run_matches_the_committed_manifest() {
     // recording of the run compared as M1b's (docs/verification/m2c.md).
     let lines = manifest(&HALL_OF_FAME_KEYS, &HALL_OF_FAME_SHOTS, 7_600);
     check_manifest("hall-of-fame-run.sha256", &lines, "the hall of fame run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_new_game_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the seed-1 run equalled our frame at its tick
+    // (docs/verification/m3a.md): the licence, the drivers and the races they sign up for
+    // follow the original's random numbers; a change to any of them shows here.
+    let lines = manifest(&NEW_GAME_KEYS, &NEW_GAME_SHOTS, 3_300);
+    check_manifest("new-game-run.sha256", &lines, "the new game run");
 }

@@ -290,6 +290,21 @@ impl Graphics {
         screen.draw(&self.panel_line, at(0, y + h - 9), true);
     }
 
+    /// `writeTextInScreen` (0x41A430): small B; "}" switches to small C, "[" to small A, "{"
+    /// back to small B, the codes taking no room.
+    pub(crate) fn write_text(&self, screen: &mut Canvas, text: &[u8], offset: usize) {
+        let mut font = 1;
+        let mut pen = offset;
+        for &c in text {
+            match c {
+                b'[' => font = 0,
+                b'{' => font = 1,
+                b'}' => font = 2,
+                _ => pen = self.small[font].draw(screen, &[c], pen),
+            }
+        }
+    }
+
     /// `drawBottomMenuText`: rows 380..=468 restored, then the panel's last six lines at
     /// (12, 378 + 15k), each in its own small font.
     pub(crate) fn panel_text(&self, screen: &mut Canvas, panel: &Panel) {
@@ -420,6 +435,38 @@ pub(crate) mod tests {
                 cars: vec![b"V".to_vec(); 6],
                 difficulties: vec![b"D".to_vec(); 4],
                 circuit_order: (0..18).collect(),
+            },
+            campaign: deadrally_gamedata::text::CampaignTexts {
+                driver_names: (0..20)
+                    .map(|face| format!("N{face}").into_bytes())
+                    .collect(),
+                cars: (0..6)
+                    .map(|k| deadrally_gamedata::text::CarSpec {
+                        price: 500 * (k + 1),
+                        upgrades: [1 + k % 4, 2, 4],
+                        upgrade_prices: [[100; 4]; 3],
+                        repair_price: 10,
+                    })
+                    .collect(),
+                new_game_row: b"A".to_vec(),
+                start_racing_row: b"A".to_vec(),
+                enter_shop_row: b"S".to_vec(),
+                continue_racing_row: b"R".to_vec(),
+                text_cursor: vec![0x7F],
+                select_difficulty: b"D".to_vec(),
+                name_characters: (0..256).map(|c| (32..127).contains(&c)).collect(),
+                price: deadrally_gamedata::text::Metrics {
+                    width: 16,
+                    height: 13,
+                    advances: vec![14, 13, 9, 13, 13, 13, 13, 13, 12, 13, 13],
+                },
+                race_prices: vec![b"$1".to_vec(), b"$2".to_vec(), b"$3".to_vec()],
+                welcome: vec![b"w".to_vec(); 10],
+                continue_word: b"C".to_vec(),
+                end_game: b"E".to_vec(),
+                no_sign_up: b"0".to_vec(),
+                race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
+                speeds: vec![[55, 60, 65, 70, 75]; 6],
             },
         }
     }

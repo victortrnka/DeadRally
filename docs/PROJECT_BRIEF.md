@@ -139,9 +139,9 @@ Each milestone ends with a parity check against the oracle.
 | M1a | **Game data and pictures** | BPA/BPK/palette/BMP/track/HAF loaders and a catalogue of every image. A tool dumps every image to PNG locally (never committed). The game starts like the original without sound: intro, Apogee, Remedy, title, matching the original's screenshots pixel for pixel. |
 | M1b | **Sound** | CMF/S3M/XM music and effects, the mixer, and the intro with its sound. |
 | M2 | **Menus and text** | The main menu, Configure, Define Keyboard/Gamepad and Hall of Fame render glyph-identical to the original. The bottom message panel works. |
-| M3 | **Campaign without racing** | New game, licence, sign-up screen with the same three tracks per seed, shop, Underground Market, loans and sponsors, save/load compatible with `DR.SG0..DR.SG7`. |
+| M3 | **Campaign without racing** | New game, licence, sign-up screen with the same three tracks per seed, shop, Underground Market, loans, save/load compatible with `DR.SG0..DR.SG7`. Split as M2 was (2026-10-06): M3a the new game, licence and sign-up; M3b saved games and the shop; M3c purchases, the Underground Market, the loan shark and the hitman's offer. |
 | M4 | **Race: draw and drive** | Tracks, cars, HUD, camera and the race intro/outro. Player physics matches the oracle tick by tick for scripted inputs. |
-| M5 | **Race: everything else** | AI, collisions, weapons, mines (32 slots), power-ups, pedestrians, damage, smoke and skid marks, results and money. Opponents match per seed. |
+| M5 | **Race: everything else** | AI, collisions, weapons, mines (32 slots), power-ups, pedestrians, damage, smoke and skid marks, results and money, and the sponsors' popups that follow results. Opponents match per seed. |
 | M6 | **Full game** | The whole campaign to The Adversary, end animation, Hall of Fame, music and effects, gamepad. |
 | M7 | **1.0 polish** | Fullscreen/window/scaling options, smoothing, settings UI, installers or packages, docs. |
 | M8+ | **Beyond the original** | Widescreen, online multiplayer (DOS IPX knowledge from dRally), mods, ROLEPLAY, and so on. Every one is optional, and the original behaviour stays available. |

@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod audio;
+mod campaign;
 mod canvas;
 mod fade;
 mod font;
