@@ -164,6 +164,26 @@ const OFFER: [u32; 8] = [
 ];
 const PAINT: [u32; 3] = [0x44_41D8, 0x44_41BC, 0x44_41AC];
 const CAR_BOUGHT: u32 = 0x1F0;
+/// The Underground Market (`enterBlackMarketScreen` 0x436700): six lines each for the four
+/// weapons (240 bytes apart) and once bought, out of stock, the shareware lock and the way
+/// on; the loan shark's offer and its loan granted (by loan, 240 bytes apart), what is owed
+/// (its first line's start, the amount and a full stop make it), the loan refused and
+/// paid back; and the first visit's popup (0x41C770, 80 bytes a line).
+const WEAPON_INFO: u32 = 0x45_33D8;
+const WEAPON_BOUGHT: u32 = 0x45_3A68;
+const OUT_OF_STOCK: u32 = 0x45_3888;
+const SHAREWARE: u32 = 0x45_3978;
+const MARKET_ON: u32 = 0x45_4B48;
+/// A wreck cannot go on from the market (0x4365BA): the shop's message with another last
+/// line.
+const MARKET_WRECKED: [u32; 5] = [0x44_4164, 0x44_4160, 0x44_413C, 0x44_4118, 0x44_40FC];
+const LOAN_OFFER: u32 = 0x45_2078;
+const LOAN_GRANTED: u32 = 0x45_2528;
+const LOAN_OWED: u32 = 0x45_2AC8;
+const LOAN_REFUSED: u32 = 0x45_29D8;
+const LOAN_PAID: u32 = 0x45_2BB8;
+const MARKET_WELCOME: u32 = 0x44_BE88;
+const LOANS: u32 = 5;
 /// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
 const END_GAME: u32 = 0x44_4280;
 
@@ -325,6 +345,23 @@ pub struct ShopTexts {
     pub paint: Vec<Vec<u8>>,
     /// `car_bought[car]`.
     pub car_bought: Vec<ShopInfo>,
+    /// The Underground Market: `weapons[w]` and `weapons_bought[w]` for mines, spikes,
+    /// rocket fuel and sabotage, then out of stock, the shareware lock, the way on.
+    pub weapons: Vec<ShopInfo>,
+    pub weapons_bought: Vec<ShopInfo>,
+    pub out_of_stock: ShopInfo,
+    pub shareware: ShopInfo,
+    pub market_on: ShopInfo,
+    pub market_wrecked: ShopInfo,
+    /// `loan_offers[loan]`, `loans_granted[loan]` by loan (0 for the biggest).
+    pub loan_offers: Vec<ShopInfo>,
+    pub loans_granted: Vec<ShopInfo>,
+    /// What is owed: the first line's start (the amount and a full stop follow), five more.
+    pub loan_owed: ShopInfo,
+    pub loan_refused: ShopInfo,
+    pub loan_paid: ShopInfo,
+    /// The first visit's popup: ten lines.
+    pub market_welcome: Vec<Vec<u8>>,
 }
 
 /// A font's cell size and the pen advance of each glyph, character 32 first.
@@ -585,6 +622,31 @@ impl Texts {
                         .collect::<Result<_, _>>()?,
                     car_bought: (0..CARS as u32)
                         .map(|k| info(car(k) + CAR_BOUGHT))
+                        .collect::<Result<_, _>>()?,
+                    weapons: (0..4u32)
+                        .map(|w| info(WEAPON_INFO + 240 * w))
+                        .collect::<Result<_, _>>()?,
+                    weapons_bought: (0..4u32)
+                        .map(|w| info(WEAPON_BOUGHT + 240 * w))
+                        .collect::<Result<_, _>>()?,
+                    out_of_stock: info(OUT_OF_STOCK)?,
+                    shareware: info(SHAREWARE)?,
+                    market_on: info(MARKET_ON)?,
+                    market_wrecked: MARKET_WRECKED
+                        .iter()
+                        .map(|&address| text(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    loan_offers: (0..LOANS)
+                        .map(|loan| info(LOAN_OFFER + 240 * loan))
+                        .collect::<Result<_, _>>()?,
+                    loans_granted: (0..LOANS)
+                        .map(|loan| info(LOAN_GRANTED + 240 * loan))
+                        .collect::<Result<_, _>>()?,
+                    loan_owed: info(LOAN_OWED)?,
+                    loan_refused: info(LOAN_REFUSED)?,
+                    loan_paid: info(LOAN_PAID)?,
+                    market_welcome: (0..10u32)
+                        .map(|line| text(MARKET_WELCOME + 80 * line, 79))
                         .collect::<Result<_, _>>()?,
                 }
             },

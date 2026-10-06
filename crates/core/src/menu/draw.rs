@@ -514,6 +514,18 @@ pub(crate) mod tests {
             offer: (0..8).map(|k| vec![b'a' + k]).collect(),
             paint: vec![b"p".to_vec(); 3],
             car_bought: (0..6).map(|_| info()).collect(),
+            weapons: (0..4).map(|_| info()).collect(),
+            weapons_bought: (0..4).map(|_| info()).collect(),
+            out_of_stock: info(),
+            shareware: info(),
+            market_on: info(),
+            market_wrecked: vec![b"w".to_vec(); 5],
+            loan_offers: (0..5).map(|_| info()).collect(),
+            loans_granted: (0..5).map(|_| info()).collect(),
+            loan_owed: info(),
+            loan_refused: info(),
+            loan_paid: info(),
+            market_welcome: vec![b"m".to_vec(); 10],
         }
     }
 

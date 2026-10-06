@@ -1062,16 +1062,27 @@ fn saved_game_with_money(money: i32) -> Vec<u8> {
 /// The player's record in the game saved into slot 1 after `keys` in the shop of
 /// [`saved_game_with_money`].
 fn player_after_shopping(money: i32, keys: &[Key]) -> Vec<u8> {
+    let mut game = in_shop(saved_game_with_money(money));
+    for &key in keys {
+        step(&mut game, key);
+    }
+    saved_player(game)
+}
+
+/// `file` loaded from slot 0, the shop shown.
+fn in_shop(file: Vec<u8>) -> Game {
     let mut game = Game::new(assets(), common::config());
-    game.set_saved_games(vec![Some(saved_game_with_money(money))]);
+    game.set_saved_games(vec![Some(file)]);
     run(&mut game, MENU_SHOWN);
     to_the_slots(&mut game);
     step(&mut game, Key::Enter);
     step(&mut game, Key::Space);
     run(&mut game, 60);
-    for &key in keys {
-        step(&mut game, key);
-    }
+    game
+}
+
+/// From the shop, the game saved into slot 1; the player's record in it.
+fn saved_player(mut game: Game) -> Vec<u8> {
     step(&mut game, Key::Escape);
     run(&mut game, 60);
     step(&mut game, Key::Down);
@@ -1105,4 +1116,108 @@ fn without_the_money_nothing_is_bought() {
     let left = [Key::Left; 4];
     let record = player_after_shopping(50, &[&left[..], &[Key::Enter]].concat());
     assert_eq!((field(&record, 16), field(&record, 48)), (0, 50));
+}
+
+/// The shop's fades into the Underground Market and back each take 101 waits.
+const MARKET_FADES: u32 = 110;
+
+/// [`saved_game_with_money`] with the player's record changed at `fields` (offset, value).
+fn saved_game_with(money: i32, fields: &[(usize, i32)]) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(money));
+    for &(offset, value) in fields {
+        let at = 19 * 108 + offset;
+        game.drivers[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    game.encode(3)
+}
+
+/// The player's record saved after going on from the shop into the Underground Market,
+/// pressing `keys` there and leaving it with Escape.
+fn player_after_market(file: Vec<u8>, keys: &[Key]) -> Vec<u8> {
+    let mut game = in_shop(file);
+    step(&mut game, Key::Enter);
+    run(&mut game, MARKET_FADES);
+    for &key in keys {
+        step(&mut game, key);
+    }
+    step(&mut game, Key::Escape);
+    run(&mut game, MARKET_FADES);
+    saved_player(game)
+}
+
+const MONEY: usize = 48;
+const LOAN: usize = 52;
+const LOAN_RACES: usize = 56;
+const MINES: usize = 92;
+
+#[test]
+fn mines_are_paid_for_fitted_and_then_sold_out() {
+    // underGroundMenuEnter (0x43636F): the price goes, the car carries 8 mines, and the
+    // market has no more of them, so a second Enter buys nothing.
+    let to_mines = [Key::Left; 4];
+    let record = player_after_market(
+        saved_game_with_money(1_000),
+        &[&to_mines[..], &[Key::Enter, Key::Enter]].concat(),
+    );
+    assert_eq!(field(&record, MINES), 8, "mines fitted");
+    assert_eq!(field(&record, MONEY), 1_000 - 150, "paid once");
+}
+
+#[test]
+fn a_car_full_of_mines_finds_them_sold_out() {
+    // A loaded game's market sells only what the car is not full of (0x42F6A1).
+    let to_mines = [Key::Left; 4];
+    let record = player_after_market(
+        saved_game_with(1_000, &[(MINES, 8)]),
+        &[&to_mines[..], &[Key::Enter]].concat(),
+    );
+    assert_eq!(field(&record, MONEY), 1_000, "nothing bought");
+}
+
+#[test]
+fn the_loan_shark_lends_by_the_car_and_is_paid_back() {
+    // With the cheapest car after the Vagabond he lends $1500 (0x4361A7); paid back in the
+    // same race it costs the loan itself, and the loan is gone.
+    let to_shark = [Key::Left, Key::Left, Key::Left, Key::Left, Key::Up];
+    let no_loan = [(28, 1), (LOAN, -1), (LOAN_RACES, -1)];
+    let lent = player_after_market(
+        saved_game_with(1_000, &no_loan),
+        &[&to_shark[..], &[Key::Enter]].concat(),
+    );
+    assert_eq!(
+        (
+            field(&lent, MONEY),
+            field(&lent, LOAN),
+            field(&lent, LOAN_RACES)
+        ),
+        (2_500, 4, 1),
+        "lent"
+    );
+    let repaid = player_after_market(
+        saved_game_with(1_000, &no_loan),
+        &[&to_shark[..], &[Key::Enter, Key::Enter]].concat(),
+    );
+    assert_eq!(
+        (
+            field(&repaid, MONEY),
+            field(&repaid, LOAN),
+            field(&repaid, LOAN_RACES)
+        ),
+        (1_000, -1, -1),
+        "paid back"
+    );
+}
+
+#[test]
+fn the_loan_shark_lends_nothing_for_a_vagabond() {
+    // 0x4361BB: the Vagabond's driver is refused.
+    let to_shark = [Key::Left, Key::Left, Key::Left, Key::Left, Key::Up];
+    let record = player_after_market(
+        saved_game_with(1_000, &[(LOAN, -1), (LOAN_RACES, -1)]),
+        &[&to_shark[..], &[Key::Enter]].concat(),
+    );
+    assert_eq!(
+        (field(&record, MONEY), field(&record, LOAN_RACES)),
+        (1_000, -1)
+    );
 }

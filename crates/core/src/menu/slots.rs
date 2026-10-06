@@ -95,6 +95,7 @@ impl Menu {
         {
             *driver = Driver::from_bytes(record);
         }
+        campaign.stock_from_player();
         self.config.set_difficulty(u32::from(game.difficulty));
         let loaded = self.assets.menu.texts.campaign.game_loaded.clone();
         self.confirm(&loaded, Confirmed::Loaded)

@@ -39,6 +39,15 @@ const LINGER_WAITS: u32 = 280;
 const HITMAN_RISE: i32 = 2;
 const HITMAN_TOP: i32 = 97;
 
+/// What follows `drawPopupCursor_42C780`'s wait.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PopupThen {
+    /// The sign-up after its welcome.
+    SignUp,
+    /// The Underground Market after its first visit's popup.
+    Market,
+}
+
 /// What happens on the sign-up screen between its waits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -60,7 +69,8 @@ impl Menu {
             &mut campaign.last_circuits,
         ));
         campaign.entered_race = None;
-        self.palette.show_composed(176..192);
+        // 0x435806: the copper ramp, entries 176 to 182.
+        self.palette.show_composed(176..183);
         let mut back = std::mem::take(&mut self.back);
         back.copy_all(&self.graphics.background);
         self.draw_sign_up_screen(&mut back);
@@ -80,7 +90,7 @@ impl Menu {
     pub(super) fn sign_up_shown(&mut self) -> State {
         self.shown = self.screen.clone();
         if self.campaign.welcome {
-            self.popup_wait_start()
+            self.popup_wait_start(PopupThen::SignUp)
         } else {
             State::SignUp {
                 second: false,
@@ -117,14 +127,12 @@ impl Menu {
     }
 
     /// `drawCarRightSide`: the player's car, name, money, top speed, rank, damage and
-    /// upgrades in the panel at the right, the player's colour shown.
+    /// upgrades in the panel at the right (the colour ramp is left as shown).
     pub(super) fn draw_side_panel(&mut self, canvas: &mut Canvas) {
         // The panel caps the player's money in the record itself (0x41FCE9).
         let money = &mut self.campaign.player_mut().money;
         *money = (*money).min(9_999_999);
         let player = *self.campaign.player();
-        self.palette
-            .set_player_ramp(self.assets.menu.copper.0[player.colour as usize]);
         let menu = &self.assets.menu;
         let car = player.car as usize;
         canvas.draw(&menu.side_panel, at(544, 125), false);
@@ -200,24 +208,32 @@ impl Menu {
     }
 
     /// `drawPopupCursor_42C780`'s start: the key pressed before is dropped.
-    fn popup_wait_start(&mut self) -> State {
+    pub(super) fn popup_wait_start(&mut self, then: PopupThen) -> State {
         self.keys.take();
         State::PopupWait {
             second: false,
             passes: 0,
             key: 0,
+            then,
         }
     }
 
     /// A wait of `drawPopupCursor_42C780`: a key is read before each pass's two waits, from
     /// the twelfth pass on; Escape ends it after the pass that read it, Enter before the next.
-    pub(super) fn popup_wait(&mut self, second: bool, passes: u8, key: u8) -> State {
+    pub(super) fn popup_wait(
+        &mut self,
+        second: bool,
+        passes: u8,
+        key: u8,
+        then: PopupThen,
+    ) -> State {
         self.palette.after_wait();
         if !second {
             return State::PopupWait {
                 second: true,
                 passes,
                 key,
+                then,
             };
         }
         self.draw_cursor_at(POPUP_CURSOR.0, POPUP_CURSOR.1);
@@ -232,10 +248,14 @@ impl Menu {
                 second: false,
                 passes,
                 key,
+                then,
             };
         }
         self.keys.take();
-        self.after_welcome()
+        match then {
+            PopupThen::SignUp => self.after_welcome(),
+            PopupThen::Market => self.after_market_welcome(),
+        }
     }
 
     /// The welcome is over: the screen drawn again with the border, the first pass.
@@ -430,8 +450,7 @@ impl Menu {
         if self.keys.take() == 0 {
             return State::NoSignUp;
         }
-        self.palette.set_colour(self.player_copper());
-        self.palette.compose();
+        self.compose_palette();
         State::NoSignUpFade { step: 0 }
     }
 
@@ -484,8 +503,7 @@ impl Menu {
     fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;
-        self.palette.set_colour(self.player_copper());
-        self.palette.compose();
+        self.compose_palette();
         self.palette.fade(100);
         self.open_shop()
     }

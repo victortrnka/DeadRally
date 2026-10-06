@@ -108,6 +108,12 @@ impl<'a> Machine<'a> {
             .collect()
     }
 
+    /// Sets the 32-bit value at `address` before a run, as the original's globals would hold
+    /// it.
+    pub fn poke(&mut self, address: u32, value: u32) {
+        self.write(address, 4, value);
+    }
+
     fn read(&self, address: u32, size: usize) -> Result<u32, MachineError> {
         let mut value = 0;
         for i in (0..size).rev() {
@@ -279,6 +285,22 @@ impl<'a> Machine<'a> {
                 self.set(Place::Register(reg), 4, value);
                 next
             }
+            // imul r, r/m, imm8.
+            0x6B => {
+                let (reg, place, next) = self.modrm(at_op + 1)?;
+                let factor = i32::from(self.byte(next)? as i8);
+                let (product, overflow) = (self.get(place, 4)? as i32).overflowing_mul(factor);
+                self.set(Place::Register(reg), 4, product as u32);
+                self.flags(product as u32, overflow);
+                next + 1
+            }
+            // test r/m, r.
+            0x85 => {
+                let (reg, place, next) = self.modrm(at_op + 1)?;
+                let value = self.get(place, 4)? & self.get(Place::Register(reg), 4)?;
+                self.flags(value, false);
+                next
+            }
             0x8D => {
                 let (reg, place, next) = self.modrm(at_op + 1)?;
                 let Place::Memory(address) = place else {
@@ -444,6 +466,40 @@ mod tests {
         assert_eq!(
             Machine::new(&exe).run(0x40_1000, 0x40_1100),
             Err(MachineError::Runaway)
+        );
+    }
+
+    #[test]
+    fn a_price_table_indexed_by_a_poked_record_is_read_as_the_original_computes_it() {
+        // setUndergroundMarketPrices (0x421FB0) finds the player's car through imul and
+        // tests it with test; the market's prices come from running it.
+        let code = [
+            0xA1, 0x00, 0x11, 0x40, 0x00, // mov eax, [0x401100] (the driver)
+            0x6B, 0xC0, 0x08, // imul eax, eax, 8
+            0x8B, 0x80, 0x10, 0x11, 0x40, 0x00, // mov eax, [eax + 0x401110] (the car)
+            0x85, 0xC0, // test eax, eax
+            0x75, 0x0A, // jne +10
+            0xC7, 0x05, 0x40, 0x11, 0x40, 0x00, 0x96, 0x00, 0x00, 0x00, // mov [0x401140], 150
+            0xC3, // ret
+        ];
+        let image = exe(&code, &[0; 0x100]);
+        let mut machine = Machine::new(&image);
+        machine.poke(0x40_1100, 3);
+        machine.poke(0x40_1110 + 24, 0);
+        machine.run(0x40_1000, 0x40_1100).unwrap();
+        assert_eq!(
+            machine.bytes(0x40_1140, 4).unwrap(),
+            [150, 0, 0, 0],
+            "car 0's price"
+        );
+        let mut machine = Machine::new(&image);
+        machine.poke(0x40_1100, 3);
+        machine.poke(0x40_1110 + 24, 2);
+        machine.run(0x40_1000, 0x40_1100).unwrap();
+        assert_eq!(
+            machine.bytes(0x40_1140, 4).unwrap(),
+            [0, 0, 0, 0],
+            "another car jumps"
         );
     }
 }

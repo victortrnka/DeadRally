@@ -59,7 +59,7 @@ const ENGINE_FRAMES: usize = 24;
 const TIRE_FRAMES: usize = 12;
 const ARMOUR_LAST: usize = 15;
 const REPAIR_FRAMES: usize = 24;
-const CONTINUE_FRAMES: usize = 23;
+pub(super) const CONTINUE_FRAMES: usize = 23;
 const CAR_FRAMES: usize = 64;
 
 /// The shop's selection and its animations' frames (globals of the original).
@@ -73,9 +73,12 @@ pub(crate) struct Shop {
     armour_frame: usize,
     armour_back: bool,
     repair_frame: usize,
-    continue_frame: usize,
-    /// Passes until the selected item's description comes back.
-    message_passes: u32,
+    /// The continue item's flag (0x4611D0), the shop's and the market's.
+    pub(super) continue_frame: usize,
+    /// Passes until the selected item's description comes back (0x456B70).
+    pub(super) message_passes: u32,
+    /// The Underground Market's selection (0x461278).
+    pub(super) market: usize,
 }
 
 impl Default for Shop {
@@ -90,6 +93,7 @@ impl Default for Shop {
             repair_frame: 0,
             continue_frame: 0,
             message_passes: 0,
+            market: CONTINUE,
         }
     }
 }
@@ -103,6 +107,7 @@ impl Shop {
             selected: self.selected,
             repair_frame,
             message_passes: self.message_passes,
+            market: self.market,
             ..Shop::default()
         };
     }
@@ -352,9 +357,16 @@ impl Menu {
         State::Shop { second: false }
     }
 
-    /// What the dealer gives for the player's car (`enterShop`, 0x4373B0): a quarter of its
-    /// worth rounded up, less the damage's repair, never below 0, rounded down to tens.
+    /// What the dealer gives for the player's car (`enterShop`, 0x4373B0): its trade-in
+    /// value rounded down to tens.
     fn refund(&self) -> i32 {
+        let refund = i64::from(self.trade_in());
+        // `itoa`, its last digit made '0', `atoi`.
+        (refund - refund % 10) as i32
+    }
+
+    /// A quarter of the car's worth rounded up, less the damage's repair, never below 0.
+    pub(super) fn trade_in(&self) -> i32 {
         let player = self.campaign.player();
         let spec = self.assets.menu.texts.campaign.cars[player.car as usize];
         let quarter = (i64::from(player.car_price) + 3) / 4;
@@ -364,9 +376,7 @@ impl Menu {
         } else {
             damage
         };
-        let refund = (quarter - damage).max(0);
-        // `itoa`, its last digit made '0', `atoi`.
-        (refund - refund % 10) as i32
+        (quarter - damage).max(0) as i32
     }
 
     /// Enter on the car box: the offer in the popup, "yes" and "no" under it.
@@ -657,7 +667,7 @@ impl Menu {
         self.info_popup(canvas, &info);
     }
 
-    fn info_popup(&self, canvas: &mut Canvas, info: &[Vec<u8>]) {
+    pub(super) fn info_popup(&self, canvas: &mut Canvas, info: &[Vec<u8>]) {
         let (x, y, w, h) = INFO;
         self.graphics.popup(canvas, x, y, w, h, Focus::Focused);
         for (line, text) in info.iter().enumerate() {
@@ -668,7 +678,7 @@ impl Menu {
 
     /// `hasInsuficientMoneyToBuy` (0x421E50): with less money than `cost`, the popup's lines
     /// under its title say how much is missing, and the description comes back later.
-    fn short_of(&mut self, cost: i32) -> bool {
+    pub(super) fn short_of(&mut self, cost: i32) -> bool {
         let money = self.campaign.player().money;
         if money >= cost {
             return false;
@@ -741,7 +751,7 @@ impl Menu {
     }
 
     /// The continue item: a wreck cannot race without weapons; with weapons the
-    /// Underground Market comes first, without them the sign-up.
+    /// Underground Market comes first (0x4385FA), without them the sign-up.
     fn go_on(&mut self) -> State {
         let player = *self.campaign.player();
         if player.damage == 100 && !self.campaign.use_weapons {
@@ -758,11 +768,11 @@ impl Menu {
             );
             return State::Shop { second: false };
         }
-        if !self.campaign.use_weapons {
-            self.sound(ON_SOUND);
+        if self.campaign.use_weapons {
+            return self.open_market();
         }
-        // The Underground Market and the final race against the Adversary come later; the
-        // sign-up stands in for both.
+        self.sound(ON_SOUND);
+        // The final race against the Adversary comes with M6; the sign-up stands in for it.
         self.open_sign_up()
     }
 

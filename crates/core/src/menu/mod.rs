@@ -10,6 +10,7 @@ mod configure;
 pub(crate) mod draw;
 mod hall_of_fame;
 mod licence;
+mod market;
 pub(crate) mod palette;
 mod shop;
 mod sign_up;
@@ -145,6 +146,7 @@ enum State {
         second: bool,
         passes: u8,
         key: u8,
+        then: sign_up::PopupThen,
     },
     RaceWarning,
     NoSignUp,
@@ -175,6 +177,23 @@ enum State {
     CarPaint {
         second: bool,
         key: u8,
+    },
+    /// The Underground Market: the shop's fade out, the market's fade in, its loop (two
+    /// waits a pass), its fade out after Escape and the shop's fade back in.
+    MarketFadeOut {
+        step: u32,
+    },
+    MarketFadeIn {
+        step: u32,
+    },
+    Market {
+        second: bool,
+    },
+    MarketLeave {
+        step: u32,
+    },
+    ShopFadeIn {
+        step: u32,
     },
     /// `showEndScreen`: the menu to black, `END.BMP` in, held, out with the music.
     EndToBlack {
@@ -489,7 +508,8 @@ impl Menu {
                 second,
                 passes,
                 key,
-            } => self.popup_wait(second, passes, key),
+                then,
+            } => self.popup_wait(second, passes, key, then),
             State::RaceWarning => self.race_warning_tick(),
             State::NoSignUp => self.no_sign_up_tick(),
             State::NoSignUpFade { step } => self.no_sign_up_fade(step),
@@ -499,6 +519,11 @@ impl Menu {
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
             State::CarOffer { second, yes } => self.car_offer_tick(second, yes),
             State::CarPaint { second, key } => self.car_paint_tick(second, key),
+            State::MarketFadeOut { step } => self.market_fade_out(step),
+            State::MarketFadeIn { step } => self.market_fade_in(step),
+            State::Market { second } => self.market_tick(second),
+            State::MarketLeave { step } => self.market_leave(step),
+            State::ShopFadeIn { step } => self.shop_fade_in(step),
             State::EndToBlack { step } => {
                 self.palette.fade(100 - 4 * i64::from(step));
                 if step + 1 < FADE_OUT_STEPS {
@@ -588,7 +613,7 @@ impl Menu {
                     self.show_credits(1);
                     return State::CreditsIn { screen: 1, step: 0 };
                 }
-                self.palette.compose();
+                self.compose_palette();
                 self.screen = self.saved.clone();
                 self.shown = self.screen.clone();
                 State::CreditsBack { step: 0 }
@@ -616,7 +641,7 @@ impl Menu {
         self.graphics.panel_text(&mut self.screen, &self.panel);
         self.draw_main();
         self.shown = self.screen.clone();
-        self.palette.compose();
+        self.compose_palette();
     }
 
     /// The top of `mainMenu`'s loop: rows 84..=366 restored, the main menu drawn with focus.
@@ -716,7 +741,7 @@ impl Menu {
             HALL_OF_FAME_ROW => self.open_hall_of_fame(),
             CREDITS_ROW => {
                 self.saved = self.screen.clone();
-                self.palette.compose();
+                self.compose_palette();
                 State::CreditsOut {
                     step: MENU_FADE_STEPS,
                 }
@@ -809,6 +834,12 @@ impl Menu {
             .trigger_at(SOUND_CHANNEL, effect, self.config.effects_volume(), pitch);
     }
 
+    /// `sub_4224E0`: the palette composed for the player's colour as their record has it now.
+    fn compose_palette(&mut self) {
+        self.palette.set_colour(self.player_copper());
+        self.palette.compose();
+    }
+
     /// `COPPER.PAL`'s entry for the player's colour.
     fn player_copper(&self) -> [u8; 3] {
         self.assets.menu.copper.0[self.campaign.player().colour as usize]
@@ -887,8 +918,7 @@ impl Menu {
         self.graphics.set_row(START_MENU.text, 0, shop);
         self.graphics.set_row(MAIN_MENU.text, 0, racing);
         self.campaign.started = true;
-        self.palette.set_colour(self.player_copper());
-        self.palette.compose();
+        self.compose_palette();
         self.open_sign_up()
     }
 
@@ -904,10 +934,10 @@ impl Menu {
             &texts.driver_names,
         );
         campaign.selected_race = 0;
+        campaign.restock();
         self.shop.reset();
         self.car_frame = 0;
-        self.palette.set_colour(self.player_copper());
-        self.palette.compose();
+        self.compose_palette();
     }
 
     /// The Start Racing menu's second row, ending the game: the question, "yes" selected.
@@ -952,7 +982,7 @@ impl Menu {
 
     fn exit_answer(&mut self, answer: Option<bool>) -> State {
         if answer == Some(true) {
-            self.palette.compose();
+            self.compose_palette();
             State::EndToBlack { step: 0 }
         } else {
             self.main_pass()

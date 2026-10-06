@@ -273,6 +273,9 @@ pub(crate) struct Campaign {
     /// The hitman's chance in percent (0x45678C): 5 at first, 2 more after each sign-up he
     /// does not come.
     pub(crate) hitman_chance: i32,
+    /// The Underground Market's mines, spikes, rocket fuel and sabotage (0x45EFF0..0x45EFFC):
+    /// 1 on sale, 0 sold out, −1 locked (the shareware's; the Windows version sets none).
+    pub(crate) stock: [i32; 4],
 }
 
 impl Campaign {
@@ -292,7 +295,39 @@ impl Campaign {
             sign_up: None,
             entered_race: None,
             hitman_chance: 5,
+            stock: [1; 4],
         }
+    }
+
+    /// Whether the player has more points than every other driver (the final race against
+    /// the Adversary is due).
+    pub(crate) fn player_leads(&self) -> bool {
+        let best = self
+            .drivers
+            .iter()
+            .enumerate()
+            .filter(|&(index, _)| index != PLAYER)
+            .map(|(_, driver)| driver.points)
+            .fold(0, i32::max);
+        self.player().points > best
+    }
+
+    /// The market restocked (0x4236D0, from `initDrivers` on): everything on sale but the
+    /// sabotage while the player leads.
+    pub(crate) fn restock(&mut self) {
+        self.stock = [1, 1, 1, i32::from(!self.player_leads())];
+    }
+
+    /// A loaded game's stock (0x42F6A1): what the player's car is not already full of.
+    pub(crate) fn stock_from_player(&mut self) {
+        let player = *self.player();
+        self.stock = [
+            player.mines != 8,
+            player.spikes != 1,
+            player.rocket != 1,
+            player.sabotage != 1,
+        ]
+        .map(i32::from);
     }
 
     pub(crate) fn player(&self) -> &Driver {

@@ -242,6 +242,20 @@ fn the_startup_assets_load_with_their_documented_shapes() {
     let hall = &menu.texts.hall_of_fame;
     assert_eq!((hall.circuits.len(), hall.cars.len()), (18, 6));
     assert_eq!(hall.circuit_order[..3], [0, 7, 5]);
+    // The Underground Market's prices by car, as dr.exe's setUndergroundMarketPrices
+    // (0x421FB0) sets them when run: a wrong price changes what a weapon costs the player.
+    assert_eq!(
+        menu.market_prices,
+        [
+            [150, 200, 275, 250],
+            [200, 225, 350, 325],
+            [450, 500, 675, 550],
+            [500, 550, 625, 570],
+            [1250, 1750, 2250, 2125],
+            [2525, 2750, 3275, 2625],
+        ]
+    );
+    assert_eq!((menu.weapons.len(), menu.loan_shark.width), (12, 96));
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

@@ -190,6 +190,18 @@ pub fn shop_texts() -> ShopTexts {
         offer: (0..8).map(|k| vec![b'a' + k]).collect(),
         paint: vec![b"p".to_vec(); 3],
         car_bought: (0..6).map(|_| info()).collect(),
+        weapons: (0..4).map(|_| info()).collect(),
+        weapons_bought: (0..4).map(|_| info()).collect(),
+        out_of_stock: info(),
+        shareware: info(),
+        market_on: info(),
+        market_wrecked: vec![b"w".to_vec(); 5],
+        loan_offers: (0..5).map(|_| info()).collect(),
+        loans_granted: (0..5).map(|_| info()).collect(),
+        loan_owed: info(),
+        loan_refused: info(),
+        loan_paid: info(),
+        market_welcome: vec![b"m".to_vec(); 10],
     }
 }
 
@@ -279,5 +291,9 @@ pub fn menu_assets() -> MenuAssets {
         repair: (0..24).map(|_| solid(96, 64, SHOP + 13)).collect(),
         continue_flag: (0..23).map(|_| solid(96, 64, SHOP + 14)).collect(),
         maxed: (0..12).map(|_| solid(96, 64, SHOP + 15)).collect(),
+        market_title: solid(640, 16, SHOP + 16),
+        loan_shark: solid(96, 96, SHOP + 17),
+        weapons: (0..12).map(|k| solid(96, 96, SHOP + 18 + k)).collect(),
+        market_prices: vec![[150, 200, 275, 250]; 6],
     }
 }
