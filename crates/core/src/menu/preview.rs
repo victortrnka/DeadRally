@@ -293,10 +293,12 @@ impl Menu {
     }
 
     /// The race over (abandoned, or its data not loading): the menus' music and sounds back as
-    /// the original brings them back after a race (0x434617), and the menus' background under
+    /// the original brings them back after a race (0x434617), at the full volume the race's
+    /// fades took away and the results would give back (M5), and the menus' background under
     /// the stand-in's shop with nothing of the preview or the race left on it.
     fn after_race(&mut self) -> State {
         self.sound.stop();
+        self.sound.set_mask(FULL_MASK);
         self.sound.load_effects(&self.assets.menu.effects);
         self.sound
             .play_music(&self.assets.menu_music, 0, self.config.music_volume());

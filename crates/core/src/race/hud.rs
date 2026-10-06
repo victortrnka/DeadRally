@@ -281,8 +281,13 @@ pub(crate) fn draw(
             left + 41032 + 0x4000 * index as i64,
         );
     }
-    let needle = (f64::from(player.speed) / f64::from(player.engine) * -162.0) as i64;
-    let first = if 1 - needle < 1 { 1 } else { 1 - needle };
+    // `_ftol` gives 0x80000000 for a speed over no engine, and 1 less it wraps as an int.
+    let needle = super::raster::ftol(f64::from(player.speed) / f64::from(player.engine) * -162.0);
+    let first = if 1i32.wrapping_sub(needle) < 1 {
+        1
+    } else {
+        1 - needle
+    };
     for mark in first.max(0) as usize..162 {
         let (x, y) = (GAUGE_X[mark], GAUGE_Y[mark]);
         buffer.slant(left + 32 + ((y as i64) << 9) + x as i64, x, 32, 33 - y, 0);
@@ -401,6 +406,23 @@ mod tests {
             mines: 0,
         };
         let boards = [board(0), board(110), board(255), board(40)];
+        draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
+    }
+
+    /// A car with no engine left still moving (a finished or wrecked car whose engine the
+    /// balance does not give back, as in the Adversary's race) must not stop the race: the
+    /// speed gauge's needle lies at its end.
+    #[test]
+    fn a_moving_car_without_an_engine_does_not_stop_the_race() {
+        let player = Player {
+            speed: 3.0,
+            engine: 0.0,
+            weapons: true,
+            weapons_bar: FULL_BAR,
+            turbo_bar: FULL_BAR,
+            mines: 0,
+        };
+        let boards = [board(0), board(0), board(0), board(0)];
         draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
     }
 

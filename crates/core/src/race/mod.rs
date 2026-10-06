@@ -1096,7 +1096,8 @@ impl Race {
         }
         sound.trigger_at(CALL_CHANNEL, END_CALL, FULL, CALL_PITCH);
         let lines = self.race_over_lines.clone();
-        self.open_box(&lines, keys, rand, false, true);
+        let asked = self.open_box(&lines, keys, rand, false, true);
+        Self::pause_sounds(sound, &asked);
     }
 
     /// The buffer's track view (200 rows of 256) and HUD (200 rows of 64).
