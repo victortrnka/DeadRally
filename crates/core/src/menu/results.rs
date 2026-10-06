@@ -86,27 +86,9 @@ fn clock_total([minutes, seconds, hundredths]: [i32; 3]) -> i32 {
 }
 
 impl Menu {
-    /// The results after signing up for no race (0x4356AB): every race filled with the other
-    /// drivers, four places drawn for the cars (unused, but `rand()` moves on), then
-    /// `postRaceMain(1)`, which leaves the shop's loading out.
+    /// The results after signing up for no race (0x435CC2): `postRaceMain(1)`, which leaves
+    /// the shop's loading out; every race is full already.
     pub(super) fn results_without_race(&mut self) -> State {
-        let campaign = &mut self.campaign;
-        let drivers = campaign.drivers;
-        campaign
-            .sign_up
-            .as_mut()
-            .expect("a sign-up is on")
-            .fill_at_once(&mut campaign.rand, &drivers);
-        let mut taken = [false; PLACES];
-        for _ in 0..PLACES {
-            loop {
-                let place = (campaign.rand.next() % PLACES as i32) as usize;
-                if !taken[place] {
-                    taken[place] = true;
-                    break;
-                }
-            }
-        }
         self.results_after_race = false;
         self.open_results()
     }
@@ -234,10 +216,6 @@ impl Menu {
             };
         }
         self.keys.take();
-        if !self.results_after_race {
-            // 0x4357B3: the sabotage on sale again unless the player leads.
-            self.campaign.stock[3] = i32::from(!self.campaign.player_leads());
-        }
         if fade {
             return self.shop_again();
         }

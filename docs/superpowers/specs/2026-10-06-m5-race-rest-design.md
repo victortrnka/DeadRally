@@ -14,6 +14,9 @@ A race runs from the start to the results as the original's does: the opponents 
 1. **M5 comes in parts:** M5a the opponents' driving (and with it laps and a whole race checked against the original); M5b the results, the money and the sponsors' popups; M5c what M4c left (the effect power-up's view, the race's other keys, the HUD's lap time without weapons, the statistics row and the shop's cheats). *Cost if wrong:* none; the order of work only.
 2. **The facts come from the binary.** DreeRally and dRally are hints; where they disagree with `dr.exe`, the binary and the reference runs decide. *Cost if wrong:* none.
 3. **The reference runs keep `--no-ai` for what they check of the player,** and DeadRally keeps the opponents still in those runs too (`Game::keep_opponents_still`, `--no-ai` in `find`, `render` and `trace`), so M4's manifests stay as they were checked. *Cost if wrong:* none for a player; a test option.
+4. **The shop's loading takes one tick.** The original shows "Please wait while loading..." for as long as the shop's pictures take to load (wall-clock time, no waits); DeadRally shows it for one tick. The pulse and the blinking line only advance in waits, so nothing else depends on it. *Cost if wrong:* the line shows a moment shorter.
+5. **The player's place in the drivers' table is a field of the campaign** (0x463CE8), set to 19 by a new game, read from a saved game, and moved by the standings' sort. Before M5 it was the constant 19 and only such saves loaded. *Cost if wrong:* none; the original does the same.
+6. **The Adversary's turn waits for M6:** a race that makes the player the leader shows the results as any other; the final race, the partial fades for it and the end follow in M6. *Cost if wrong:* the leader's way on is missing until M6.
 
 ## 3. Facts about the original
 
