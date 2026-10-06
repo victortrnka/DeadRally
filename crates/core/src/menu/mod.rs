@@ -182,6 +182,24 @@ enum State {
         step: u32,
         fade: bool,
     },
+    /// The Start Racing menu's statistics (`sub_42C940`, `postRaceMain(2)`): the menu out,
+    /// the statistics in, their wait for a key, out, 51 waits, the menu back in.
+    StatsMenuOut {
+        step: u32,
+    },
+    StatsIn {
+        step: u32,
+    },
+    StatsWait,
+    StatsOut {
+        step: u32,
+    },
+    StatsHold {
+        waits: u32,
+    },
+    StatsMenuIn {
+        step: u32,
+    },
     ToBlack {
         k: i32,
     },
@@ -598,6 +616,12 @@ impl Menu {
             State::ResultsWait { page } => self.results_wait(page),
             State::ResultsLoading => self.results_loaded(),
             State::ResultsOut { step, fade } => self.results_out(step, fade),
+            State::StatsMenuOut { step } => self.stats_menu_out(step),
+            State::StatsIn { step } => self.stats_in(step),
+            State::StatsWait => self.stats_wait(),
+            State::StatsOut { step } => self.stats_out(step),
+            State::StatsHold { waits } => self.stats_hold(waits),
+            State::StatsMenuIn { step } => self.stats_menu_in(step),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),

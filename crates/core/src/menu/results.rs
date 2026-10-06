@@ -8,7 +8,8 @@ use crate::campaign::quicksort;
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
-use super::{Menu, State, shop};
+use super::draw::Focus;
+use super::{Menu, State, Submenu, shop};
 
 /// The ranking's frame and the results' panel (0x42B728, 0x42B74C).
 const RANKING: (usize, usize) = (300, 84);
@@ -197,6 +198,125 @@ impl Menu {
         }
         self.compose_palette();
         State::MarketLeave { step: 0 }
+    }
+
+    /// "See current statistics" (`sub_42C940`): the palette composed, then the menu out from
+    /// 100 % in 51 waits, the Start Racing menu's cursor turning every other one.
+    pub(super) fn open_statistics(&mut self) -> State {
+        self.compose_palette();
+        State::StatsMenuOut {
+            step: OUT_STEPS - 1,
+        }
+    }
+
+    /// A wait of the menu's way out, `step` counting down from 50: all but entries 96 to 127
+    /// (the title's, which stay as they are through the statistics).
+    pub(super) fn stats_menu_out(&mut self, step: u32) -> State {
+        if step % 2 == 1 {
+            self.update_cursor_start();
+        }
+        self.palette.fade_market(2 * i64::from(step));
+        if step > 0 {
+            return State::StatsMenuOut { step: step - 1 };
+        }
+        self.keys.take();
+        self.keys.take();
+        // `postRaceMain(2)`: the statistics without a race's part, the standings as they
+        // stand, the line, all shown under the black palette.
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_statistics(&mut screen);
+        self.draw_standings(&mut screen);
+        self.screen = screen;
+        self.draw_press(0);
+        self.shown = self.screen.clone();
+        self.compose_palette();
+        State::StatsIn { step: 0 }
+    }
+
+    /// A wait of the statistics' way in: all but entries 96 to 127 up to 98 %.
+    pub(super) fn stats_in(&mut self, step: u32) -> State {
+        self.palette.fade_market(2 * i64::from(step));
+        if step + 1 < FADE_IN_STEPS {
+            return State::StatsIn { step: step + 1 };
+        }
+        State::StatsWait
+    }
+
+    /// The statistics' wait for a key, the pulse and the line blinking as on the results.
+    pub(super) fn stats_wait(&mut self) -> State {
+        self.palette.after_wait();
+        self.blink_press();
+        if self.keys.take() == 0 {
+            return State::StatsWait;
+        }
+        self.compose_palette();
+        State::StatsOut { step: 0 }
+    }
+
+    /// A wait of the statistics' way out: all but entries 96 to 127 from 100 % down to 0.
+    pub(super) fn stats_out(&mut self, step: u32) -> State {
+        self.palette.fade_market(100 - 2 * i64::from(step));
+        if step + 1 < OUT_STEPS {
+            return State::StatsOut { step: step + 1 };
+        }
+        // 0x42B4B2: the palette composed, then 51 waits with nothing changing.
+        self.compose_palette();
+        State::StatsHold { waits: 0 }
+    }
+
+    /// One of the 51 waits after the statistics; then the key let go of and the menus drawn
+    /// afresh under what the palette shows: the background, the main menu dimmed, the Start
+    /// Racing menu, the bottom panel.
+    pub(super) fn stats_hold(&mut self, waits: u32) -> State {
+        if waits + 1 < OUT_STEPS {
+            return State::StatsHold { waits: waits + 1 };
+        }
+        self.keys.take();
+        let mut screen = std::mem::take(&mut self.screen);
+        screen.copy_all(&self.graphics.background);
+        self.graphics
+            .menu(&mut screen, &self.main, Focus::Unfocused, self.cursor);
+        self.graphics.menu(
+            &mut screen,
+            &self.submenus[Submenu::Start.table()],
+            Focus::Focused,
+            self.cursor,
+        );
+        self.graphics.panel_frame(&mut screen, 0, 371, 639, 109);
+        self.graphics.panel_text(&mut screen, &self.panel);
+        self.screen = screen;
+        self.shown = self.screen.clone();
+        self.compose_palette();
+        State::StatsMenuIn { step: 0 }
+    }
+
+    /// A wait of the menu's way back in: all but entries 96 to 127 up to 98 %, the cursor
+    /// turning every other wait; then the keys pressed meanwhile let go of.
+    pub(super) fn stats_menu_in(&mut self, step: u32) -> State {
+        if step % 2 == 1 {
+            self.update_cursor_start();
+        }
+        self.palette.fade_market(2 * i64::from(step));
+        if step + 1 < FADE_IN_STEPS {
+            return State::StatsMenuIn { step: step + 1 };
+        }
+        self.keys.take();
+        self.keys.take();
+        State::Submenu {
+            menu: Submenu::Start,
+            second: false,
+        }
+    }
+
+    /// The Start Racing menu's cursor turned a frame (`sub_41AB50(1)`).
+    fn update_cursor_start(&mut self) {
+        self.graphics.update_cursor(
+            &mut self.screen,
+            &mut self.shown,
+            &self.submenus[Submenu::Start.table()],
+            self.cursor,
+        );
+        self.cursor = (self.cursor + 1) % super::CURSOR_FRAMES;
     }
 
     /// The menu's background with the ranking's frame and the results' panel.

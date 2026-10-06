@@ -1628,6 +1628,74 @@ const RESULTS_SHOTS: [(u64, &str); 91] = [
     (5315, "s092"),
 ];
 
+/// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
+/// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
+/// menu, Up to "See current statistics", Enter, and Enter on the statistics.
+const STATISTICS_KEYS: [(u64, Key); 10] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2162, Key::Escape),
+    (2261, Key::Up),
+    (2312, Key::Enter),
+    (2668, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the menu fading out,
+/// the statistics in, their wait, out, and the menu back in (seven shots whose pulsing line is
+/// a step off left out; docs/verification/m5.md).
+const STATISTICS_SHOTS: [(u64, &str); 46] = [
+    (2325, "s000"),
+    (2339, "s001"),
+    (2354, "s002"),
+    (2426, "s007"),
+    (2418, "s008"),
+    (2455, "s009"),
+    (2457, "s010"),
+    (2443, "s011"),
+    (2428, "s012"),
+    (2448, "s013"),
+    (2458, "s014"),
+    (2420, "s015"),
+    (2555, "s016"),
+    (2569, "s017"),
+    (2581, "s018"),
+    (2563, "s019"),
+    (2552, "s020"),
+    (2626, "s021"),
+    (2626, "s022"),
+    (2645, "s023"),
+    (2664, "s024"),
+    (2365, "s028"),
+    (2365, "s029"),
+    (2365, "s030"),
+    (2365, "s031"),
+    (2781, "s032"),
+    (2795, "s033"),
+    (2810, "s034"),
+    (2823, "s035"),
+    (2837, "s036"),
+    (2853, "s037"),
+    (2867, "s038"),
+    (2881, "s039"),
+    (2895, "s040"),
+    (2909, "s041"),
+    (2923, "s042"),
+    (2937, "s043"),
+    (2953, "s044"),
+    (2967, "s045"),
+    (2981, "s046"),
+    (2995, "s047"),
+    (3009, "s048"),
+    (3023, "s049"),
+    (3037, "s050"),
+    (3053, "s051"),
+    (3067, "s052"),
+];
+
 /// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
 /// run of `docs/verification/m5.md` (no keys held: the player stands while the opponents race
 /// three laps round it).
@@ -2723,6 +2791,25 @@ fn the_results_run_matches_the_committed_manifest() {
         false,
     );
     check_manifest("results-run.sha256", &lines, "the results run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_statistics_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // the Start Racing menu out but for the title's colours, the player's statistics without a
+    // race's part beside the standings, the blinking line, and the menus back.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&STATISTICS_KEYS, &[]),
+        &STATISTICS_SHOTS,
+        3_100,
+        slots,
+    );
+    check_manifest("statistics-run.sha256", &lines, "the statistics run");
 }
 
 #[test]
