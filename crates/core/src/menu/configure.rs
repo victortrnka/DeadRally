@@ -43,14 +43,14 @@ impl Menu {
         let (first_row, rows) = match menu {
             Submenu::Start => (92, 275),
             Submenu::Configure => (84, 283),
-            Submenu::Keyboard | Submenu::Pad => (105, 262),
+            Submenu::Keyboard | Submenu::Pad | Submenu::Load | Submenu::Save => (105, 262),
         };
         self.screen
             .copy_rows(&self.graphics.background, first_row, rows);
         self.draw_dimmed(menu);
         self.graphics.menu(
             &mut self.screen,
-            &self.submenus[menu as usize],
+            &self.submenus[menu.table()],
             Focus::Focused,
             self.cursor,
         );
@@ -65,10 +65,15 @@ impl Menu {
     fn draw_dimmed(&mut self, menu: Submenu) {
         self.graphics
             .menu(&mut self.screen, &self.main, Focus::Unfocused, self.cursor);
-        if matches!(menu, Submenu::Keyboard | Submenu::Pad) {
+        let above = match menu {
+            Submenu::Keyboard | Submenu::Pad => Some(Submenu::Configure),
+            Submenu::Load | Submenu::Save => Some(Submenu::Start),
+            _ => None,
+        };
+        if let Some(above) = above {
             self.graphics.menu(
                 &mut self.screen,
-                &self.submenus[Submenu::Configure as usize],
+                &self.submenus[above.table()],
                 Focus::Unfocused,
                 self.cursor,
             );
@@ -87,11 +92,12 @@ impl Menu {
                         self.main_pass()
                     }
                     Submenu::Keyboard | Submenu::Pad => self.submenu_pass(Submenu::Configure),
+                    Submenu::Load | Submenu::Save => self.start_pass(),
                 }
             }
             keys::ENTER | keys::SPACE | 0x9C => {
                 self.sound(CHOOSE_SOUND);
-                let row = self.submenus[menu as usize].selected;
+                let row = self.submenus[menu.table()].selected;
                 self.choose_in(menu, row)
             }
             key @ (keys::UP | keys::PAD_UP | keys::DOWN | keys::PAD_DOWN) => {
@@ -112,7 +118,7 @@ impl Menu {
     /// What a submenu's row does. A menu's "previous" row also sets its selection back to its
     /// first row; Escape keeps it.
     fn choose_in(&mut self, menu: Submenu, row: usize) -> State {
-        let table = &mut self.submenus[menu as usize];
+        let table = &mut self.submenus[menu.table()];
         match (menu, row) {
             (Submenu::Start, START_MENU_BACK) => {
                 table.selected = 0;
@@ -120,8 +126,12 @@ impl Menu {
             }
             (Submenu::Start, 0) => self.start_or_enter(),
             (Submenu::Start, 1) => self.ask_end_game(),
-            // Statistics, loading and saving come with M3b.
+            (Submenu::Start, 3) => self.open_slots(Submenu::Load),
+            (Submenu::Start, 4) => self.open_slots(Submenu::Save),
+            // The statistics come with M3c.
             (Submenu::Start, _) => self.submenu_pass(Submenu::Start),
+            (Submenu::Load, slot) => self.load_slot(slot),
+            (Submenu::Save, slot) => self.ask_save_name(slot),
             (Submenu::Configure, MUSIC_ROW) => self.volume_open(true),
             (Submenu::Configure, EFFECTS_ROW) => self.volume_open(false),
             (Submenu::Configure, KEYBOARD_ROW) => {
@@ -235,7 +245,7 @@ impl Menu {
         self.draw_dimmed(menu);
         self.graphics.menu(
             &mut self.screen,
-            &self.submenus[menu as usize],
+            &self.submenus[menu.table()],
             Focus::Unfocused,
             self.cursor,
         );

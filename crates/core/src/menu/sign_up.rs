@@ -119,6 +119,9 @@ impl Menu {
     /// `drawCarRightSide`: the player's car, name, money, top speed, rank, damage and
     /// upgrades in the panel at the right, the player's colour shown.
     pub(super) fn draw_side_panel(&mut self, canvas: &mut Canvas) {
+        // The panel caps the player's money in the record itself (0x41FCE9).
+        let money = &mut self.campaign.player_mut().money;
+        *money = (*money).min(9_999_999);
         let player = *self.campaign.player();
         self.palette
             .set_player_ramp(self.assets.menu.copper.0[player.colour as usize]);
@@ -128,9 +131,10 @@ impl Menu {
         canvas.draw(&menu.side_cars[car], at(544, 141), false);
         let medium = &self.graphics.medium;
         let name = player.name().to_ascii_uppercase();
-        let centre = |width: usize| ((96 - width as i32) / 2) as usize;
+        // Centred in the 96-pixel panel; wider text starts at its left edge.
+        let centre = |width: usize| ((96 - width as i32) / 2).max(0) as usize;
         medium.draw(canvas, &name, at(544 + centre(medium.width(&name)), 126));
-        let money = format!("${}", player.money.min(9_999_999)).into_bytes();
+        let money = format!("${}", player.money).into_bytes();
         let small = &self.graphics.small[0];
         small.draw(canvas, &money, at(544 + centre(small.width(&money)), 205));
         let speed = menu.texts.campaign.speeds[car][player.engine as usize].to_string();
@@ -475,14 +479,14 @@ impl Menu {
     }
 
     /// Until races exist (M4), the race the player signed up for ends at once: back to the
-    /// Start Racing menu with nothing changed but the welcome, which the shop would have
-    /// shown by now (spec M3a §2).
+    /// shop with nothing changed but the welcome, which the shop shows once after the first
+    /// race (spec M3a §2, M3b §2).
     fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;
         self.palette.set_colour(self.player_copper());
         self.palette.compose();
         self.palette.fade(100);
-        self.start_wipe()
+        self.open_shop()
     }
 }

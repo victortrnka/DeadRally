@@ -11,14 +11,16 @@ pub(crate) mod draw;
 mod hall_of_fame;
 mod licence;
 pub(crate) mod palette;
+mod shop;
 mod sign_up;
+mod slots;
 
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::dr_cfg::DrCfg;
 
 use self::draw::{
     CONFIGURE_MENU, CURSOR_FRAMES, Focus, Graphics, KEYBOARD_MENU, MAIN_MENU, MenuTable, PAD_MENU,
-    POPUP_FILL, Panel, START_MENU,
+    POPUP_FILL, Panel, SLOTS_MENU, START_MENU,
 };
 use self::palette::MenuPalette;
 use crate::audio::Sound;
@@ -152,6 +154,18 @@ enum State {
     Linger {
         waits: u32,
     },
+    /// `confirmationPopup`'s wait for a key.
+    Confirm {
+        then: slots::Confirmed,
+    },
+    /// The shop's loop, two waits a pass, and the car box's turn after Left or Right.
+    Shop {
+        second: bool,
+    },
+    CarTurn {
+        right: bool,
+        waits: u32,
+    },
     /// `showEndScreen`: the menu to black, `END.BMP` in, held, out with the music.
     EndToBlack {
         step: u32,
@@ -213,6 +227,19 @@ enum Submenu {
     Configure,
     Keyboard,
     Pad,
+    /// The saved games' slots (menu 5), to load from or to save into.
+    Load,
+    Save,
+}
+
+impl Submenu {
+    /// The menu's entry in [`Menu::submenus`]: loading and saving share the slots' table.
+    fn table(self) -> usize {
+        match self {
+            Submenu::Load | Submenu::Save => 4,
+            other => other as usize,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -228,8 +255,8 @@ pub(crate) struct Menu {
     sound: Sound,
     audio: Vec<i16>,
     main: MenuTable,
-    /// Start, Configure, Define Keyboard, Define Gamepad, by [`Submenu`].
-    submenus: [MenuTable; 4],
+    /// Start, Configure, Define Keyboard, Define Gamepad and the slots, by [`Submenu::table`].
+    submenus: [MenuTable; 5],
     panel: Panel,
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
@@ -250,6 +277,12 @@ pub(crate) struct Menu {
     blink: i32,
     car_toggle: bool,
     car_frame: usize,
+    /// The eight slots' saved games as the host read them, the slot being saved into, and a
+    /// saved game the host should write.
+    slot_files: Vec<Option<Vec<u8>>>,
+    save_slot: usize,
+    written_slot: Option<(usize, Vec<u8>)>,
+    shop: shop::Shop,
 }
 
 impl Menu {
@@ -262,7 +295,7 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        seed: u32,
+        (seed, slot_files): (u32, Vec<Option<Vec<u8>>>),
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -288,7 +321,13 @@ impl Menu {
             sound,
             audio,
             main: MAIN_MENU,
-            submenus: [START_MENU, CONFIGURE_MENU, KEYBOARD_MENU, PAD_MENU],
+            submenus: [
+                START_MENU,
+                CONFIGURE_MENU,
+                KEYBOARD_MENU,
+                PAD_MENU,
+                SLOTS_MENU,
+            ],
             panel,
             config,
             save,
@@ -303,6 +342,10 @@ impl Menu {
             blink: 0,
             car_toggle: false,
             car_frame: 0,
+            slot_files,
+            save_slot: 0,
+            written_slot: None,
+            shop: shop::Shop::default(),
         }
     }
 
@@ -379,7 +422,7 @@ impl Menu {
                 self.graphics.update_cursor(
                     &mut self.screen,
                     &mut self.shown,
-                    &self.submenus[menu as usize],
+                    &self.submenus[menu.table()],
                     self.cursor,
                 );
                 self.cursor = (self.cursor + 1) % CURSOR_FRAMES;
@@ -441,6 +484,9 @@ impl Menu {
             State::NoSignUp => self.no_sign_up_tick(),
             State::NoSignUpFade { step } => self.no_sign_up_fade(step),
             State::Linger { waits } => self.linger_tick(waits),
+            State::Confirm { then } => self.confirm_tick(then),
+            State::Shop { second } => self.shop_tick(second),
+            State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
             State::EndToBlack { step } => {
                 self.palette.fade(100 - 4 * i64::from(step));
                 if step + 1 < FADE_OUT_STEPS {
@@ -595,7 +641,7 @@ impl Menu {
     fn move_highlight(&mut self, menu: Option<Submenu>, key: u8) {
         let menu = match menu {
             None => &mut self.main,
-            Some(submenu) => &mut self.submenus[submenu as usize],
+            Some(submenu) => &mut self.submenus[submenu.table()],
         };
         let (to, base) = match key {
             keys::UP | keys::PAD_UP => {
@@ -761,10 +807,10 @@ impl Menu {
         self.submenu_pass(Submenu::Start)
     }
 
-    /// The loop's pass after a game's screens: the menus drawn into the second buffer and
-    /// wiped in (`gameStarted_456B5C`, `sub_42C4A0`).
+    /// The loop's pass after a game's screens: the menus drawn into the second buffer over
+    /// what it holds and wiped in (`gameStarted_456B5C`, `sub_42C4A0`).
     fn start_wipe(&mut self) -> State {
-        let mut back = self.screen.clone();
+        let mut back = std::mem::take(&mut self.back);
         back.copy_rows(&self.graphics.background, 92, 275);
         self.graphics
             .menu(&mut back, &self.main, Focus::Unfocused, self.cursor);
@@ -793,8 +839,17 @@ impl Menu {
             );
             return self.open_licence();
         }
-        // The shop comes with M3b; until then the shop's way on, the sign-up.
-        self.open_sign_up()
+        self.enter_shop()
+    }
+
+    /// `postLoadedOrLicense` with a game on.
+    fn enter_shop(&mut self) -> State {
+        self.open_shop()
+    }
+
+    /// A saved game the host should write: its slot and its file.
+    pub(crate) fn take_saved_game(&mut self) -> Option<(usize, Vec<u8>)> {
+        self.written_slot.take()
     }
 
     /// The licence is done: the drivers set up, the menus renamed, then the sign-up.
@@ -837,6 +892,8 @@ impl Menu {
             &texts.driver_names,
         );
         campaign.selected_race = 0;
+        self.shop.reset();
+        self.car_frame = 0;
         self.palette.set_colour(self.player_copper());
         self.palette.compose();
     }

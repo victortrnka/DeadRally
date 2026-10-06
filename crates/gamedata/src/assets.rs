@@ -99,16 +99,16 @@ pub struct MenuAssets {
     pub border_corners: Vec<Image>,
     /// The driver's licence (spec M3a §3): `LICENCE3`, the face's frame `FACESEL1`, the faces
     /// `FACE01`–`FACE20`, the face arrows `FACEARR1` (up, down, up lit, down lit), the car's box
-    /// `CARBAS2`, the car names `CARNAME`, the Vagabond turning (`KUPLA`, 64 frames), the
-    /// colour slider `SLIDCOP2` and its knob `SLIDCUR3`, and the price digits `F-SMA3F` ("$",
-    /// then 0 to 9).
+    /// `CARBAS2`, the car names `CARNAME`, the cars turning (64 frames each, car 0's
+    /// `KUPLA` on the licence), the colour slider `SLIDCOP2` and its knob `SLIDCUR3`, and the
+    /// price digits `F-SMA3F` ("$", then 0 to 9).
     pub licence: Image,
     pub face_frame: Image,
     pub faces: Vec<Image>,
     pub face_arrows: Vec<Image>,
     pub car_box: Image,
     pub car_names: Vec<Image>,
-    pub car_turning: Vec<Image>,
+    pub car_turning: Vec<Vec<Image>>,
     pub colour_slider: Image,
     pub colour_knob: Image,
     pub price_digits: Vec<Image>,
@@ -120,6 +120,19 @@ pub struct MenuAssets {
     pub side_cars: Vec<Image>,
     pub upgrade_lamps: Vec<Image>,
     pub sign_line: Image,
+    /// The shop (spec M3b §3): its title `SHOPTXT1`, the car box's arrows `ARROWS1D` (left,
+    /// right, left lit, right lit), the five items' boxes `BASES4`, the engines `ENGI1`–`4`,
+    /// tires `TIRE1`–`4` and armours `ARMOR1`–`4` by level, the repair `REPAANI` and the
+    /// continue `CONTANI` turning, and the maxed-out pictures `MAXI1F`.
+    pub shop_title: Image,
+    pub car_arrows: Vec<Image>,
+    pub item_boxes: Vec<Image>,
+    pub engines: Vec<Vec<Image>>,
+    pub tires: Vec<Vec<Image>>,
+    pub armours: Vec<Vec<Image>>,
+    pub repair: Vec<Image>,
+    pub continue_flag: Vec<Image>,
+    pub maxed: Vec<Image>,
 }
 
 #[derive(Debug)]
@@ -263,6 +276,16 @@ fn full_screen(picture: Picture, path: &std::path::Path) -> Result<Picture, Asse
     }
 }
 
+/// The cars turning in the menus, car 0 to 5 (dRally `___24548h.c`).
+const CAR_TURNING: [&str; 6] = [
+    "KUPLA.BPK",
+    "PICKUP.BPK",
+    "SEDAN.BPK",
+    "CAMARO.BPK",
+    "PORSCHE.BPK",
+    "LOTUS.BPK",
+];
+
 /// The twenty drivers' faces, by face.
 const FACES: [&str; 20] = [
     "FACE01.BPK",
@@ -356,7 +379,10 @@ fn menu_assets(
         face_arrows: frames(menu, "FACEARR1.BPK")?,
         car_box: frames(menu, "CARBAS2.BPK")?.remove(0),
         car_names: frames(menu, "CARNAME.BPK")?,
-        car_turning: frames(menu, "KUPLA.BPK")?,
+        car_turning: CAR_TURNING
+            .iter()
+            .map(|&name| frames(menu, name))
+            .collect::<Result<_, _>>()?,
         colour_slider: frames(menu, "SLIDCOP2.BPK")?.remove(0),
         colour_knob: frames(menu, "SLIDCUR3.BPK")?.remove(0),
         price_digits: frames(menu, "F-SMA3F.BPK")?,
@@ -365,6 +391,24 @@ fn menu_assets(
         side_cars: frames(menu, "SCENECAR.BPK")?,
         upgrade_lamps: frames(menu, "STATPOP4.BPK")?,
         sign_line: frames(menu, "SIGNLINE.BPK")?.remove(0),
+        shop_title: frames(menu, "SHOPTXT1.BPK")?.remove(0),
+        car_arrows: frames(menu, "ARROWS1D.BPK")?,
+        item_boxes: frames(menu, "BASES4.BPK")?,
+        engines: ["ENGI1.BPK", "ENGI2.BPK", "ENGI3.BPK", "ENGI4.BPK"]
+            .iter()
+            .map(|&name| frames(menu, name))
+            .collect::<Result<_, _>>()?,
+        tires: ["TIRE1.BPK", "TIRE2.BPK", "TIRE3.BPK", "TIRE4.BPK"]
+            .iter()
+            .map(|&name| frames(menu, name))
+            .collect::<Result<_, _>>()?,
+        armours: ["ARMOR1.BPK", "ARMOR2.BPK", "ARMOR3.BPK", "ARMOR4.BPK"]
+            .iter()
+            .map(|&name| frames(menu, name))
+            .collect::<Result<_, _>>()?,
+        repair: frames(menu, "REPAANI.BPK")?,
+        continue_flag: frames(menu, "CONTANI.BPK")?,
+        maxed: frames(menu, "MAXI1F.BPK")?,
     })
 }
 

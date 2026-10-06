@@ -68,7 +68,107 @@ pub(crate) struct Driver {
     pub(crate) sabotage: i32,
 }
 
+/// A driver's record in a saved game.
+pub(crate) const DRIVER_BYTES: usize = 108;
+
 impl Driver {
+    /// The record's 24 numbers after the name, in the original's order.
+    fn numbers(self) -> [i32; 24] {
+        let [a, b, c] = self.unused;
+        [
+            self.damage,
+            self.engine,
+            self.tires,
+            self.armour,
+            self.car,
+            a,
+            b,
+            c,
+            self.colour,
+            self.money,
+            self.loan,
+            self.loan_races,
+            self.car_price,
+            self.face,
+            self.points,
+            self.rank,
+            self.wins,
+            self.races,
+            self.last_income,
+            self.total_income,
+            self.mines,
+            self.spikes,
+            self.rocket,
+            self.sabotage,
+        ]
+    }
+
+    /// The 108 bytes the original keeps and saves: the name, then 24 little-endian numbers.
+    pub(crate) fn to_bytes(self) -> [u8; DRIVER_BYTES] {
+        let mut bytes = [0; DRIVER_BYTES];
+        bytes[..NAME_BYTES].copy_from_slice(&self.name);
+        for (chunk, number) in bytes[NAME_BYTES..]
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(self.numbers())
+        {
+            chunk.copy_from_slice(&number.to_le_bytes());
+        }
+        bytes
+    }
+
+    /// A record as [`Driver::to_bytes`] writes it.
+    pub(crate) fn from_bytes(bytes: &[u8; DRIVER_BYTES]) -> Driver {
+        let mut n = bytes[NAME_BYTES..]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&chunk| i32::from_le_bytes(chunk));
+        let mut next = || n.next().expect("24 numbers follow the name");
+        let mut name = [0; NAME_BYTES];
+        name.copy_from_slice(&bytes[..NAME_BYTES]);
+        Driver {
+            name,
+            damage: next(),
+            engine: next(),
+            tires: next(),
+            armour: next(),
+            car: next(),
+            unused: [next(), next(), next()],
+            colour: next(),
+            money: next(),
+            loan: next(),
+            loan_races: next(),
+            car_price: next(),
+            face: next(),
+            points: next(),
+            rank: next(),
+            wins: next(),
+            races: next(),
+            last_income: next(),
+            total_income: next(),
+            mines: next(),
+            spikes: next(),
+            rocket: next(),
+            sabotage: next(),
+        }
+    }
+
+    /// Whether the record holds numbers a game can have, which the screens index tables
+    /// with: a car 0 to 5, upgrade levels 0 to 4, a colour of `COPPER.PAL`'s 256, one of the
+    /// 20 faces, damage 0 to 100 and money the side panel can print.
+    pub(crate) fn is_playable(&self) -> bool {
+        (0..=5).contains(&self.car)
+            && [self.engine, self.tires, self.armour]
+                .iter()
+                .all(|level| (0..=4).contains(level))
+            && (0..=255).contains(&self.colour)
+            && (0..20).contains(&self.face)
+            && (0..=100).contains(&self.damage)
+            && (-9_999_999..=9_999_999).contains(&self.money)
+    }
+
     /// The name up to its NUL.
     pub(crate) fn name(&self) -> &[u8] {
         let end = self.name.iter().position(|&b| b == 0).unwrap_or(NAME_BYTES);
@@ -557,6 +657,22 @@ mod tests {
         }
         sign_up.fill_at_once(&mut rand, &drivers);
         assert_eq!(rand, expected);
+    }
+
+    #[test]
+    fn a_driver_keeps_the_originals_byte_layout() {
+        // Saved games carry the records as the original keeps them: money at byte 48, the
+        // face at 64, the rank at 72 (0x460870, 0x460880 and 0x460888 from 0x460840).
+        let mut drivers = [Driver::default(); DRIVERS];
+        init_drivers(&mut drivers, &mut Rand::new(4), &cars(), &names());
+        let player = drivers[PLAYER];
+        let bytes = player.to_bytes();
+        assert_eq!(&bytes[48..52], &495i32.to_le_bytes());
+        assert_eq!(&bytes[72..76], &20i32.to_le_bytes());
+        assert_eq!(&bytes[56..60], &(-1i32).to_le_bytes(), "no loan: races -1");
+        for driver in drivers {
+            assert_eq!(Driver::from_bytes(&driver.to_bytes()), driver);
+        }
     }
 
     #[test]

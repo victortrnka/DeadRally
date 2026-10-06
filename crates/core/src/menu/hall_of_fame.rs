@@ -38,6 +38,8 @@ pub(super) enum Wipe {
     /// no music).
     SignUp,
     StartMenu,
+    /// The shop, drawn over a copy of the screen.
+    Shop,
 }
 
 fn upper(text: &[u8]) -> Vec<u8> {
@@ -115,6 +117,7 @@ impl Menu {
             }
             Wipe::Records => State::Records { index: 0 },
             Wipe::SignUp => self.sign_up_shown(),
+            Wipe::Shop => self.shop_shown(),
             Wipe::StartMenu => {
                 self.shown = self.screen.clone();
                 State::Submenu {

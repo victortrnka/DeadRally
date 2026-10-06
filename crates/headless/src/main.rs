@@ -23,8 +23,8 @@ use deadrally_core::{
 };
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::bpa::Archive;
-use deadrally_gamedata::sound;
 use deadrally_gamedata::{DATA_ENV_VAR, Located, Outcome, config_path, locate};
+use deadrally_gamedata::{save_game, sound};
 use sha2::{Digest, Sha256};
 
 use crate::rgb::{Difference, Rgb};
@@ -84,6 +84,7 @@ enum Command {
         tick: u64,
         keys: Vec<Press>,
         seed: u32,
+        saves: Vec<(usize, PathBuf)>,
         out: PathBuf,
     },
     Compare {
@@ -94,6 +95,7 @@ enum Command {
         data: Option<PathBuf>,
         keys: Vec<Press>,
         seed: u32,
+        saves: Vec<(usize, PathBuf)>,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -144,16 +146,18 @@ fn main() -> ExitCode {
             tick,
             keys,
             seed,
+            saves,
             out,
-        } => render(data.as_deref(), tick, &keys, seed, &out).map(|()| ExitCode::SUCCESS),
+        } => render(data.as_deref(), tick, &keys, seed, &saves, &out).map(|()| ExitCode::SUCCESS),
         Command::Compare { a, b } => compare(&a, &b),
         Command::Find {
             data,
             keys,
             seed,
+            saves,
             ticks,
             shots,
-        } => find(data.as_deref(), &keys, seed, ticks, &shots),
+        } => find(data.as_deref(), &keys, seed, &saves, ticks, &shots),
         Command::RenderAudio {
             data,
             source,
@@ -183,9 +187,9 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
         "run" => &["--ticks"],
         "check-data" => &["--data"],
         "dump-assets" => &["--data", "--out"],
-        "render" => &["--data", "--tick", "--key-at", "--seed", "--out"],
+        "render" => &["--data", "--tick", "--key-at", "--seed", "--save", "--out"],
         "compare" => &[],
-        "find" => &["--data", "--key-at", "--seed", "--ticks"],
+        "find" => &["--data", "--key-at", "--seed", "--save", "--ticks"],
         "render-audio" => &[
             "--data",
             "--seed",
@@ -205,6 +209,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
         (false, None, None, None, None, None);
     let mut keys = Vec::new();
     let mut seed = 0;
+    let mut saves = Vec::new();
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
@@ -224,6 +229,18 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 "--ticks" => ticks = Some(number()?),
                 "--tick" => tick = Some(number()?),
                 "--key-at" => keys.push(press(&value.to_string_lossy())?),
+                "--save" => {
+                    let text = value.to_string_lossy();
+                    let (slot, path) = text
+                        .split_once(':')
+                        .ok_or("--save takes SLOT:FILE, a slot 0 to 7")?;
+                    let slot = slot
+                        .parse::<usize>()
+                        .ok()
+                        .filter(|&slot| slot < save_game::SLOTS)
+                        .ok_or("--save: the slot is 0 to 7")?;
+                    saves.push((slot, PathBuf::from(path)));
+                }
                 "--seed" => {
                     seed = u32::try_from(number()?).map_err(|_| "--seed: at most 4294967295")?;
                 }
@@ -258,6 +275,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             tick: tick.ok_or("render needs --tick T")?,
             keys,
             seed,
+            saves,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
@@ -303,6 +321,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 data,
                 keys,
                 seed,
+                saves,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -414,6 +433,16 @@ const KEY_NAMES: [(&str, Key); 10] = [
     ("q", Key::Q),
 ];
 
+/// The saved games given with `--save`, slot by slot.
+fn read_saves(saves: &[(usize, PathBuf)]) -> Result<Vec<Option<Vec<u8>>>, String> {
+    let mut slots = vec![None; save_game::SLOTS];
+    for (slot, path) in saves {
+        slots[*slot] =
+            Some(std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?);
+    }
+    Ok(slots)
+}
+
 /// Parses `T` or `T:KEY`.
 fn press(text: &str) -> Result<Press, String> {
     let (tick, name) = text.split_once(':').unwrap_or((text, "space"));
@@ -466,12 +495,14 @@ fn render(
     tick: u64,
     keys: &[Press],
     seed: u32,
+    saves: &[(usize, PathBuf)],
     out: &Path,
 ) -> Result<(), String> {
     let located = locate_data(data)?;
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, seed);
+    game.set_saved_games(read_saves(saves)?);
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame())?.write_png(out)
 }
@@ -503,6 +534,7 @@ fn find(
     data: Option<&Path>,
     keys: &[Press],
     seed: u32,
+    saves: &[(usize, PathBuf)],
     ticks: u64,
     shots: &[PathBuf],
 ) -> Result<ExitCode, String> {
@@ -526,33 +558,47 @@ fn find(
     // First only exact matches, which fail fast on the first differing byte.
     let mut matches = vec![Vec::new(); shots.len()];
     let mut equal = vec![false; shots.len()];
-    timeline(&located, keys, seed, ticks, |tick, window, changed| {
-        for (index, picture) in pictures.iter().enumerate() {
-            if changed {
-                equal[index] = window.pixels == picture.pixels;
+    timeline(
+        &located,
+        keys,
+        seed,
+        saves,
+        ticks,
+        |tick, window, changed| {
+            for (index, picture) in pictures.iter().enumerate() {
+                if changed {
+                    equal[index] = window.pixels == picture.pixels;
+                }
+                if equal[index] {
+                    matches[index].push(tick);
+                }
             }
-            if equal[index] {
-                matches[index].push(tick);
-            }
-        }
-    })?;
+        },
+    )?;
     // Then, for screenshots without a match, the nearest picture, to help find out why.
     let unmatched: Vec<usize> = (0..shots.len())
         .filter(|&index| matches[index].is_empty())
         .collect();
     let mut closest: Vec<Option<(Difference, u64)>> = vec![None; shots.len()];
     if !unmatched.is_empty() {
-        timeline(&located, keys, seed, ticks, |tick, window, changed| {
-            if !changed {
-                return;
-            }
-            for &index in &unmatched {
-                let difference = window.difference(&pictures[index]).expect("window-sized");
-                if closest[index].is_none_or(|(best, _)| difference < best) {
-                    closest[index] = Some((difference, tick));
+        timeline(
+            &located,
+            keys,
+            seed,
+            saves,
+            ticks,
+            |tick, window, changed| {
+                if !changed {
+                    return;
                 }
-            }
-        })?;
+                for &index in &unmatched {
+                    let difference = window.difference(&pictures[index]).expect("window-sized");
+                    if closest[index].is_none_or(|(best, _)| difference < best) {
+                        closest[index] = Some((difference, tick));
+                    }
+                }
+            },
+        )?;
     }
     for (index, path) in shots.iter().enumerate() {
         match closest[index] {
@@ -579,12 +625,14 @@ fn timeline(
     located: &Located,
     keys: &[Press],
     seed: u32,
+    saves: &[(usize, PathBuf)],
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, seed);
+    game.set_saved_games(read_saves(saves)?);
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -863,6 +911,7 @@ mod tests {
                 tick: 300,
                 keys: vec![(10, Key::Space), (20, Key::Down)],
                 seed: 0,
+                saves: vec![],
                 out: PathBuf::from("a.png")
             })
         );
@@ -879,6 +928,7 @@ mod tests {
                 data: Some(PathBuf::from("/x")),
                 keys: vec![],
                 seed: 0,
+                saves: vec![],
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })

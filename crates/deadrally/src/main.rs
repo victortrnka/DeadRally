@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
 use deadrally_core::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis};
 use deadrally_gamedata::assets::Assets;
-use deadrally_gamedata::dr_cfg;
 use deadrally_gamedata::{DATA_ENV_VAR, LocateError, Outcome, config_path, locate};
+use deadrally_gamedata::{dr_cfg, save_game};
 use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Gamepad};
@@ -118,7 +118,11 @@ fn load_game(data: Option<&Path>) -> Result<Loaded, String> {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_millis() as u32);
-    Ok((Game::with_seed(assets, config, seed), warning, own))
+    let mut game = Game::with_seed(assets, config, seed);
+    // Saved games next to DeadRally's own dr.cfg, else the game folder's (only read).
+    let own_dir = own.as_deref().and_then(Path::parent);
+    game.set_saved_games(save_game::load_slots(own_dir, dir));
+    Ok((game, warning, own))
 }
 
 /// Shows `message` in a dialog as well as on stderr; the dialog is best effort (there may be
@@ -312,6 +316,21 @@ fn main() -> Result<(), Box<dyn Error>> {
             && let Err(error) = dr_cfg::save(path, &bytes)
         {
             eprintln!("warning: cannot write {}: {error}", path.display());
+        }
+        if let Some((slot, bytes)) = game.take_saved_game() {
+            match dr_cfg_path.as_deref().and_then(Path::parent) {
+                Some(dir) => {
+                    if let Err(error) = save_game::write_slot(dir, slot, &bytes) {
+                        eprintln!(
+                            "warning: cannot write {}: {error}",
+                            dir.join(save_game::file_name(slot)).display()
+                        );
+                    }
+                }
+                None => eprintln!(
+                    "warning: no configuration folder, so the game saved in slot {slot} is lost"
+                ),
+            }
         }
         if game.quit_requested() {
             break 'running;

@@ -102,6 +102,19 @@ pub(crate) const PAD_MENU: MenuTable = MenuTable {
     active: [true, true, true, true, true, true, true, true, false],
 };
 
+/// The saved games' slots (menu 5): eight rows, the last the quicksave.
+pub(crate) const SLOTS_MENU: MenuTable = MenuTable {
+    text: 5,
+    rows: 8,
+    x: 231,
+    y: 114,
+    row_height: 28,
+    width: 383,
+    height: 250,
+    selected: 0,
+    active: [true, true, true, true, true, true, true, true, false],
+};
+
 /// How a menu is drawn: unfocused (mode 0) or focused (mode 1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Focus {
@@ -157,6 +170,10 @@ impl Graphics {
 
     /// Rewrites row `row` of menu `menu`, as the original copies a setting's text into its
     /// table.
+    pub(crate) fn row(&self, menu: usize, row: usize) -> &[u8] {
+        &self.menus[menu][row]
+    }
+
     pub(crate) fn set_row(&mut self, menu: usize, row: usize, text: Vec<u8>) {
         self.menus[menu][row] = text;
     }
@@ -464,10 +481,33 @@ pub(crate) mod tests {
                 welcome: vec![b"w".to_vec(); 10],
                 continue_word: b"C".to_vec(),
                 end_game: b"E".to_vec(),
+                empty_slot: b"-".to_vec(),
+                quicksave_slot: b"Q".to_vec(),
+                game_loaded: b"L".to_vec(),
+                game_saved: b"S".to_vec(),
+                save_prompt: b"?".to_vec(),
                 no_sign_up: b"0".to_vec(),
                 race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
                 speeds: vec![[55, 60, 65, 70, 75]; 6],
             },
+            shop: shop_texts(),
+        }
+    }
+
+    /// Every shop description one line of one letter.
+    pub(crate) fn shop_texts() -> deadrally_gamedata::text::ShopTexts {
+        let info = || vec![b"i".to_vec(); 6];
+        deadrally_gamedata::text::ShopTexts {
+            cars: (0..6).map(|_| [info(), info()]).collect(),
+            engines: (0..6).map(|_| (0..4).map(|_| info()).collect()).collect(),
+            engine_max: info(),
+            tires: (0..4).map(|_| info()).collect(),
+            tire_max: info(),
+            armours: (0..4).map(|_| info()).collect(),
+            armour_max: info(),
+            repairs: (0..12).map(|_| info()).collect(),
+            repair_ten: b"10".to_vec(),
+            continues: [info(), info()],
         }
     }
 

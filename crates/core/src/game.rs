@@ -45,6 +45,25 @@ impl Game {
         }
     }
 
+    /// The saved games `DR.SG0`..`DR.SG7` as the host found them, `None` for an empty slot;
+    /// for a game that has not reached its menu yet.
+    pub fn set_saved_games(&mut self, slot_files: Vec<Option<Vec<u8>>>) {
+        if let Scene::Startup(startup) = &mut self.scene {
+            let mut slot_files = slot_files;
+            slot_files.resize(deadrally_gamedata::save_game::SLOTS, None);
+            startup.slot_files = slot_files;
+        }
+    }
+
+    /// A game the player saved since the last call: its slot and the file to write, which
+    /// the host keeps out of the game folder.
+    pub fn take_saved_game(&mut self) -> Option<(usize, Vec<u8>)> {
+        match &mut self.scene {
+            Scene::Menu(menu) => menu.take_saved_game(),
+            _ => None,
+        }
+    }
+
     /// The M0 test scene, which needs no game data: `-testscene`, headless runs and CI.
     #[must_use]
     pub fn test_scene() -> Game {

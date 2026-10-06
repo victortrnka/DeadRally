@@ -19,6 +19,7 @@ mod locate;
 mod lzw;
 pub mod machine;
 pub mod s3m;
+pub mod save_game;
 pub mod sound;
 pub mod text;
 pub mod track;

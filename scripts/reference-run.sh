@@ -3,7 +3,8 @@
 # can be compared with it (spec M1a section 8, M1b section 4.5). The original is only a test
 # tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
-#   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] SCENARIO OUT_DIR
+#   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
+#                            SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -16,6 +17,8 @@
 # main menu starts (spec M3a section 3), so the drivers and the races it offers repeat run to run.
 # After the run, the dr.cfg and the saved games DR.SG0..DR.SG7 it wrote are copied to OUT_DIR.
 #
+# With --save (repeatable) the original starts with FILE as its saved game DR.SG<SLOT>.
+#
 # SCENARIO is a text file of lines "at <ms> key <name>" (an xdotool key name, e.g. space) and
 # "at <ms> shot <label>", in time order; times count from the moment the window appears, and
 # '#' starts a comment. OUT_DIR gets <label>.png per shot and run.log. Keep it under captures/:
@@ -27,7 +30,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -35,6 +38,7 @@ data_args=()
 sound=false
 cfg=
 seed=
+saves=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --data)
@@ -49,6 +53,11 @@ while [[ "${1:-}" == --* ]]; do
         --cfg)
             [[ $# -ge 2 ]] || usage
             cfg=$(realpath "$2")
+            shift 2
+            ;;
+        --save)
+            [[ $# -ge 2 && "$2" =~ ^[0-7]:. && -f "${2#*:}" ]] || usage
+            saves+=("${2%%:*}:$(realpath "${2#*:}")")
             shift 2
             ;;
         --seed)
@@ -107,6 +116,10 @@ if [[ -n "$cfg" ]]; then
     cp "$cfg" "$run/dr.cfg"
     echo "dr.cfg: $cfg" >>"$log"
 fi
+for save in "${saves[@]}"; do
+    cp "${save#*:}" "$run/DR.SG${save%%:*}"
+    echo "saved game ${save%%:*}: ${save#*:}" >>"$log"
+done
 if [[ -n "$seed" ]]; then
     # mainMenu (0x43A020) calls SDL_GetTicks at 0x43A191 and passes the result to srand; the
     # call becomes "mov eax, N". The bytes are checked first, so another build is refused.
