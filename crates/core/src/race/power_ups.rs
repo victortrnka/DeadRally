@@ -9,6 +9,10 @@ use deadrally_gamedata::image::Image;
 
 use crate::campaign::Rand;
 
+use super::buffer::{Buffer, LEFT, STRIDE};
+use super::driving::Car;
+use super::raster::ftol;
+
 /// The places, the ones power-ups come and go at, and a power-up's picture: 16x16, drawn
 /// centred on its place.
 const PLACES: usize = 20;
@@ -34,6 +38,11 @@ struct Place {
     age: i32,
     /// The track's pixels under the power-up.
     under: [u8; SIDE * SIDE],
+    /// The ticks the last pick-up's note still floats up from here (0x501BB4), its kind and
+    /// the repair it gave in percent.
+    shown: i32,
+    shown_kind: i32,
+    amount: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,6 +71,9 @@ impl PowerUps {
                 wait: rand.next() % 50 + 100,
                 age: 0,
                 under: [0; SIDE * SIDE],
+                shown: 0,
+                shown_kind: 0,
+                amount: 0,
             })
             .collect();
         let mut power_ups = PowerUps {
@@ -213,6 +225,162 @@ impl PowerUps {
     }
 }
 
+/// The places a car can pick power-ups up at, and those whose notes float.
+const PICKED_AT: usize = 16;
+const NOTED_AT: usize = 15;
+/// How long a pick-up's note floats, and the wait for the next power-up after one.
+const NOTE_TICKS: i32 = 140;
+const AFTER_ONE_PICKED: i32 = 240;
+/// The bars' and the damage's full measure.
+const FULL_BAR: i32 = 0x1_9000;
+/// The ticks the effect of kind 4 lasts.
+const EFFECT_TICKS: i32 = 560;
+
+/// What a pick-up asks the race to play: the player's own, or another car's as loud as it is
+/// near the player.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PickupSound {
+    /// Effect 18 on channel 4 (or 10 for another car) at this volume.
+    Picked { channel: usize, volume: u32 },
+    /// The effect power-up's call (effect 6 on channel 2).
+    Effect,
+}
+
+/// What a car took (`sub_410B90`): the sounds, and whether the player took the bonus.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Taken {
+    pub(crate) sounds: Vec<PickupSound>,
+    pub(crate) bonus: bool,
+}
+
+impl PowerUps {
+    /// `sub_410B90` for one car: every power-up under its sprite (its middle within 16 pixels
+    /// and one of the four pixels round the power-up's middle drawn in the car's sprite) is
+    /// taken: its pixels put back, its kind's gift given, its note started, the places' waits
+    /// set; `player` is the player's car's place for the sound's distance, or `None` for the
+    /// player's own car.
+    pub(crate) fn pick_up(
+        &mut self,
+        image: &mut Image,
+        car: &mut Car,
+        sprites: &[u8],
+        player: Option<(f32, f32)>,
+        rand: &mut Rand,
+    ) -> Taken {
+        let mut taken = Taken::default();
+        for place in 0..PICKED_AT {
+            let [px, py] = self.places[place].at;
+            let dx = ftol(f64::from(car.x)) - px;
+            let dy = ftol(f64::from(car.y)) - py;
+            if dx.abs() >= 17 || dy.abs() >= 17 {
+                continue;
+            }
+            let pixel = |offset: i32| {
+                usize::try_from(car.sprite as i32 + dy * 40 + dx + offset)
+                    .ok()
+                    .and_then(|at| sprites.get(at))
+                    .is_some_and(|&p| p > 3)
+            };
+            let touched = [0x2E2, 0x2E6, 0x382, 0x386].into_iter().any(pixel);
+            let kind = self.places[place].kind;
+            if !touched || kind <= 0 {
+                continue;
+            }
+            match player {
+                None => taken.sounds.push(PickupSound::Picked {
+                    channel: 4,
+                    volume: 0x9000,
+                }),
+                Some((x, y)) => {
+                    let dx = ftol(f64::from(car.x) - f64::from(x));
+                    let dy = ftol(f64::from(car.y) - f64::from(y));
+                    let distance = ftol(f64::from(dx * dx + dy * dy).sqrt());
+                    let volume = 0x9000 - 75 * distance;
+                    if volume > 0x1000 {
+                        taken.sounds.push(PickupSound::Picked {
+                            channel: 10,
+                            volume: volume as u32,
+                        });
+                    }
+                }
+            }
+            self.clear(image, place);
+            let h = &mut car.handling;
+            match kind {
+                1 => h.weapons_bar = (h.weapons_bar + 0x7800).min(FULL_BAR),
+                2 => h.turbo = (h.turbo + 0x3C00).min(FULL_BAR),
+                3 => h.money += 1,
+                4 => {
+                    car.effect = EFFECT_TICKS;
+                    if player.is_none() {
+                        taken.sounds.push(PickupSound::Effect);
+                    }
+                }
+                5 => {
+                    let amount = rand.next() % 4 + 2;
+                    self.places[place].amount = amount;
+                    h.damage = (h.damage + (amount << 10)).min(FULL_BAR);
+                }
+                6 => taken.bonus |= player.is_none(),
+                7 => h.money += 10,
+                8 => {
+                    self.places[place].amount = 20;
+                    h.damage = (h.damage + 0x5000).min(FULL_BAR);
+                }
+                _ => {}
+            }
+            let spot = &mut self.places[place];
+            spot.shown = NOTE_TICKS;
+            spot.shown_kind = kind;
+            spot.kind = 0;
+            self.wait = AFTER_ONE_PICKED;
+            let wait = rand.next() % 150 + 200;
+            let spot = &mut self.places[place];
+            spot.age = 0;
+            spot.wait = wait;
+        }
+        taken
+    }
+
+    /// `sub_410050`: the notes of what was picked up float up from their places, `$` and the
+    /// money for money (`money`, what one is worth in this race), the repair in percent.
+    pub(crate) fn draw_notes(
+        &mut self,
+        buffer: &mut Buffer,
+        font: &[u8],
+        money: i32,
+        (camera_x, camera_y): (i32, i32),
+        left: i32,
+        between: i32,
+    ) {
+        for spot in &mut self.places[..NOTED_AT] {
+            if spot.shown <= 0 || money <= 0 {
+                continue;
+            }
+            let [x, y] = spot.at;
+            let column = x - camera_x + left;
+            let row = (spot.shown >> 3) - camera_y + y - 10;
+            if column >= -18 && column < 320 && row >= 0 && row + 6 < 200 {
+                let note = match spot.shown_kind {
+                    3 => Some(format!("${money}")),
+                    5 | 8 => Some(format!("{}%", spot.amount)),
+                    7 => Some(format!("${}", money * 10)),
+                    _ => None,
+                };
+                if let Some(note) = note {
+                    let at = i64::from(row) * STRIDE as i64 + i64::from(column) + LEFT as i64;
+                    for (index, c) in note.bytes().enumerate() {
+                        let start = 36 * usize::from(c.saturating_sub(32));
+                        let glyph = font.get(start..start + 36).unwrap_or(&[]);
+                        buffer.draw(glyph, 6, 6, at + 6 * index as i64);
+                    }
+                }
+            }
+            spot.shown -= between;
+        }
+    }
+}
+
 /// A new power-up's kind from a draw of 0 to 99: with weapons 30 % kind 1, 35 % kind 2,
 /// 15 % kind 3, 5 % kind 4 and 15 % kind 5; without, no kind 1 (45 %, 35 %, 10 %, 10 %).
 fn kind(draw: i32, weapons: bool) -> i32 {
@@ -313,6 +481,57 @@ mod tests {
             .count();
         assert_eq!(out, MOST);
         assert!(power_ups.places[..CHANGING].iter().all(|p| p.kind <= 5));
+    }
+
+    /// A car over a power-up takes it: the repair power-up mends 20 %, its pixels go back,
+    /// the place waits 200 to 349 ticks and every place 240; one of 12 points off its middle
+    /// is not over it.
+    #[test]
+    fn a_car_over_a_power_up_takes_it() {
+        use crate::race::driving::{FRAME, FRAMES, Handling};
+        let mut spots = [[0; 2]; 16];
+        spots[0] = [30, 30];
+        let mut rand = Rand::new(5);
+        let mut image = track();
+        let mut power_ups = PowerUps::new(&mut image, &spots, pictures(), &mut rand);
+        power_ups.lay(&mut image, 0, 8);
+        let handling = Handling {
+            car: 0,
+            engine: 2.5,
+            engine_backup: 2.5,
+            tires: 0.5,
+            size: 9.0,
+            steering: 2.5,
+            damage: 0x8000,
+            armour: 300,
+            rocket: 0,
+            weapons_bar: FULL_BAR,
+            turbo: FULL_BAR,
+            rocket_used: false,
+            money: 0,
+        };
+        let sprites = vec![5u8; FRAMES * FRAME];
+        let mut far = Car::new((48.0, 30.0, 72), 0, handling.clone(), 0);
+        let taken = power_ups.pick_up(&mut image, &mut far, &sprites, None, &mut rand);
+        assert!(taken.sounds.is_empty() && power_ups.places[0].kind == 8);
+        let mut car = Car::new((40.0, 30.0, 72), 0, handling, 0);
+        let taken = power_ups.pick_up(&mut image, &mut car, &sprites, None, &mut rand);
+        assert_eq!(
+            taken.sounds,
+            [PickupSound::Picked {
+                channel: 4,
+                volume: 0x9000
+            }]
+        );
+        assert_eq!(car.handling.damage, 0x8000 + 0x5000);
+        assert_eq!(power_ups.places[0].kind, 0);
+        assert_eq!(image.pixels[30 * 64 + 30], 0);
+        assert_eq!(power_ups.wait, AFTER_ONE_PICKED);
+        assert!((200..350).contains(&power_ups.places[0].wait));
+        assert_eq!(
+            (power_ups.places[0].shown, power_ups.places[0].amount),
+            (140, 20)
+        );
     }
 
     /// A power-up blinks out in its last ticks and goes at 2000, its pixels put back, and the

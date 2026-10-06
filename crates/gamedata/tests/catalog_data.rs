@@ -271,6 +271,12 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         (handling.armour_upgrade[0], handling.armour_upgrade[19]),
         (360, 440)
     );
+    assert_eq!(
+        handling.balance,
+        [
+            0.07, 0.12, 0.11, 0.2, 0.18, 0.32, 0.12, 0.19, 0.06, 0.12, 0.03, 0.06
+        ]
+    );
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

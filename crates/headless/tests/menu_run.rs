@@ -888,6 +888,52 @@ const COLLIDE_SHOTS: [(u64, &str); 61] = [
     (3786, "c60"),
 ];
 
+/// The keys held in `scripts/reference/pickup.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched): the car standing until the first power-ups appear, then
+/// Up for 120 ticks and Left for 6, over the turbo laid ahead of it.
+const PICKUP_HELD: [Held; 2] = [(3651, Key::Up, 120), (3654, Key::Left, 6)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the power-ups
+/// appearing, the car pulling away and taking the turbo, its pixels put back.
+const PICKUP_SHOTS: [(u64, &str); 36] = [
+    (3610, "u00"),
+    (3617, "u01"),
+    (3624, "u02"),
+    (3631, "u03"),
+    (3638, "u04"),
+    (3645, "u05"),
+    (3654, "u06"),
+    (3660, "u07"),
+    (3667, "u08"),
+    (3674, "u09"),
+    (3681, "u10"),
+    (3688, "u11"),
+    (3695, "u12"),
+    (3702, "u13"),
+    (3710, "u14"),
+    (3717, "u15"),
+    (3724, "u16"),
+    (3731, "u17"),
+    (3738, "u18"),
+    (3745, "u19"),
+    (3753, "u20"),
+    (3760, "u21"),
+    (3767, "u22"),
+    (3774, "u23"),
+    (3781, "u24"),
+    (3788, "u25"),
+    (3795, "u26"),
+    (3802, "u27"),
+    (3810, "u28"),
+    (3817, "u29"),
+    (3824, "u30"),
+    (3831, "u31"),
+    (3838, "u32"),
+    (3845, "u33"),
+    (3853, "u34"),
+    (3860, "u35"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1432,6 +1478,25 @@ fn the_collide_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("collide-run.sha256", &lines, "the collide run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pickup_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong draw of `rand()` lays the power-ups elsewhere, a wrong pick-up leaves the turbo.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PICKUP_HELD),
+        &PICKUP_SHOTS,
+        3_860,
+        slots,
+    );
+    check_manifest("pickup-run.sha256", &lines, "the pickup run");
 }
 
 #[test]

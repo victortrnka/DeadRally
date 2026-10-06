@@ -166,14 +166,17 @@ mod tests {
         let handling = Handling {
             car: 0,
             engine: 2.5,
+            engine_backup: 2.5,
             tires: 0.5,
             size: 9.0,
             steering: 2.5,
             damage: 102_400,
             armour: 300,
             rocket: 0,
+            weapons_bar: 102_400,
             turbo: 102_400,
             rocket_used: false,
+            money: 0,
         };
         Car::new((x, 100.0, 72), slot, handling, 0)
     }

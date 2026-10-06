@@ -34,8 +34,6 @@ const BOARD_STRIDE: usize = 8704;
 const NO_WEAPONS_BOARDS: usize = 34816;
 /// The damage pictures: 6 of 64 x 21 a car, cars 8064 bytes apart.
 const DAMAGE_PICTURES: usize = 8064;
-/// The full bars (`initParticipantValues`, 102400) and the damage scale (100 % = 102400).
-pub(crate) const FULL_BAR: i32 = 102_400;
 
 /// The HUD's pictures (`loadRaceImagesHUD`, `IBFILES.BPA`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -298,6 +296,9 @@ fn number(buffer: &mut Buffer, digits: &[u8], n: i32, at: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The full bars (`initParticipantValues`, 102400).
+    const FULL_BAR: i32 = 102_400;
 
     fn images() -> HudImages {
         let some = |len: usize| vec![1; len];

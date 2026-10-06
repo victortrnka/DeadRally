@@ -43,7 +43,9 @@ const EDGE: f64 = 20.0;
 pub(super) struct Handling {
     /// The car (0 to 5).
     pub(super) car: usize,
+    /// The engine's power now, and as set up (0x4A6888), which the balance scales.
     pub(super) engine: f32,
+    pub(super) engine_backup: f32,
     pub(super) tires: f32,
     pub(super) size: f32,
     /// The degrees it turns a tick.
@@ -52,8 +54,12 @@ pub(super) struct Handling {
     pub(super) damage: i32,
     pub(super) armour: i32,
     pub(super) rocket: i32,
+    /// The machine gun's and the turbo's bars, [`FULL_BAR`] full (0x4A68B0, 0x4A68B4).
+    pub(super) weapons_bar: i32,
     pub(super) turbo: i32,
     pub(super) rocket_used: bool,
+    /// The money power-ups picked up in the race (0x4A68D0).
+    pub(super) money: i32,
 }
 
 impl Handling {
@@ -78,17 +84,21 @@ impl Handling {
         if name.get(..tough.len()) == Some(tough) {
             armour = ftol(f64::from(armour) * 2.2);
         }
+        let engine = float(&tables.engine, upgrade(setup.engine));
         Handling {
             car: setup.car,
-            engine: float(&tables.engine, upgrade(setup.engine)),
+            engine,
+            engine_backup: engine,
             tires: float(&tables.tires, upgrade(setup.tires)),
             size: float(&tables.size, setup.car),
             steering: (3.75 / (steering - f64::from(setup.engine) * 0.05)) as f32,
             damage: (100 - setup.damage).wrapping_shl(10),
             armour: armour.min(900),
             rocket: setup.rocket,
+            weapons_bar: FULL_BAR,
             turbo: FULL_BAR,
             rocket_used: false,
+            money: 0,
         }
     }
 }
@@ -640,14 +650,17 @@ mod tests {
         Handling {
             car: 0,
             engine: 2.5,
+            engine_backup: 2.5,
             tires: 0.5,
             size: 9.0,
             steering: 2.5,
             damage: FULL_BAR,
             armour: 300,
             rocket: 0,
+            weapons_bar: FULL_BAR,
             turbo: FULL_BAR,
             rocket_used: false,
+            money: 0,
         }
     }
 

@@ -28,6 +28,10 @@ pub struct HandlingTables {
     pub armour_upgrade: Vec<i32>,
     /// How far the car slews when it turns, by car.
     pub size: Vec<f32>,
+    /// `balanceIAEngineInRace`'s (0x40B920) twelve fractions: by level, what an opponent a
+    /// zone and two zones behind the player gains (`2 * level` and `2 * level + 1`) and, from
+    /// 6 on, what one ahead loses.
+    pub balance: Vec<f32>,
     /// The driver whose armour counts 2.2 times (0x441250, 11 bytes with the NUL), as the
     /// upper-cased name in the race is compared with it.
     pub tough: Vec<u8>,
@@ -44,6 +48,9 @@ const ARMOUR: u32 = 0x7C;
 const ARMOUR_UPGRADE: u32 = 0x2C;
 const SIZE: u32 = 0x14;
 const TOUGH: (u32, usize) = (0x44_1250, 11);
+/// The stores of the balance's fractions on the stack (0x40B92A on), the first 4 bytes up.
+const BALANCE: (u32, u32) = (0x40_B92A, 0x40_B98A);
+const BALANCE_FRACTIONS: usize = 12;
 
 impl HandlingTables {
     /// The tables as `initParticipantValues` fills them.
@@ -86,6 +93,17 @@ impl HandlingTables {
             armour_upgrade: ints(ARMOUR_UPGRADE, LEVELS * UPGRADES)?,
             size: floats(SIZE, CARS)?,
             tough: machine.bytes(TOUGH.0, TOUGH.1)?,
+            balance: {
+                let mut balance = Machine::new(exe);
+                balance.run(BALANCE.0, BALANCE.1)?;
+                let bytes = balance.bytes(balance.stack_pointer() + 4, 4 * BALANCE_FRACTIONS)?;
+                bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|&b| f32::from_le_bytes(b))
+                    .collect()
+            },
         })
     }
 }

@@ -173,6 +173,30 @@ pub(crate) struct Race {
     wrecks: Vec<usize>,
     /// The car of the driver whose armour counts 2.2 times, who has a call when winning.
     tough: Option<usize>,
+    /// What a money power-up is worth (0x4A7AB0), and whether the player took the bonus
+    /// power-up (0x4A7AAC).
+    pickup_money: i32,
+    bonus: bool,
+    /// The race chosen at the sign-up, and the balance's fractions.
+    race: usize,
+    balance: Vec<f32>,
+}
+
+/// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
+/// the player's place on the grid and whether the race has weapons, the pause box's lines,
+/// the eight controls' scancodes in `dr.cfg`, what a money power-up is worth, and the
+/// circuit's lap record for the player's car (minutes, seconds, hundredths, from `dr.cfg`).
+pub(crate) struct Setup {
+    pub(crate) circuit: usize,
+    /// The race chosen at the sign-up, 0 to 2 (0x456B88).
+    pub(crate) race: usize,
+    pub(crate) laps: i32,
+    pub(crate) player: usize,
+    pub(crate) weapons: bool,
+    pub(crate) pause_lines: Vec<Vec<u8>>,
+    pub(crate) controls: [u32; 8],
+    pub(crate) pickup_money: i32,
+    pub(crate) lap_record: [i32; 3],
 }
 
 /// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
@@ -206,6 +230,10 @@ const WALL_SOUNDS: [u8; 3] = [10, 15, 16];
 const MAX_HURT: i32 = 10_000;
 /// The countdown's frames: the cars move from the next.
 const START_FRAME: i32 = 190;
+/// A power-up picked up (`sub_410B90`), and the effect power-up's call.
+const PICKUP_SOUND: u8 = 18;
+const PICKUP_PITCH: u32 = 0x2_1000;
+const EFFECT_CALL: u8 = 6;
 /// The race's calls: the last lap, a record, being lapped (`laps`).
 const CALL_CHANNEL: usize = 2;
 const CALL_PITCH: u32 = 0x5_0000;
@@ -283,12 +311,21 @@ impl Race {
     /// drivers in their places, the player in place `player`; `pause_lines` the pause box's.
     pub(crate) fn new(
         archives: &RaceArchives,
-        (circuit, laps): (usize, i32),
+        setup: Setup,
         drivers: Vec<Driver>,
-        (player, weapons): (usize, bool),
-        (pause_lines, controls): (Vec<Vec<u8>>, [u32; 8]),
         rand: &mut Rand,
     ) -> Result<Race, RaceError> {
+        let Setup {
+            circuit,
+            race,
+            laps,
+            player,
+            weapons,
+            pause_lines,
+            controls,
+            pickup_money,
+            lap_record,
+        } = setup;
         let number = circuit % 9 + 1;
         // The second half's circuits run their tracks the other way round (0x432532).
         let reversed = circuit > 8;
@@ -416,7 +453,14 @@ impl Race {
             squeal: 0,
             squealing: false,
             started: false,
-            laps_state: laps::Laps::default(),
+            laps_state: laps::Laps {
+                record: lap_record,
+                ..laps::Laps::default()
+            },
+            pickup_money,
+            bonus: false,
+            race,
+            balance: archives.handling.balance.clone(),
             wrecks: Vec::new(),
             tough,
         })
@@ -470,16 +514,56 @@ impl Race {
         for tick in 0..steps {
             self.clock.frame += 1;
             if self.clock.frame > START_FRAME {
-                self.drive(tick, rand);
+                self.drive(tick, sound, rand);
             }
             self.after_tick(tick, sound, rand);
+        }
+        // 0x416AF7: not in the Adversary's race.
+        if self.drivers[0].car != 6 {
+            self.balance();
         }
         self.draw(sound);
     }
 
+    /// `balanceIAEngineInRace` (0x40B920) once a pass: an opponent a zone or two behind the
+    /// player gets more engine, one ahead less (not in the third race), by the game's
+    /// difficulty; every other car runs on its own engine.
+    fn balance(&mut self) {
+        let level = self.drivers[usize::from(self.player == 0)].level;
+        let fraction = |index: usize| f64::from(self.balance.get(index).copied().unwrap_or(0.0));
+        let zones = self.track.info.zones;
+        let progress = |car: &Car| (car.lap & 0xFF) * zones + car.zone;
+        let mine = progress(&self.cars[self.player]);
+        let mut factors = Vec::with_capacity(self.cars.len());
+        for (slot, car) in self.cars.iter().enumerate() {
+            let mut factor = 1.0;
+            if slot != self.player && car.handling.damage > 0 {
+                let theirs = progress(car);
+                if theirs == mine - 1 {
+                    factor = fraction(2 * level) + 1.0;
+                }
+                if theirs <= mine - 2 {
+                    factor = fraction(2 * level + 1) + 1.0;
+                }
+                if self.race != 2 {
+                    if theirs == mine + 1 {
+                        factor = 1.0 - fraction(6 + 2 * level);
+                    }
+                    if theirs >= mine + 2 {
+                        factor = 1.0 - fraction(7 + 2 * level);
+                    }
+                }
+            }
+            factors.push(factor);
+        }
+        for (car, factor) in self.cars.iter_mut().zip(factors) {
+            car.handling.engine = (factor * f64::from(car.handling.engine_backup)) as f32;
+        }
+    }
+
     /// The cars' step of a tick once the race is on (0x4164B6): the opponents' driving comes
     /// with M5, so they hold no keys.
-    fn drive(&mut self, tick: usize, rand: &mut Rand) {
+    fn drive(&mut self, tick: usize, sound: &mut Sound, rand: &mut Rand) {
         for car in &mut self.cars {
             car.wall = 0;
         }
@@ -498,6 +582,30 @@ impl Race {
         }
         let spikes: Vec<bool> = self.drivers.iter().map(|driver| driver.spikes).collect();
         collisions::collide(&mut self.cars, &self.sprites, &spikes);
+        // `sub_410B90` for each car: the power-ups it drives over.
+        let player = &self.cars[self.player];
+        let player_at = (player.x, player.y);
+        for slot in 0..self.cars.len() {
+            let near = (slot != self.player).then_some(player_at);
+            let taken = self.power_ups.pick_up(
+                &mut self.track.image,
+                &mut self.cars[slot],
+                &self.sprites,
+                near,
+                rand,
+            );
+            self.bonus |= taken.bonus;
+            for picked in taken.sounds {
+                match picked {
+                    power_ups::PickupSound::Picked { channel, volume } => {
+                        sound.trigger_at(channel, PICKUP_SOUND, volume, PICKUP_PITCH);
+                    }
+                    power_ups::PickupSound::Effect => {
+                        sound.trigger_at(CALL_CHANNEL, EFFECT_CALL, FULL, CALL_PITCH);
+                    }
+                }
+            }
+        }
     }
 
     /// What every tick does after the cars' steps (0x41661A): the counters of walls and
@@ -893,6 +1001,15 @@ impl Race {
             cull,
             left,
         );
+        let camera = (self.view.0 as i32, self.view.1 as i32);
+        self.power_ups.draw_notes(
+            &mut self.buffer,
+            &self.hud.small_font,
+            self.pickup_money,
+            camera,
+            HUD_WIDTH as i32,
+            self.clock.between,
+        );
         if self.clock.frame < 290 {
             let event = self
                 .semaphore
@@ -925,7 +1042,7 @@ impl Race {
             speed: player.speed,
             engine: player.handling.engine,
             weapons: self.weapons,
-            weapons_bar: hud::FULL_BAR,
+            weapons_bar: player.handling.weapons_bar,
             turbo_bar: player.handling.turbo,
             mines: self.drivers[self.player].mines,
         };

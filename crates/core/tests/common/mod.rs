@@ -338,6 +338,7 @@ pub fn race_archives() -> deadrally_gamedata::race::RaceArchives {
             armour_upgrade: vec![400; 20],
             size: vec![9.0; 6],
             tough: b"TOUGH\0".to_vec(),
+            balance: vec![0.1; 12],
         },
     }
 }

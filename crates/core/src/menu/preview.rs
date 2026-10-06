@@ -161,6 +161,40 @@ impl Menu {
 
     /// The race on the sign-up's circuit, the player in their place on the grid; without its
     /// data (as in the tests) the stand-in race.
+    /// What a money power-up is worth in race `race` (0x433361): $50 in the first race; in the
+    /// others by the player's rank, more the higher the rank and the harder the race; $400
+    /// when the player leads everyone on points (the Adversary's race).
+    fn pickup_money(&self, race: usize) -> i32 {
+        let drivers = &self.campaign.drivers;
+        let leader = (0..drivers.len())
+            .filter(|&driver| driver != PLAYER)
+            .map(|driver| drivers[driver].points)
+            .fold(0, i32::max);
+        if drivers[PLAYER].points > leader {
+            return 400;
+        }
+        let rank = drivers[PLAYER].rank;
+        let by_race = |second: i32, third: i32| match race {
+            1 => Some(second),
+            2 => Some(third),
+            _ => None,
+        };
+        let mut money = if race == 0 { 50 } else { 0 };
+        for (ranks, second, third) in [
+            (1..6, 260, 500),
+            (6..11, 200, 300),
+            (11..16, 120, 150),
+            (16..21, 60, 80),
+        ] {
+            if ranks.contains(&rank)
+                && let Some(value) = by_race(second, third)
+            {
+                money = value;
+            }
+        }
+        money
+    }
+
     fn start_race(&mut self) -> State {
         let race = self.campaign.entered_race.expect("the player is in a race");
         let circuit = self
@@ -209,14 +243,24 @@ impl Menu {
         let weapons = self.campaign.use_weapons;
         let lines = self.assets.menu.texts.campaign.abort_race.clone();
         let controls = std::array::from_fn(|control| self.config.key(control));
-        let race = crate::race::Race::new(
-            &self.assets.race,
-            (circuit, laps),
-            drivers,
-            (player, weapons),
-            (lines, controls),
-            &mut self.campaign.rand,
-        );
+        let record = &self.campaign.drivers[PLAYER];
+        let setup = crate::race::Setup {
+            circuit,
+            race,
+            laps,
+            player,
+            weapons,
+            pause_lines: lines,
+            controls,
+            pickup_money: self.pickup_money(race),
+            lap_record: self
+                .config
+                .record(circuit, record.car.clamp(0, 5) as usize)
+                .1
+                .map(|part| part as i32),
+        };
+        let race =
+            crate::race::Race::new(&self.assets.race, setup, drivers, &mut self.campaign.rand);
         match race {
             Ok(mut race) => {
                 let volumes = (self.config.music_volume(), self.config.effects_volume());
