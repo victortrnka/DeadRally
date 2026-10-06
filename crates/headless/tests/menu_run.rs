@@ -2501,6 +2501,73 @@ const ABORT_SHOTS: [(u64, &str); 16] = [
     (3680, "a15"),
 ];
 
+/// The keys held in `scripts/reference/tab-abort.scenario`'s run of `docs/verification/m5.md`
+/// (`--no-ai`), at the ticks whose frames equal its screenshots: TAB once the race is on,
+/// Escape, Y.
+const TAB_ABORT_HELD: [Held; 3] = [
+    (3359, Key::Tab, 7),
+    (3430, Key::Escape, 7),
+    (3609, Key::Y, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the status bar away,
+/// the box over the wider view, and the race's last frame spinning away.
+const TAB_ABORT_SHOTS: [(u64, &str); 53] = [
+    (3417, "hidden"),
+    (3428, "last"),
+    (3596, "box"),
+    (3616, "s00"),
+    (3619, "s01"),
+    (3622, "s02"),
+    (3626, "s03"),
+    (3629, "s04"),
+    (3633, "s05"),
+    (3637, "s06"),
+    (3640, "s07"),
+    (3644, "s08"),
+    (3647, "s09"),
+    (3651, "s10"),
+    (3654, "s11"),
+    (3658, "s12"),
+    (3662, "s13"),
+    (3665, "s14"),
+    (3669, "s15"),
+    (3673, "s16"),
+    (3677, "s17"),
+    (3680, "s18"),
+    (3684, "s19"),
+    (3688, "s20"),
+    (3691, "s21"),
+    (3695, "s22"),
+    (3698, "s23"),
+    (3702, "s24"),
+    (3705, "s25"),
+    (3709, "s26"),
+    (3710, "s27"),
+    (3713, "s28"),
+    (3717, "s29"),
+    (3720, "s30"),
+    (3724, "s31"),
+    (3727, "s32"),
+    (3731, "s33"),
+    (3735, "s34"),
+    (3738, "s35"),
+    (3742, "s36"),
+    (3745, "s37"),
+    (3749, "s38"),
+    (3753, "s39"),
+    (3756, "s40"),
+    (3760, "s41"),
+    (3763, "s42"),
+    (3767, "s43"),
+    (3770, "s44"),
+    (3774, "s45"),
+    (3777, "s46"),
+    (3781, "s47"),
+    (3785, "s48"),
+    (3788, "s49"),
+];
+
 /// The keys held in `scripts/reference/abort-early.scenario`'s run: Escape held through the
 /// race's load, so the loop's first pass pauses before the intro, then Y.
 const ABORT_EARLY_HELD: [Held; 2] = [(2990, Key::Escape, 40), (3213, Key::Y, 7)];
@@ -3497,6 +3564,25 @@ fn the_abort_early_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("abort-early-run.sha256", &lines, "the abort-early run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_tab_abort_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m5.md): a race abandoned with the status bar hidden must spin away
+    // round its top left corner, not tilt.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &TAB_ABORT_HELD),
+        &TAB_ABORT_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("tab-abort-run.sha256", &lines, "the tab-abort run");
 }
 
 #[test]
