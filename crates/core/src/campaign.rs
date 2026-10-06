@@ -336,6 +336,23 @@ impl SignUp {
         Some((race, self.enter(race, driver)))
     }
 
+    /// Escape at the sign-up (0x435B20): drivers sign up with no chance against them until
+    /// every race is full, at least one call even when they already are. The new entries,
+    /// race and place, in order.
+    pub(crate) fn fill_at_once(
+        &mut self,
+        rand: &mut Rand,
+        drivers: &[Driver; DRIVERS],
+    ) -> Vec<(usize, usize)> {
+        let mut entries = Vec::new();
+        loop {
+            entries.extend(self.add_driver(1, rand, drivers));
+            if self.full() {
+                return entries;
+            }
+        }
+    }
+
     /// The order the entrants of each race line up in (`selectRaceScreen`, after the
     /// sign-up): by driver index, highest first.
     pub(crate) fn sort_entrants(&mut self) {
@@ -519,6 +536,27 @@ mod tests {
                 seen.push(driver);
             }
         }
+    }
+
+    #[test]
+    fn escape_draws_once_more_even_when_every_race_is_already_full() {
+        // The original fills the races with a do-while (0x435B20): one call of
+        // addParticipantToRace(1) even with no place left, which draws rand() once for its
+        // chance and fifty times looking for a race with room. Skipping it moves every later
+        // draw.
+        let mut drivers = [Driver::default(); DRIVERS];
+        init_drivers(&mut drivers, &mut Rand::new(2), &cars(), &names());
+        let mut rand = Rand::new(9);
+        let mut sign_up = SignUp::new(&mut rand, &order(), &mut LastCircuits::default());
+        while !sign_up.full() {
+            sign_up.add_driver(1, &mut rand, &drivers);
+        }
+        let mut expected = rand.clone();
+        for _ in 0..51 {
+            expected.next();
+        }
+        sign_up.fill_at_once(&mut rand, &drivers);
+        assert_eq!(rand, expected);
     }
 
     #[test]

@@ -105,7 +105,7 @@ const PRICE_METRICS: u32 = 0x44_5914;
 const PRICE_SIZE: (u8, u8) = (16, 13);
 /// The sign-up (`selectRaceScreen` 0x4357F0, `drawSelectRaceScreen` 0x423F40): the races'
 /// prices, the welcome popup's lines (`welcomePopup` 0x41C840, 80 bytes apart) and its
-/// "continue", the popup when the player signs up for no race, the warnings for a race too
+/// closing word, the popup when the player signs up for no race, the warnings for a race too
 /// hard for the car (`selectRaceWarningPopup` 0x42B1B0: five lines of 60 bytes each), and the
 /// cars' top speeds by engine level (`drawCarRightSide` 0x41FC20).
 const RACE_PRICES: [u32; 3] = [0x44_3500, 0x44_34F8, 0x44_34F0];
@@ -274,7 +274,7 @@ impl Texts {
     pub fn read(exe: &Exe) -> Result<Texts, TextError> {
         let text = |address: u32, max: usize| -> Result<Vec<u8>, TextError> {
             let bytes = exe.string_at(address, max)?;
-            if bytes.iter().all(|&b| (32..=127).contains(&b) || b == GAP) {
+            if bytes.iter().all(|&b| (32..127).contains(&b) || b == GAP) {
                 Ok(bytes.to_vec())
             } else {
                 Err(TextError::Unprintable { address })
@@ -357,7 +357,13 @@ impl Texts {
                     .collect::<Result<_, _>>()?,
                 circuit_order: {
                     let order = exe.bytes_at(CIRCUIT_ORDER, CIRCUITS)?.to_vec();
-                    if order.iter().any(|&c| usize::from(c) >= CIRCUITS) {
+                    // The sign-up mirrors the first nine by adding 9 (spec M3a §3).
+                    let mirrored = CIRCUITS / 2;
+                    if order.iter().any(|&c| usize::from(c) >= CIRCUITS)
+                        || order[..mirrored]
+                            .iter()
+                            .any(|&c| usize::from(c) >= mirrored)
+                    {
                         return Err(TextError::Unexpected {
                             address: CIRCUIT_ORDER,
                         });
@@ -377,7 +383,16 @@ impl Texts {
                 start_racing_row: shown(START_RACING_ROW, MENU_ROW_BYTES as usize - 1)?,
                 enter_shop_row: shown(ENTER_SHOP_ROW, MENU_ROW_BYTES as usize - 1)?,
                 continue_racing_row: shown(CONTINUE_RACING_ROW, MENU_ROW_BYTES as usize - 1)?,
-                text_cursor: shown(TEXT_CURSOR, 1)?,
+                // Glyph 127, the one string outside printable ASCII.
+                text_cursor: {
+                    let cursor = exe.string_at(TEXT_CURSOR, 1)?.to_vec();
+                    if cursor != [0x7F] {
+                        return Err(TextError::Unexpected {
+                            address: TEXT_CURSOR,
+                        });
+                    }
+                    cursor
+                },
                 select_difficulty: shown(SELECT_DIFFICULTY, MAX_LINE)?,
                 name_characters: exe
                     .bytes_at(NAME_CHARACTERS, 256)?
@@ -689,6 +704,21 @@ mod tests {
             (campaign.price.advances[0], campaign.price.advances[2]),
             (14, 9),
             "the dollar sign, then the digits from 0"
+        );
+    }
+
+    #[test]
+    fn a_circuit_order_whose_mirror_would_pass_the_last_circuit_is_refused() {
+        // The sign-up draws from the first nine and adds 9 for the mirrored circuit; an entry
+        // of 9 or more there would offer a circuit that has no snapshot.
+        let mut bytes = known_layout();
+        let at = offset(&bytes, CIRCUIT_ORDER + 4);
+        bytes[at] = 9;
+        assert_eq!(
+            Texts::read(&Exe::parse(bytes).unwrap()),
+            Err(TextError::Unexpected {
+                address: CIRCUIT_ORDER
+            })
         );
     }
 

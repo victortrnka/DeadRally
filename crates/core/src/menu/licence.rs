@@ -40,7 +40,7 @@ const DIFFICULTY_CURSOR_X: usize = 115;
 /// The effects channel the voices play on, and their pitch.
 const VOICE_CHANNEL: usize = 5;
 const VOICE_PITCH: u32 = 0x2_4000;
-/// Duke's "let's rock" when the player takes his face (face 2), and the difficulties' voices.
+/// Duke's voice when the player takes his face (face 2), and the difficulties' voices.
 const DUKE_FACE: i32 = 2;
 const DUKE_VOICE: u8 = 6;
 const DIFFICULTY_VOICES: [u8; 3] = [1, 2, 3];
@@ -74,7 +74,7 @@ fn character(scancode: u8) -> Option<u8> {
     Some(c)
 }
 
-/// Every second row from `first` on: from column `x` (or `x + 1` on odd rows) every second
+/// `rows` rows from `first` on: from column `x` (or `x + 1` on odd rows) every second
 /// pixel `POPUP_FILL`, `width` columns wide: the licence's shading.
 fn shade(screen: &mut Canvas, x: usize, first: usize, rows: usize, width: usize) {
     for row in 0..rows {
@@ -186,8 +186,8 @@ impl Menu {
             .copy_from(&self.screen, at(CAR_TURNING.0, CAR_TURNING.1), 96, 64);
     }
 
-    /// `sub_42C7F0` after its wait: the text cursor blinks (shown for 11 waits, hidden for
-    /// 10), and every second wait the car turns a frame.
+    /// `sub_42C7F0` after its wait: the text cursor blinks (shown for 10 waits, hidden for
+    /// 11), and every second wait the car turns a frame.
     fn nickname_wait(&mut self) {
         self.palette.after_wait();
         let x = NAME.0 + self.nickname.width;
@@ -408,7 +408,8 @@ impl Menu {
         self.graphics
             .big_a
             .draw(&mut self.screen, &title, at(173, 160));
-        let row = self.config.difficulty() as usize;
+        // A damaged dr.cfg may hold any number; the popup has three rows.
+        let row = self.config.difficulty().min(2) as usize;
         self.draw_cursor_at(DIFFICULTY_CURSOR_X, 28 * row + 221);
         self.draw_difficulties(row);
         self.shown = self.screen.clone();

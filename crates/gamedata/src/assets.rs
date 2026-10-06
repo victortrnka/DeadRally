@@ -112,7 +112,7 @@ pub struct MenuAssets {
     pub colour_slider: Image,
     pub colour_knob: Image,
     pub price_digits: Vec<Image>,
-    /// The sign-up (spec M3a §3): "press enter to sign up" `ENTERTX2`, the side panel
+    /// The sign-up (spec M3a §3): its title `ENTERTX2`, the side panel
     /// `STATBAS7` with the cars `SCENECAR` and the upgrade lamps `STATPOP4`, and the line under
     /// the player's entry `SIGNLINE`.
     pub sign_up_title: Image,

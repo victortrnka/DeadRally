@@ -781,7 +781,8 @@ impl Menu {
         }
     }
 
-    /// "Start A New Game" or, with a game on, "Enter The Shop" (`startRacingMenu`).
+    /// The Start Racing menu's first row: the licence, or with a game on the shop
+    /// (`startRacingMenu`).
     fn start_or_enter(&mut self) -> State {
         if !self.campaign.started {
             self.graphics.menu(
@@ -840,7 +841,7 @@ impl Menu {
         self.palette.compose();
     }
 
-    /// "End Current Game": the question, "yes" selected.
+    /// The Start Racing menu's second row, ending the game: the question, "yes" selected.
     fn ask_end_game(&mut self) -> State {
         self.graphics.menu(
             &mut self.screen,
@@ -866,6 +867,8 @@ impl Menu {
             for row in [1, 2, 4] {
                 start.active[row] = false;
             }
+            // 0x439F7D: the highlight back on the first row.
+            start.selected = 0;
             let campaign = &mut self.campaign;
             campaign.warn_hard = false;
             campaign.warn_medium = false;

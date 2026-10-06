@@ -165,7 +165,7 @@ impl Menu {
         }
     }
 
-    /// `welcomePopup`: ten lines and "continue".
+    /// `welcomePopup`: ten lines and the word under them.
     fn welcome_popup(&mut self, canvas: &mut Canvas) {
         self.graphics
             .popup(canvas, 45, 131, 458, 230, Focus::Focused);
@@ -291,9 +291,14 @@ impl Menu {
             }
             keys::ENTER | 0x9C => self.choose_race(),
             keys::ESCAPE => {
-                while !self.sign_up().full() {
-                    self.add_driver(1);
+                let campaign = &mut self.campaign;
+                let sign_up = campaign.sign_up.as_mut().expect("a sign-up is on");
+                let entries = sign_up.fill_at_once(&mut campaign.rand, &campaign.drivers);
+                for (race, place) in entries {
+                    let driver = self.sign_up().entrants[race][place];
+                    self.draw_entry(race, place, driver);
                 }
+                self.shown = self.screen.clone();
                 self.after_choice()
             }
             _ => self.after_choice(),

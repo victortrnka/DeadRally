@@ -44,3 +44,7 @@ loudness per second, ours - original: median 0.10 dB, largest 0.73 dB
 tempo, ours - original: +0.240 % (over 4 pieces of 10 s)
 result: FAIL (tempo off by more than 0.15 %)
 ```
+
+## Review
+
+A fresh review of the branch found two Important problems, both fixed with a test that failed first: ending a game left the Start Racing menu's highlight on its now inactive second row, so Enter would set the drivers up again (76 draws the original never makes); and a difficulty past 2 in a damaged `dr.cfg` crashed the difficulty popup (now taken as 2). Fixed too: Escape at the sign-up fills the races with a do-while as the original does (51 draws even when every race is already full), the circuit order is refused when mirroring one of its first nine would pass the last circuit, the text cursor is the one string allowed outside printable ASCII, and comments that quoted game text or misstated a count. Rulings kept: when the hitman would come, the screen still lingers its 280 waits (timing inside the stand-in only); the first `dr.cfg` written at start-up keeps its file's random byte (the original's comes from a `rand()` state seeded before the main menu); the statistics and save rows are active but do nothing until M3b.

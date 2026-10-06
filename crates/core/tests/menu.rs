@@ -868,3 +868,58 @@ fn the_best_tens_names_are_written_upper_case_once_shown() {
     step(&mut game, Key::Escape);
     assert_eq!(written(&mut game).unwrap().hall_of_fame(0).0, b"ANN");
 }
+
+/// From the main menu through the licence (nickname "A", weapons, the difficulty), the
+/// sign-up's welcome, Escape at the sign-up and its "no race" popup, back to the Start Racing
+/// menu with a game on.
+fn through_a_new_game(game: &mut Game) {
+    step(game, Key::Enter);
+    step(game, Key::Enter);
+    step(game, Key::A);
+    step(game, Key::Enter);
+    step(game, Key::Enter);
+    press(game, Key::Enter);
+    // The difficulty popup reads the key before its two waits.
+    run(game, 8);
+    // The wipe, then the welcome popup, deaf for its first eleven passes.
+    run(game, 80);
+    step(game, Key::Enter);
+    run(game, 4);
+    step(game, Key::Escape);
+    step(game, Key::Space);
+    // The fade to black, then the menus wiped in.
+    run(game, 120);
+}
+
+#[test]
+fn ending_a_game_puts_the_start_menus_highlight_back_on_its_first_row() {
+    // The original sets the Start Racing menu's row to 0 after "yes" (0x439F7D). Left on
+    // "End Current Game", now inactive, Enter would ask again with no game on and set the
+    // drivers up once more, 76 draws of rand() the original never makes.
+    let mut game = in_menu(assets());
+    through_a_new_game(&mut game);
+    assert_eq!(
+        row_fonts(&game, START),
+        [BIG_A, BIG_B, BIG_B, BIG_B, BIG_B, BIG_B],
+        "with a game on, ending it, statistics and saving are active"
+    );
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Enter);
+    run(&mut game, 4);
+    assert_eq!(
+        row_fonts(&game, START),
+        [BIG_A, BIG_D, BIG_D, BIG_B, BIG_D, BIG_B],
+        "the game ended: the first row highlighted, the game's rows inactive again"
+    );
+}
+
+#[test]
+fn a_damaged_difficulty_in_dr_cfg_does_not_crash_the_licence() {
+    // dr.cfg is read as it is; a difficulty past the three rows must not stop the game when
+    // the player confirms the popup.
+    let mut config = common::config();
+    config.set_difficulty(7);
+    let mut game = in_menu_with(assets(), config);
+    through_a_new_game(&mut game);
+}
