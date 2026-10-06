@@ -10,6 +10,7 @@ use super::licence::Nickname;
 use super::{MAIN_MENU, Menu, START_MENU, State, Submenu};
 use crate::campaign::{DRIVER_BYTES, DRIVERS, Driver, PLAYER};
 use crate::canvas::at;
+use crate::keys;
 
 /// The slots' rows are menu 5's.
 const SLOTS_TEXT: usize = 5;
@@ -23,6 +24,28 @@ pub(crate) enum Confirmed {
     Loaded,
     /// A game was saved: back to the Start Racing menu.
     Saved,
+    /// A quick save or load: the shop's or the market's screen back as it was.
+    Quick { market: bool },
+}
+
+/// What a quick save or load did (`sub_4221A0`'s result).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Quick {
+    Saved,
+    Loaded,
+    NotFound,
+}
+
+/// Only a single-player game (driver 19) whose player holds numbers a game can have loads;
+/// another, or a damaged file, is as good as empty.
+fn playable(game: &SaveGame) -> bool {
+    usize::from(game.driver_id) == PLAYER
+        && game
+            .drivers
+            .as_chunks::<DRIVER_BYTES>()
+            .0
+            .get(PLAYER)
+            .is_some_and(|record| Driver::from_bytes(record).is_playable())
 }
 
 impl Menu {
@@ -55,17 +78,6 @@ impl Menu {
     /// A slot chosen to load from: its game, or the empty slot's sound and the slots again.
     pub(super) fn load_slot(&mut self, slot: usize) -> State {
         let game = self.slot_files[slot].as_deref().map(SaveGame::decode);
-        // Only a single-player game (driver 19) whose player holds numbers a game can have
-        // loads; another, or a damaged file, is as good as empty.
-        let playable = |game: &SaveGame| {
-            usize::from(game.driver_id) == PLAYER
-                && game
-                    .drivers
-                    .as_chunks::<DRIVER_BYTES>()
-                    .0
-                    .get(PLAYER)
-                    .is_some_and(|record| Driver::from_bytes(record).is_playable())
-        };
         let Some(game) = game.filter(playable) else {
             self.sound(EMPTY_SOUND);
             return self.submenu_pass(Submenu::Load);
@@ -87,15 +99,7 @@ impl Menu {
         campaign.underground_popup = false;
         campaign.welcome = false;
         campaign.started = true;
-        campaign.use_weapons = game.use_weapons != 0;
-        for (driver, record) in campaign
-            .drivers
-            .iter_mut()
-            .zip(game.drivers.as_chunks::<DRIVER_BYTES>().0)
-        {
-            *driver = Driver::from_bytes(record);
-        }
-        self.config.set_difficulty(u32::from(game.difficulty));
+        self.take_game(&game);
         let loaded = self.assets.menu.texts.campaign.game_loaded.clone();
         self.confirm(&loaded, Confirmed::Loaded)
     }
@@ -137,13 +141,28 @@ impl Menu {
         self.submenu_pass(Submenu::Save)
     }
 
-    /// The name is in: the game saved with a key from `rand()`, the menus dimmed, the
-    /// confirmation.
-    pub(super) fn save_name_done(&mut self) -> State {
+    /// A loaded game's weapons, drivers, the market's stock from the player's car and the
+    /// difficulty into `dr.cfg`.
+    fn take_game(&mut self, game: &SaveGame) {
+        let campaign = &mut self.campaign;
+        campaign.use_weapons = game.use_weapons != 0;
+        for (driver, record) in campaign
+            .drivers
+            .iter_mut()
+            .zip(game.drivers.as_chunks::<DRIVER_BYTES>().0)
+        {
+            *driver = Driver::from_bytes(record);
+        }
+        campaign.stock_from_player();
+        self.config.set_difficulty(u32::from(game.difficulty));
+    }
+
+    /// The game saved into `slot` under `name`, with a key from `rand()`.
+    fn write_game(&mut self, slot: usize, name: &[u8]) {
         let key = (self.campaign.rand.next() % 255) as u8;
-        let mut name = [0; NAME_BYTES];
-        let length = self.nickname.text.len().min(NAME_BYTES);
-        name[..length].copy_from_slice(&self.nickname.text[..length]);
+        let mut padded = [0; NAME_BYTES];
+        let length = name.len().min(NAME_BYTES);
+        padded[..length].copy_from_slice(&name[..length]);
         let mut drivers = Vec::with_capacity(DRIVERS_BYTES);
         for driver in &self.campaign.drivers[..DRIVERS] {
             drivers.extend_from_slice(&driver.to_bytes());
@@ -152,12 +171,56 @@ impl Menu {
             driver_id: PLAYER as u8,
             use_weapons: u8::from(self.campaign.use_weapons),
             difficulty: self.config.difficulty() as u8,
-            name,
+            name: padded,
             drivers,
         };
         let file = game.encode(key);
-        self.slot_files[self.save_slot] = Some(file.clone());
-        self.written_slot = Some((self.save_slot, file));
+        self.slot_files[slot] = Some(file.clone());
+        self.written_slot = Some((slot, file));
+    }
+
+    /// `sub_4221A0`, each pass of the shop and the market: F2 held saves the game into the
+    /// quicksave slot under its name, F3 held loads it back (a missing or damaged one is not
+    /// found).
+    pub(super) fn quick_keys(&mut self) -> Option<Quick> {
+        let mut done = None;
+        if self.keys.held(keys::F2) {
+            let name = self.assets.menu.texts.campaign.quicksave_slot.clone();
+            self.write_game(save_game::QUICKSAVE_SLOT, &name);
+            done = Some(Quick::Saved);
+        }
+        if self.keys.held(keys::F3) {
+            let game = self.slot_files[save_game::QUICKSAVE_SLOT]
+                .as_deref()
+                .map(SaveGame::decode)
+                .filter(playable);
+            let Some(game) = game else {
+                return Some(Quick::NotFound);
+            };
+            self.take_game(&game);
+            done = Some(Quick::Loaded);
+        }
+        done
+    }
+
+    /// After a quick save or load, the screen redrawn: the confirmation over a copy of it,
+    /// which comes back when a key ends it.
+    pub(super) fn quick_confirm(&mut self, quick: Quick, market: bool) -> State {
+        self.saved = self.screen.clone();
+        let texts = &self.assets.menu.texts.campaign;
+        let text = match quick {
+            Quick::Saved => texts.game_saved.clone(),
+            Quick::Loaded => texts.game_loaded.clone(),
+            Quick::NotFound => texts.game_not_found.clone(),
+        };
+        self.confirm(&text, Confirmed::Quick { market })
+    }
+
+    /// The name is in: the game saved with a key from `rand()`, the menus dimmed, the
+    /// confirmation.
+    pub(super) fn save_name_done(&mut self) -> State {
+        let name = self.nickname.text.clone();
+        self.write_game(self.save_slot, &name);
         self.graphics
             .menu(&mut self.screen, &self.main, Focus::Unfocused, self.cursor);
         for menu in [Submenu::Start, Submenu::Save] {
@@ -199,11 +262,24 @@ impl Menu {
         self.confirmed(then)
     }
 
+    /// The key that ends a confirmation; F2 and F3 count as let go (0x42DC70), so a quick
+    /// save or load held through it happens once.
     fn confirmed(&mut self, then: Confirmed) -> State {
         self.keys.take();
+        self.keys.release(keys::F2);
+        self.keys.release(keys::F3);
         match then {
             Confirmed::Loaded => self.enter_shop(),
             Confirmed::Saved => self.start_pass(),
+            Confirmed::Quick { market } => {
+                self.screen = self.saved.clone();
+                self.shown = self.screen.clone();
+                if market {
+                    State::Market { second: false }
+                } else {
+                    State::Shop { second: false }
+                }
+            }
         }
     }
 }

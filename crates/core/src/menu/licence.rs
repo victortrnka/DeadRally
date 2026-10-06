@@ -38,8 +38,8 @@ const DIFFICULTY_X: usize = 139;
 const DIFFICULTY_Y: usize = 216;
 const DIFFICULTY_CURSOR_X: usize = 115;
 /// The effects channel the voices play on, and their pitch.
-const VOICE_CHANNEL: usize = 5;
-const VOICE_PITCH: u32 = 0x2_4000;
+pub(super) const VOICE_CHANNEL: usize = 5;
+pub(super) const VOICE_PITCH: u32 = 0x2_4000;
 /// Duke's voice when the player takes his face (face 2), and the difficulties' voices.
 const DUKE_FACE: i32 = 2;
 const DUKE_VOICE: u8 = 6;

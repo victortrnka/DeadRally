@@ -138,6 +138,14 @@ impl MenuPalette {
         self.shown = fade(&self.composed, percent << 16);
     }
 
+    /// Entries 0–95 and 128–255 of the composed palette at `percent` %, the rest as shown:
+    /// the fades between the shop and the Underground Market (0x4367C0, 0x4369B0).
+    pub(crate) fn fade_market(&mut self, percent: i64) {
+        let faded = fade(&self.composed, percent << 16);
+        self.shown.0[..96].copy_from_slice(&faded.0[..96]);
+        self.shown.0[128..].copy_from_slice(&faded.0[128..]);
+    }
+
     /// Another picture's palette at `percent` %, for the screens the menu leads to.
     pub(crate) fn show(&mut self, palette: &Palette, percent: i64) {
         self.shown = fade(palette, percent << 16);

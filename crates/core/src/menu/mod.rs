@@ -10,6 +10,7 @@ mod configure;
 pub(crate) mod draw;
 mod hall_of_fame;
 mod licence;
+mod market;
 pub(crate) mod palette;
 mod shop;
 mod sign_up;
@@ -33,7 +34,7 @@ use crate::{AUDIO_FRAMES_PER_TICK, Frame};
 /// volume and pitch 0x28000.
 const SOUND_CHANNEL: usize = 1;
 const SOUND_PITCH: u32 = 0x2_8000;
-const MOVE_SOUND: u8 = 25;
+pub(super) const MOVE_SOUND: u8 = 25;
 const BACK_SOUND: u8 = 22;
 const CHOOSE_SOUND: u8 = 28;
 
@@ -145,6 +146,7 @@ enum State {
         second: bool,
         passes: u8,
         key: u8,
+        then: sign_up::PopupThen,
     },
     RaceWarning,
     NoSignUp,
@@ -152,6 +154,10 @@ enum State {
         step: u32,
     },
     Linger {
+        waits: u32,
+    },
+    /// An offer after the sign-up, its 70 waits before the question (a voice after 50).
+    OfferWait {
         waits: u32,
     },
     /// `confirmationPopup`'s wait for a key.
@@ -165,6 +171,33 @@ enum State {
     CarTurn {
         right: bool,
         waits: u32,
+    },
+    /// The car dealer's offer (two waits a pass) and the paint loop (two waits a pass, the
+    /// key read before them).
+    CarOffer {
+        second: bool,
+        yes: bool,
+    },
+    CarPaint {
+        second: bool,
+        key: u8,
+    },
+    /// The Underground Market: the shop's fade out, the market's fade in, its loop (two
+    /// waits a pass), its fade out after Escape and the shop's fade back in.
+    MarketFadeOut {
+        step: u32,
+    },
+    MarketFadeIn {
+        step: u32,
+    },
+    Market {
+        second: bool,
+    },
+    MarketLeave {
+        step: u32,
+    },
+    ShopFadeIn {
+        step: u32,
     },
     /// `showEndScreen`: the menu to black, `END.BMP` in, held, out with the music.
     EndToBlack {
@@ -208,6 +241,8 @@ enum Question {
     Exit,
     Weapons,
     EndGame,
+    /// The drug dealer's or the hitman's offer after a sign-up.
+    Offer,
 }
 
 impl Question {
@@ -216,7 +251,14 @@ impl Question {
             Question::Exit => EXIT_QUESTION,
             Question::Weapons => (193, 323),
             Question::EndGame => (180, 258),
+            Question::Offer => (161, 321),
         }
+    }
+
+    /// Whether Escape answers: `drawYesNoMenu` (0x42E310) ignores it when its third
+    /// argument is 0, as the offers pass.
+    fn escapes(self) -> bool {
+        self != Question::Offer
     }
 }
 
@@ -283,6 +325,8 @@ pub(crate) struct Menu {
     save_slot: usize,
     written_slot: Option<(usize, Vec<u8>)>,
     shop: shop::Shop,
+    /// Ticks since the menu took over, the clock the sabotage seeds `rand()` from.
+    ticks: u32,
 }
 
 impl Menu {
@@ -295,7 +339,7 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        (seed, slot_files): (u32, Vec<Option<Vec<u8>>>),
+        (seed, slot_files, sabotage_clock): (u32, Vec<Option<Vec<u8>>>, Option<u32>),
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -336,7 +380,10 @@ impl Menu {
             cursor: 0,
             state: State::TitleToBlack { step: 0 },
             assets,
-            campaign: Campaign::new(seed),
+            campaign: Campaign {
+                fixed_clock: sabotage_clock,
+                ..Campaign::new(seed)
+            },
             nickname: licence::Nickname::default(),
             saved_name: [0; NAME_BYTES],
             blink: 0,
@@ -346,6 +393,7 @@ impl Menu {
             save_slot: 0,
             written_slot: None,
             shop: shop::Shop::default(),
+            ticks: 0,
         }
     }
 
@@ -359,6 +407,7 @@ impl Menu {
     }
 
     pub(crate) fn tick(&mut self) {
+        self.ticks = self.ticks.wrapping_add(1);
         self.keys.tick();
         self.state = self.run();
         self.sound.render(AUDIO_FRAMES_PER_TICK, &mut self.audio);
@@ -458,7 +507,7 @@ impl Menu {
                 yes,
             } => {
                 self.palette.after_wait();
-                match self.yes_no_key(question.at(), yes) {
+                match self.yes_no_key(question, yes) {
                     Ok(yes) => State::YesNo {
                         question,
                         second: false,
@@ -468,6 +517,7 @@ impl Menu {
                         Question::Exit => self.exit_answer(answer),
                         Question::Weapons => self.weapons_answer(answer),
                         Question::EndGame => self.end_game_answer(answer),
+                        Question::Offer => self.offer_answer(answer),
                     },
                 }
             }
@@ -479,14 +529,23 @@ impl Menu {
                 second,
                 passes,
                 key,
-            } => self.popup_wait(second, passes, key),
+                then,
+            } => self.popup_wait(second, passes, key, then),
             State::RaceWarning => self.race_warning_tick(),
             State::NoSignUp => self.no_sign_up_tick(),
             State::NoSignUpFade { step } => self.no_sign_up_fade(step),
             State::Linger { waits } => self.linger_tick(waits),
+            State::OfferWait { waits } => self.offer_wait(waits),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
+            State::CarOffer { second, yes } => self.car_offer_tick(second, yes),
+            State::CarPaint { second, key } => self.car_paint_tick(second, key),
+            State::MarketFadeOut { step } => self.market_fade_out(step),
+            State::MarketFadeIn { step } => self.market_fade_in(step),
+            State::Market { second } => self.market_tick(second),
+            State::MarketLeave { step } => self.market_leave(step),
+            State::ShopFadeIn { step } => self.shop_fade_in(step),
             State::EndToBlack { step } => {
                 self.palette.fade(100 - 4 * i64::from(step));
                 if step + 1 < FADE_OUT_STEPS {
@@ -576,7 +635,7 @@ impl Menu {
                     self.show_credits(1);
                     return State::CreditsIn { screen: 1, step: 0 };
                 }
-                self.palette.compose();
+                self.compose_palette();
                 self.screen = self.saved.clone();
                 self.shown = self.screen.clone();
                 State::CreditsBack { step: 0 }
@@ -604,7 +663,7 @@ impl Menu {
         self.graphics.panel_text(&mut self.screen, &self.panel);
         self.draw_main();
         self.shown = self.screen.clone();
-        self.palette.compose();
+        self.compose_palette();
     }
 
     /// The top of `mainMenu`'s loop: rows 84..=366 restored, the main menu drawn with focus.
@@ -704,7 +763,7 @@ impl Menu {
             HALL_OF_FAME_ROW => self.open_hall_of_fame(),
             CREDITS_ROW => {
                 self.saved = self.screen.clone();
-                self.palette.compose();
+                self.compose_palette();
                 State::CreditsOut {
                     step: MENU_FADE_STEPS,
                 }
@@ -753,7 +812,8 @@ impl Menu {
 
     /// The end of a pass of `drawYesNoMenu`: the cursor beside the selected answer, then the
     /// key. `Ok` with the side selected to go on; `Err` with the answer, `None` for Escape.
-    fn yes_no_key(&mut self, (x, y): (usize, usize), yes: bool) -> Result<bool, Option<bool>> {
+    fn yes_no_key(&mut self, question: Question, yes: bool) -> Result<bool, Option<bool>> {
+        let (x, y) = question.at();
         let cursor_x = if yes { x + 7 } else { x + 177 };
         let cursor_at = at(cursor_x, y);
         self.screen.fill(cursor_at, 20, 20, POPUP_FILL);
@@ -776,7 +836,7 @@ impl Menu {
                 self.draw_yes_no((x, y), left);
                 return Ok(left);
             }
-            keys::ESCAPE => None,
+            keys::ESCAPE if question.escapes() => None,
             keys::ENTER | 0x9C => Some(yes),
             _ => return Ok(yes),
         };
@@ -795,6 +855,12 @@ impl Menu {
     fn sound_at(&mut self, effect: u8, pitch: u32) {
         self.sound
             .trigger_at(SOUND_CHANNEL, effect, self.config.effects_volume(), pitch);
+    }
+
+    /// `sub_4224E0`: the palette composed for the player's colour as their record has it now.
+    fn compose_palette(&mut self) {
+        self.palette.set_colour(self.player_copper());
+        self.palette.compose();
     }
 
     /// `COPPER.PAL`'s entry for the player's colour.
@@ -875,8 +941,7 @@ impl Menu {
         self.graphics.set_row(START_MENU.text, 0, shop);
         self.graphics.set_row(MAIN_MENU.text, 0, racing);
         self.campaign.started = true;
-        self.palette.set_colour(self.player_copper());
-        self.palette.compose();
+        self.compose_palette();
         self.open_sign_up()
     }
 
@@ -892,10 +957,10 @@ impl Menu {
             &texts.driver_names,
         );
         campaign.selected_race = 0;
+        campaign.restock();
         self.shop.reset();
         self.car_frame = 0;
-        self.palette.set_colour(self.player_copper());
-        self.palette.compose();
+        self.compose_palette();
     }
 
     /// The Start Racing menu's second row, ending the game: the question, "yes" selected.
@@ -940,7 +1005,7 @@ impl Menu {
 
     fn exit_answer(&mut self, answer: Option<bool>) -> State {
         if answer == Some(true) {
-            self.palette.compose();
+            self.compose_palette();
             State::EndToBlack { step: 0 }
         } else {
             self.main_pass()

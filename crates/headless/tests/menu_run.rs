@@ -381,6 +381,350 @@ const SAVED_GAMES_SHOTS: [(u64, &str); 31] = [
     (3640, "after"),
 ];
 
+/// The keys of `scripts/reference/shop-purchases.scenario` in the run of
+/// `docs/verification/m3c.md`: the test game loaded, every upgrade, the repairs, a car too
+/// dear, and a cheaper one declined, bought and painted.
+const PURCHASES_KEYS: [(u64, Key); 44] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2035, Key::Space),
+    (2163, Key::Left),
+    (2221, Key::Left),
+    (2277, Key::Left),
+    (2335, Key::Left),
+    (2392, Key::Enter),
+    (2449, Key::Right),
+    (2506, Key::Enter),
+    (2563, Key::Right),
+    (2620, Key::Enter),
+    (2678, Key::Enter),
+    (2735, Key::Right),
+    (2792, Key::Enter),
+    (2849, Key::Enter),
+    (2906, Key::Enter),
+    (2963, Key::Enter),
+    (3020, Key::Enter),
+    (3742, Key::Left),
+    (3806, Key::Left),
+    (3870, Key::Left),
+    (3935, Key::Up),
+    (3999, Key::Right),
+    (4063, Key::Right),
+    (4128, Key::Right),
+    (4192, Key::Right),
+    (4256, Key::Enter),
+    (4320, Key::Left),
+    (4385, Key::Left),
+    (4449, Key::Enter),
+    (4513, Key::Right),
+    (4577, Key::Enter),
+    (4642, Key::Enter),
+    (4706, Key::Enter),
+    (4770, Key::Right),
+    (4835, Key::Right),
+    (4899, Key::Right),
+    (4963, Key::Right),
+    (5027, Key::Right),
+    (5092, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const PURCHASES_SHOTS: [(u64, &str); 46] = [
+    (1691, "idle"),
+    (1785, "k01-return"),
+    (1849, "k02-down"),
+    (1927, "k03-return"),
+    (1956, "k04-return"),
+    (2141, "k05-space"),
+    (2198, "k06-left"),
+    (2255, "k07-left"),
+    (2313, "k08-left"),
+    (2370, "k09-left"),
+    (2393, "k10-return"),
+    (2484, "k11-right"),
+    (2523, "k12-return"),
+    (2598, "k13-right"),
+    (2655, "k14-return"),
+    (2679, "k15-return"),
+    (2770, "k16-right"),
+    (2827, "k17-return"),
+    (2884, "k18-return"),
+    (2941, "k19-return"),
+    (2998, "k20-return"),
+    (3055, "k21-return"),
+    (3720, "messages-gone"),
+    (3784, "k22-left"),
+    (3814, "k23-left"),
+    (3871, "k24-left"),
+    (3977, "k25-up"),
+    (4041, "k26-right"),
+    (4106, "k27-right"),
+    (4170, "k28-right"),
+    (4234, "k29-right"),
+    (4298, "k30-return"),
+    (4363, "k31-left"),
+    (4427, "k32-left"),
+    (4491, "k33-return"),
+    (4556, "k34-right"),
+    (4620, "k35-return"),
+    (4684, "k36-return"),
+    (4748, "k37-return"),
+    (4813, "k38-right"),
+    (4877, "k39-right"),
+    (4941, "k40-right"),
+    (5006, "k41-right"),
+    (5070, "k42-right"),
+    (5134, "k43-return"),
+    (5263, "car-bought-later"),
+];
+
+/// The keys of `scripts/reference/market.scenario` in the run of `docs/verification/m3c.md`:
+/// the test game loaded, the Underground Market from the shop, the loan shark's loan and its
+/// paying back, every weapon, Escape back to the shop, the market again and on to the sign-up.
+const MARKET_KEYS: [(u64, Key); 27] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1948, Key::Enter),
+    (2032, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Left),
+    (2479, Key::Left),
+    (2543, Key::Left),
+    (2608, Key::Left),
+    (2672, Key::Left),
+    (2736, Key::Up),
+    (2801, Key::Enter),
+    (2865, Key::Enter),
+    (2929, Key::Down),
+    (2993, Key::Enter),
+    (3058, Key::Right),
+    (3122, Key::Enter),
+    (3186, Key::Right),
+    (3251, Key::Enter),
+    (3315, Key::Right),
+    (3379, Key::Enter),
+    (3443, Key::Right),
+    (3886, Key::Escape),
+    (4100, Key::Enter),
+    (4308, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const MARKET_SHOTS: [(u64, &str); 60] = [
+    (1689, "idle"),
+    (1781, "k01-return"),
+    (1847, "k02-down"),
+    (1925, "k03-return"),
+    (1956, "k04-return"),
+    (2139, "k05-space"),
+    (2174, "k06-return"),
+    (2196, "fade-01"),
+    (2206, "fade-02"),
+    (2217, "fade-03"),
+    (2228, "fade-04"),
+    (2238, "fade-05"),
+    (2249, "fade-06"),
+    (2260, "fade-07"),
+    (2271, "fade-08"),
+    (2282, "fade-09"),
+    (2292, "fade-10"),
+    (2303, "fade-11"),
+    (2314, "fade-12"),
+    (2324, "fade-13"),
+    (2335, "fade-14"),
+    (2346, "fade-15"),
+    (2392, "market"),
+    (2422, "k07-left"),
+    (2487, "k08-left"),
+    (2551, "k09-left"),
+    (2617, "k10-left"),
+    (2680, "k11-left"),
+    (2760, "k12-up"),
+    (2832, "k13-return"),
+    (2870, "k14-return"),
+    (2971, "k15-down"),
+    (3001, "k16-return"),
+    (3065, "k17-right"),
+    (3130, "k18-return"),
+    (3194, "k19-right"),
+    (3258, "k20-return"),
+    (3323, "k21-right"),
+    (3387, "k22-return"),
+    (3485, "k23-right"),
+    (3864, "messages-gone"),
+    (3899, "k24-escape"),
+    (3921, "back-01"),
+    (3935, "back-02"),
+    (3949, "back-03"),
+    (3964, "back-04"),
+    (3978, "back-05"),
+    (3992, "back-06"),
+    (4007, "back-07"),
+    (4078, "shop-again"),
+    (4285, "k25-return"),
+    (4321, "k26-return"),
+    (4342, "on-01"),
+    (4357, "on-02"),
+    (4371, "on-03"),
+    (4385, "on-04"),
+    (4399, "on-05"),
+    (4414, "on-06"),
+    (4428, "on-07"),
+    (4550, "sign-up"),
+];
+
+/// The keys of `scripts/reference/offer.scenario` in the run of `docs/verification/m3c.md`
+/// (seed 106): the test game through the Underground Market to the sign-up, a race chosen, the
+/// hitman's offer and both its answers selected.
+const OFFER_KEYS: [(u64, Key); 11] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2034, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2950, Key::Right),
+    (3015, Key::Left),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const OFFER_SHOTS: [(u64, &str); 24] = [
+    (1691, "idle"),
+    (1783, "k01-return"),
+    (1847, "k02-down"),
+    (1925, "k03-return"),
+    (2011, "k04-return"),
+    (2140, "k05-space"),
+    (2393, "k06-return"),
+    (2436, "k07-return"),
+    (2458, "wipe-01"),
+    (2479, "wipe-02"),
+    (2586, "sign-up"),
+    (2629, "k08-return"),
+    (2651, "fill-01"),
+    (2672, "fill-02"),
+    (2693, "fill-03"),
+    (2715, "fill-04"),
+    (2736, "fill-05"),
+    (2758, "fill-06"),
+    (2801, "offer-01"),
+    (2843, "offer-02"),
+    (2886, "offer-03"),
+    (2929, "question"),
+    (2993, "k09-right"),
+    (3058, "k10-left"),
+];
+
+/// The keys of `scripts/reference/sabotage.scenario` in the run of `docs/verification/m3c.md`
+/// (its sabotage's clock fixed at 31375): the test game, the sabotage bought in the Underground
+/// Market, the sign-up and the sabotage's popup.
+const SABOTAGE_KEYS: [(u64, Key); 12] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1951, Key::Enter),
+    (2035, Key::Space),
+    (2161, Key::Enter),
+    (2416, Key::Left),
+    (2479, Key::Enter),
+    (2547, Key::Right),
+    (2611, Key::Enter),
+    (2803, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const SABOTAGE_SHOTS: [(u64, &str); 23] = [
+    (1693, "idle"),
+    (1785, "k01-return"),
+    (1849, "k02-down"),
+    (1929, "k03-return"),
+    (2011, "k04-return"),
+    (2141, "k05-space"),
+    (2394, "k06-return"),
+    (2459, "k07-left"),
+    (2523, "k08-return"),
+    (2587, "k09-right"),
+    (2630, "k10-return"),
+    (2652, "wipe-01"),
+    (2673, "wipe-02"),
+    (2780, "sign-up"),
+    (2823, "k11-return"),
+    (2845, "fill-01"),
+    (2866, "fill-02"),
+    (2887, "fill-03"),
+    (2909, "fill-04"),
+    (2930, "fill-05"),
+    (2952, "fill-06"),
+    (2995, "popup-01"),
+    (3066, "popup-02"),
+];
+
+/// The keys of `scripts/reference/quick-save.scenario` in the run of
+/// `docs/verification/m3c.md`: the test game, F2 held in the shop, an engine bought, F3 held,
+/// the Underground Market and F2 there.
+const QUICK_KEYS: [(u64, Key); 19] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2034, Key::Space),
+    (2226, Key::Space),
+    (2291, Key::Left),
+    (2355, Key::Left),
+    (2419, Key::Left),
+    (2483, Key::Left),
+    (2547, Key::Enter),
+    (2676, Key::Space),
+    (2741, Key::Right),
+    (2805, Key::Right),
+    (2869, Key::Right),
+    (2933, Key::Right),
+    (2997, Key::Enter),
+    (3319, Key::Space),
+];
+
+const QUICK_HELD: [(u64, Key, u64); 3] = [
+    (2162, Key::F2, 22),
+    (2611, Key::F3, 22),
+    (3254, Key::F2, 22),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const QUICK_SHOTS: [(u64, &str); 22] = [
+    (1690, "idle"),
+    (1783, "k01-return"),
+    (1847, "k02-down"),
+    (1926, "k03-return"),
+    (2011, "k04-return"),
+    (2140, "k05-space"),
+    (2204, "k06-f2"),
+    (2268, "k07-space"),
+    (2332, "k08-left"),
+    (2397, "k09-left"),
+    (2461, "k10-left"),
+    (2525, "k11-left"),
+    (2590, "k12-return"),
+    (2654, "k13-f3"),
+    (2718, "k14-space"),
+    (2782, "k15-right"),
+    (2847, "k16-right"),
+    (2911, "k17-right"),
+    (2975, "k18-right"),
+    (3232, "k19-return"),
+    (3297, "k20-f2"),
+    (3361, "k21-space"),
+];
+
 /// The seed the reference runs were made with (`scripts/reference-run.sh --seed 1`).
 const SEED: u32 = 1;
 
@@ -397,10 +741,28 @@ fn manifest_with(
     ticks: u64,
     slots: Vec<Option<Vec<u8>>>,
 ) -> String {
+    manifest_seeded((SEED, None), (keys, &[]), shots, ticks, slots)
+}
+
+/// A key held down: the tick it goes down, the key, the ticks it stays down.
+type Held = (u64, Key, u64);
+
+/// [`manifest_with`] for a run seeded with `seed` (its sabotage's clock fixed at `clock`),
+/// with `held` keys besides the ones pressed and let go at once.
+fn manifest_seeded(
+    (seed, clock): (u32, Option<u32>),
+    (keys, held): (&[(u64, Key)], &[Held]),
+    shots: &[(u64, &str)],
+    ticks: u64,
+    slots: Vec<Option<Vec<u8>>>,
+) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
-    let mut game = Game::with_seed(assets, config, SEED);
+    let mut game = Game::with_seed(assets, config, seed);
     game.set_saved_games(slots);
+    if let Some(ms) = clock {
+        game.fix_sabotage_clock(ms);
+    }
     let mut saved = Vec::new();
     let mut lines = String::new();
     let mut audio = Vec::new();
@@ -410,6 +772,14 @@ fn manifest_with(
         for &(_, key) in keys.iter().filter(|(at, _)| *at == done) {
             for pressed in [true, false] {
                 game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
             }
         }
         game.tick();
@@ -507,6 +877,85 @@ fn the_saved_games_run_matches_the_committed_manifest() {
         "the run saves into slot 1"
     );
     check_manifest("saved-games-run.sha256", &lines, "the saved games run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_market_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m3c.md): the market's fades, the loan shark's deals, the weapons'
+    // prices and stock, and the money after each.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_with(&MARKET_KEYS, &MARKET_SHOTS, 4_600, slots);
+    check_manifest("market-run.sha256", &lines, "the market run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_sabotage_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m3c.md): the sabotage's victim, its damage from the clock, the popup.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, Some(31_375)),
+        (&SABOTAGE_KEYS, &[]),
+        &SABOTAGE_SHOTS,
+        3_100,
+        slots,
+    );
+    check_manifest("sabotage-run.sha256", &lines, "the sabotage run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_offer_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m3c.md): the hitman's chance, his victim and pay, his picture, the
+    // waits before the question and the question's answers.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded((106, None), (&OFFER_KEYS, &[]), &OFFER_SHOTS, 3_080, slots);
+    check_manifest("offer-run.sha256", &lines, "the offer run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_quick_save_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick and the
+    // quicksave our run writes equalled the original's DR.SG7 byte for byte
+    // (docs/verification/m3c.md).
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (1, None),
+        (&QUICK_KEYS, &QUICK_HELD),
+        &QUICK_SHOTS,
+        3_380,
+        slots,
+    );
+    check_manifest("quick-save-run.sha256", &lines, "the quick save run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_shop_purchases_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m3c.md): prices, refunds, messages and the money after each.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_with(&PURCHASES_KEYS, &PURCHASES_SHOTS, 5_300, slots);
+    check_manifest(
+        "shop-purchases-run.sha256",
+        &lines,
+        "the shop purchases run",
+    );
 }
 
 /// The saved game `scripts/reference/saved-games.scenario` starts from (the reference run

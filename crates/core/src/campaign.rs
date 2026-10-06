@@ -156,14 +156,16 @@ impl Driver {
     }
 
     /// Whether the record holds numbers a game can have, which the screens index tables
-    /// with: a car 0 to 5, upgrade levels 0 to 4, a colour of `COPPER.PAL`'s 256, one of the
-    /// 20 faces, damage 0 to 100 and money the side panel can print.
+    /// with: a car 0 to 5, upgrade levels 0 to 4, an even colour of `COPPER.PAL`'s 256 (the
+    /// licence and the paint make no other; the paint steps by 2 down to 0), one of the 20
+    /// faces, damage 0 to 100 and money the side panel can print.
     pub(crate) fn is_playable(&self) -> bool {
         (0..=5).contains(&self.car)
             && [self.engine, self.tires, self.armour]
                 .iter()
                 .all(|level| (0..=4).contains(level))
-            && (0..=255).contains(&self.colour)
+            && (0..=254).contains(&self.colour)
+            && self.colour % 2 == 0
             && (0..20).contains(&self.face)
             && (0..=100).contains(&self.damage)
             && (-9_999_999..=9_999_999).contains(&self.money)
@@ -273,6 +275,29 @@ pub(crate) struct Campaign {
     /// The hitman's chance in percent (0x45678C): 5 at first, 2 more after each sign-up he
     /// does not come.
     pub(crate) hitman_chance: i32,
+    /// The Underground Market's mines, spikes, rocket fuel and sabotage (0x45EFF0..0x45EFFC):
+    /// 1 on sale, 0 sold out, −1 locked (the shareware's; the Windows version sets none).
+    pub(crate) stock: [i32; 4],
+    /// What `SDL_GetTicks()` gave `mainMenu`'s `srand`; the sabotage seeds `rand()` again
+    /// from the clock (0x42DEE1), which runs on 14 ms a tick from there.
+    pub(crate) clock: u32,
+    /// The clock fixed instead, as the reference runner fixes the original's.
+    pub(crate) fixed_clock: Option<u32>,
+    /// The deals taken after a sign-up: the drug run's level (0x456BB4), and the hitman's
+    /// (0x456BB8) with his victim (0x456BBC); 0 for none. Races settle them (M5).
+    pub(crate) drug_deal: i32,
+    pub(crate) hit: i32,
+    pub(crate) hit_victim: usize,
+    /// The offer on screen, waiting for its answer.
+    pub(crate) offer: Option<Offer>,
+}
+
+/// An offer after a sign-up (0x431B30): its level (1 with the best car to 6 with the
+/// Vagabond) and, for the hitman, his victim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Offer {
+    Drugs { level: i32 },
+    Hit { level: i32, victim: usize },
 }
 
 impl Campaign {
@@ -292,7 +317,45 @@ impl Campaign {
             sign_up: None,
             entered_race: None,
             hitman_chance: 5,
+            stock: [1; 4],
+            clock: seed,
+            fixed_clock: None,
+            drug_deal: 0,
+            hit: 0,
+            hit_victim: 0,
+            offer: None,
         }
+    }
+
+    /// Whether the player has more points than every other driver (the final race against
+    /// the Adversary is due).
+    pub(crate) fn player_leads(&self) -> bool {
+        let best = self
+            .drivers
+            .iter()
+            .enumerate()
+            .filter(|&(index, _)| index != PLAYER)
+            .map(|(_, driver)| driver.points)
+            .fold(0, i32::max);
+        self.player().points > best
+    }
+
+    /// The market restocked (0x4236D0, from `initDrivers` on): everything on sale but the
+    /// sabotage while the player leads.
+    pub(crate) fn restock(&mut self) {
+        self.stock = [1, 1, 1, i32::from(!self.player_leads())];
+    }
+
+    /// A loaded game's stock (0x42F6A1): what the player's car is not already full of.
+    pub(crate) fn stock_from_player(&mut self) {
+        let player = *self.player();
+        self.stock = [
+            player.mines != 8,
+            player.spikes != 1,
+            player.rocket != 1,
+            player.sabotage != 1,
+        ]
+        .map(i32::from);
     }
 
     pub(crate) fn player(&self) -> &Driver {

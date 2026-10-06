@@ -48,6 +48,9 @@ pub const TURNING: u8 = 231;
 pub const SIGN_UP: u8 = 239;
 /// The shop's pictures from 53 on.
 pub const SHOP: u8 = 53;
+/// The drug dealer's and the hitman's pictures in their offers.
+pub const DRUG_DEALER: u8 = SHOP + 30;
+pub const HITMAN: u8 = SHOP + 31;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -165,6 +168,10 @@ fn texts() -> Texts {
             no_sign_up: b"0".to_vec(),
             race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
             speeds: vec![[55, 60, 65, 70, 75]; 6],
+            sabotage: vec![b"s".to_vec(); 8],
+            game_not_found: b"?".to_vec(),
+            drug_offer: vec![b"d".to_vec(); 11],
+            hitman_offer: vec![b"h".to_vec(); 11],
         },
         shop: shop_texts(),
     }
@@ -184,6 +191,24 @@ pub fn shop_texts() -> ShopTexts {
         repairs: (0..12).map(|_| info()).collect(),
         repair_ten: b"10".to_vec(),
         continues: [info(), info()],
+        bought: (0..3).map(|_| (0..4).map(|_| info()).collect()).collect(),
+        short: [b"<".to_vec(), b">".to_vec(), b"^".to_vec(), b"v".to_vec()],
+        wrecked: vec![b"w".to_vec(); 5],
+        offer: (0..8).map(|k| vec![b'a' + k]).collect(),
+        paint: vec![b"p".to_vec(); 3],
+        car_bought: (0..6).map(|_| info()).collect(),
+        weapons: (0..4).map(|_| info()).collect(),
+        weapons_bought: (0..4).map(|_| info()).collect(),
+        out_of_stock: info(),
+        shareware: info(),
+        market_on: info(),
+        market_wrecked: vec![b"w".to_vec(); 5],
+        loan_offers: (0..5).map(|_| info()).collect(),
+        loans_granted: (0..5).map(|_| info()).collect(),
+        loan_owed: info(),
+        loan_refused: info(),
+        loan_paid: info(),
+        market_welcome: vec![b"m".to_vec(); 10],
     }
 }
 
@@ -273,5 +298,11 @@ pub fn menu_assets() -> MenuAssets {
         repair: (0..24).map(|_| solid(96, 64, SHOP + 13)).collect(),
         continue_flag: (0..23).map(|_| solid(96, 64, SHOP + 14)).collect(),
         maxed: (0..12).map(|_| solid(96, 64, SHOP + 15)).collect(),
+        market_title: solid(640, 16, SHOP + 16),
+        loan_shark: solid(96, 96, SHOP + 17),
+        weapons: (0..12).map(|k| solid(96, 96, SHOP + 18 + k)).collect(),
+        market_prices: vec![[150, 200, 275, 250]; 6],
+        drug_dealer: solid(104, 128, DRUG_DEALER),
+        hitman: solid(104, 128, HITMAN),
     }
 }

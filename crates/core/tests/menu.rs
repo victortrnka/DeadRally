@@ -1030,6 +1030,8 @@ fn a_damaged_saved_game_is_refused_like_an_empty_slot() {
         (48, -20_000_000),
         (20, -1),
         (12, i32::MIN),
+        // The licence and the paint only make even colours; the paint steps by 2 to 0.
+        (44, 1),
     ] {
         let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game());
         let at = 19 * 108 + offset;
@@ -1047,4 +1049,375 @@ fn a_damaged_saved_game_is_refused_like_an_empty_slot() {
             "offset {offset}: no shop"
         );
     }
+}
+
+/// [`saved_game`] with the player holding `money` dollars.
+fn saved_game_with_money(money: i32) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&saved_game());
+    let at = 19 * 108 + 48;
+    game.drivers[at..at + 4].copy_from_slice(&money.to_le_bytes());
+    let price = 19 * 108 + 60;
+    game.drivers[price..price + 4].copy_from_slice(&500i32.to_le_bytes());
+    game.encode(3)
+}
+
+/// The player's record in the game saved into slot 1 after `keys` in the shop of
+/// [`saved_game_with_money`].
+fn player_after_shopping(money: i32, keys: &[Key]) -> Vec<u8> {
+    let mut game = in_shop(saved_game_with_money(money));
+    for &key in keys {
+        step(&mut game, key);
+    }
+    saved_player(game)
+}
+
+/// `file` loaded from slot 0, the shop shown.
+fn in_shop(file: Vec<u8>) -> Game {
+    let mut game = Game::new(assets(), common::config());
+    game.set_saved_games(vec![Some(file)]);
+    run(&mut game, MENU_SHOWN);
+    to_the_slots(&mut game);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Space);
+    run(&mut game, 60);
+    game
+}
+
+/// From the shop, the game saved into slot 1; the player's record in it.
+fn saved_player(mut game: Game) -> Vec<u8> {
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (_, file) = game.take_saved_game().expect("a game was saved");
+    deadrally_gamedata::save_game::SaveGame::decode(&file).drivers[19 * 108..20 * 108].to_vec()
+}
+
+fn field(record: &[u8], offset: usize) -> i32 {
+    i32::from_le_bytes(record[offset..offset + 4].try_into().unwrap())
+}
+
+#[test]
+fn an_engine_upgrade_is_paid_for_and_adds_to_the_cars_worth() {
+    // The money goes, the engine level rises, and the car's worth grows by the price, which
+    // the dealer's refund is a quarter of (enterShop 0x43805F).
+    let left = [Key::Left; 4];
+    let record = player_after_shopping(10_000, &[&left[..], &[Key::Enter]].concat());
+    assert_eq!(field(&record, 16), 1, "engine level 1");
+    assert_eq!(field(&record, 48), 10_000 - 100, "money");
+    assert_eq!(field(&record, 60), 500 + 100, "the car's worth");
+}
+
+#[test]
+fn without_the_money_nothing_is_bought() {
+    // Short of the price, the shop says so and keeps everything as it was.
+    let left = [Key::Left; 4];
+    let record = player_after_shopping(50, &[&left[..], &[Key::Enter]].concat());
+    assert_eq!((field(&record, 16), field(&record, 48)), (0, 50));
+}
+
+/// The shop's fades into the Underground Market and back each take 101 waits.
+const MARKET_FADES: u32 = 110;
+
+/// [`saved_game_with_money`] with the player's record changed at `fields` (offset, value).
+fn saved_game_with(money: i32, fields: &[(usize, i32)]) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(money));
+    for &(offset, value) in fields {
+        let at = 19 * 108 + offset;
+        game.drivers[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    game.encode(3)
+}
+
+/// The player's record saved after going on from the shop into the Underground Market,
+/// pressing `keys` there and leaving it with Escape.
+fn player_after_market(file: Vec<u8>, keys: &[Key]) -> Vec<u8> {
+    let mut game = in_shop(file);
+    step(&mut game, Key::Enter);
+    run(&mut game, MARKET_FADES);
+    for &key in keys {
+        step(&mut game, key);
+    }
+    step(&mut game, Key::Escape);
+    run(&mut game, MARKET_FADES);
+    saved_player(game)
+}
+
+const MONEY: usize = 48;
+const LOAN: usize = 52;
+const LOAN_RACES: usize = 56;
+const MINES: usize = 92;
+
+#[test]
+fn mines_are_paid_for_fitted_and_then_sold_out() {
+    // underGroundMenuEnter (0x43636F): the price goes, the car carries 8 mines, and the
+    // market has no more of them, so a second Enter buys nothing.
+    let to_mines = [Key::Left; 4];
+    let record = player_after_market(
+        saved_game_with_money(1_000),
+        &[&to_mines[..], &[Key::Enter, Key::Enter]].concat(),
+    );
+    assert_eq!(field(&record, MINES), 8, "mines fitted");
+    assert_eq!(field(&record, MONEY), 1_000 - 150, "paid once");
+}
+
+#[test]
+fn a_car_full_of_mines_finds_them_sold_out() {
+    // A loaded game's market sells only what the car is not full of (0x42F6A1).
+    let to_mines = [Key::Left; 4];
+    let record = player_after_market(
+        saved_game_with(1_000, &[(MINES, 8)]),
+        &[&to_mines[..], &[Key::Enter]].concat(),
+    );
+    assert_eq!(field(&record, MONEY), 1_000, "nothing bought");
+}
+
+#[test]
+fn the_loan_shark_lends_by_the_car_and_is_paid_back() {
+    // With the cheapest car after the Vagabond he lends $1500 (0x4361A7); paid back in the
+    // same race it costs the loan itself, and the loan is gone.
+    let to_shark = [Key::Left, Key::Left, Key::Left, Key::Left, Key::Up];
+    let no_loan = [(28, 1), (LOAN, -1), (LOAN_RACES, -1)];
+    let lent = player_after_market(
+        saved_game_with(1_000, &no_loan),
+        &[&to_shark[..], &[Key::Enter]].concat(),
+    );
+    assert_eq!(
+        (
+            field(&lent, MONEY),
+            field(&lent, LOAN),
+            field(&lent, LOAN_RACES)
+        ),
+        (2_500, 4, 1),
+        "lent"
+    );
+    let repaid = player_after_market(
+        saved_game_with(1_000, &no_loan),
+        &[&to_shark[..], &[Key::Enter, Key::Enter]].concat(),
+    );
+    assert_eq!(
+        (
+            field(&repaid, MONEY),
+            field(&repaid, LOAN),
+            field(&repaid, LOAN_RACES)
+        ),
+        (1_000, -1, -1),
+        "paid back"
+    );
+}
+
+#[test]
+fn the_loan_shark_lends_nothing_for_a_vagabond() {
+    // 0x4361BB: the Vagabond's driver is refused.
+    let to_shark = [Key::Left, Key::Left, Key::Left, Key::Left, Key::Up];
+    let record = player_after_market(
+        saved_game_with(1_000, &[(LOAN, -1), (LOAN_RACES, -1)]),
+        &[&to_shark[..], &[Key::Enter]].concat(),
+    );
+    assert_eq!(
+        (field(&record, MONEY), field(&record, LOAN_RACES)),
+        (1_000, -1)
+    );
+}
+
+/// A new game (see [`through_a_new_game`]) and its shop wiped in from the Start Racing menu.
+fn new_game_in_shop() -> Game {
+    let mut game = in_menu(assets());
+    through_a_new_game(&mut game);
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    game
+}
+
+/// From the shop through the Underground Market (`keys` there; its popup closed on the
+/// `first_visit`) to the sign-up, a race chosen; waits until its other places are filled.
+fn to_a_race(game: &mut Game, first_visit: bool, keys: &[Key]) {
+    step(game, Key::Enter);
+    run(game, MARKET_FADES);
+    if first_visit {
+        // The popup takes no key in its first eleven passes.
+        run(game, 30);
+        step(game, Key::Enter);
+    }
+    for &key in keys {
+        step(game, key);
+    }
+    step(game, Key::Enter);
+    run(game, 80);
+    step(game, Key::Enter);
+    run(game, 300);
+}
+
+/// The drivers' records of the game saved into slot 1 from the Start Racing menu with its
+/// first row highlighted.
+fn saved_drivers(game: &mut Game) -> Vec<u8> {
+    for _ in 0..4 {
+        step(game, Key::Down);
+    }
+    step(game, Key::Enter);
+    step(game, Key::Down);
+    step(game, Key::Enter);
+    step(game, Key::Q);
+    step(game, Key::Enter);
+    let (_, file) = game.take_saved_game().expect("a game was saved");
+    deadrally_gamedata::save_game::SaveGame::decode(&file).drivers
+}
+
+#[test]
+fn the_sabotage_damages_one_rival_by_25_to_49_percent() {
+    // sabotageScreen (0x42DD10): with the sabotage bought and the player not leading, after
+    // the sign-up every other car is repaired and the best-ranked rival in the player's race
+    // starts it 25 to 49 % damaged; its popup waits for a key, then the race comes.
+    let mut game = new_game_in_shop();
+    to_a_race(&mut game, true, &[Key::Left, Key::Enter, Key::Right]);
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    assert_eq!(
+        pixel(&game, (300, 95)),
+        common::SHOP,
+        "the shop after the race"
+    );
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    let drivers = saved_drivers(&mut game);
+    let damages: Vec<i32> = (0..19).map(|d| field(&drivers[108 * d..], 12)).collect();
+    let hit: Vec<i32> = damages.iter().copied().filter(|&d| d != 0).collect();
+    assert_eq!(hit.len(), 1, "one rival sabotaged: {damages:?}");
+    assert!((25..50).contains(&hit[0]), "{damages:?}");
+}
+
+#[test]
+fn an_offer_after_a_sign_up_waits_for_its_answer_and_escape_does_not_give_one() {
+    // 0x431B30: at the hitman's chance (5 %, 2 % more each sign-up he does not come) the drug
+    // dealer or the hitman offers a deal after the sign-up; its question ignores Escape
+    // (drawYesNoMenu with 0), and either answer leads to the race.
+    let mut game = new_game_in_shop();
+    let offered = |game: &Game| {
+        let at = pixel(game, (60, 200));
+        at == common::DRUG_DEALER || at == common::HITMAN
+    };
+    to_a_race(&mut game, true, &[]);
+    let mut sign_ups = 1;
+    while !offered(&game) {
+        sign_ups += 1;
+        assert!(sign_ups < 40, "no offer in 40 sign-ups");
+        // The screen lingers, the stand-in race, the shop again.
+        run(&mut game, 300);
+        run(&mut game, 60);
+        to_a_race(&mut game, false, &[]);
+    }
+    run(&mut game, 80);
+    step(&mut game, Key::Escape);
+    run(&mut game, 20);
+    assert!(offered(&game), "Escape does not answer");
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    assert_eq!(
+        pixel(&game, (300, 95)),
+        common::SHOP,
+        "the race, then the shop"
+    );
+}
+
+/// Holds `key` down for `ticks` ticks, then lets it go.
+fn hold(game: &mut Game, key: Key, ticks: u32) {
+    game.input(InputEvent::Key { key, pressed: true });
+    run(game, ticks);
+    game.input(InputEvent::Key {
+        key,
+        pressed: false,
+    });
+}
+
+#[test]
+fn f2_held_in_the_shop_saves_into_the_quicksave_slot_and_f3_loads_it_back() {
+    // sub_4221A0: each pass of the shop looks at the keys held; F2 writes DR.SG7 under the
+    // quicksave's name and says so, F3 reads it back. A tap shorter than a pass is missed,
+    // as in the original, so the keys are held.
+    let mut game = in_shop(saved_game_with_money(1_000));
+    hold(&mut game, Key::F2, 4);
+    let (slot, file) = game.take_saved_game().expect("a quick save");
+    assert_eq!(slot, 7);
+    let saved = deadrally_gamedata::save_game::SaveGame::decode(&file);
+    assert_eq!(&saved.name[..2], b"Q\0", "the quicksave's name");
+    step(&mut game, Key::Space);
+    // An engine bought after the quick save is gone once the game is loaded back.
+    for key in [Key::Left, Key::Left, Key::Left, Key::Left, Key::Enter] {
+        step(&mut game, key);
+    }
+    hold(&mut game, Key::F3, 4);
+    step(&mut game, Key::Space);
+    let record = saved_player(game);
+    assert_eq!((field(&record, 16), field(&record, MONEY)), (0, 1_000));
+}
+
+#[test]
+fn f3_without_a_quicksave_loads_nothing() {
+    // No DR.SG7: the original says the game is not found and keeps the one on.
+    let mut game = in_shop(saved_game_with_money(1_000));
+    for key in [Key::Left, Key::Left, Key::Left, Key::Left, Key::Enter] {
+        step(&mut game, key);
+    }
+    hold(&mut game, Key::F3, 4);
+    // The popup's fill (draw.rs POPUP_FILL) where the engine box was.
+    assert_eq!(pixel(&game, (120, 255)), 0xC4, "the confirmation is up");
+    step(&mut game, Key::Space);
+    let record = saved_player(game);
+    assert_eq!(field(&record, 16), 1, "the engine bought stays");
+}
+
+#[test]
+fn a_quick_save_happens_once_however_long_f2_is_held() {
+    // confirmationPopup (0x42DC70) lets go of F2 and F3 when a key ends it: holding F2
+    // through "game saved" would otherwise save again, with another rand() for the file's key.
+    let mut game = in_shop(saved_game_with_money(1_000));
+    game.input(InputEvent::Key {
+        key: Key::F2,
+        pressed: true,
+    });
+    run(&mut game, 10);
+    assert!(game.take_saved_game().is_some(), "saved");
+    step(&mut game, Key::Space);
+    run(&mut game, 10);
+    game.input(InputEvent::Key {
+        key: Key::F2,
+        pressed: false,
+    });
+    assert!(game.take_saved_game().is_none(), "saved once");
+}
+
+#[test]
+fn a_hand_made_loan_or_car_worth_does_not_stop_the_game() {
+    // A save may hold any loan count or car worth; the debt and the car's worth wrap as the
+    // original's ints do instead of stopping the game.
+    let to_shark = [
+        Key::Left,
+        Key::Left,
+        Key::Left,
+        Key::Left,
+        Key::Up,
+        Key::Enter,
+    ];
+    player_after_market(
+        saved_game_with(1_000, &[(28, 1), (LOAN, 0), (LOAN_RACES, i32::MIN)]),
+        &to_shark,
+    );
+    let left = [Key::Left; 4];
+    player_after_shopping_from(
+        saved_game_with(10_000, &[(60, i32::MAX - 10)]),
+        &[&left[..], &[Key::Enter]].concat(),
+    );
+}
+
+/// [`player_after_shopping`] from `file`.
+fn player_after_shopping_from(file: Vec<u8>, keys: &[Key]) -> Vec<u8> {
+    let mut game = in_shop(file);
+    for &key in keys {
+        step(&mut game, key);
+    }
+    saved_player(game)
 }

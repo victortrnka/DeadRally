@@ -122,6 +122,7 @@ const EMPTY_SLOT: u32 = 0x44_3D18;
 const QUICKSAVE_SLOT: u32 = 0x44_3444;
 const GAME_LOADED: u32 = 0x44_3CE0;
 const GAME_SAVED: u32 = 0x44_3D24;
+const GAME_NOT_FOUND: u32 = 0x44_417C;
 const SAVE_PROMPT: u32 = 0x44_3D30;
 /// The shop's texts (`reloadCarAnimation2` 0x420250 and the functions after it): six lines of
 /// 40 bytes for each item. The car's own and its engine levels' sit in the car's record (at
@@ -143,6 +144,64 @@ const REPAIR_TEN: u32 = 0x44_33D4;
 const CONTINUE_INFO: u32 = 0x45_4968;
 const CONTINUE_INFO_WEAPONS: u32 = 0x45_4A58;
 const UPGRADE_LEVELS: u32 = 4;
+/// What the shop says after an upgrade is bought (`reloadEngineAnimation` 0x4212F0 and the two
+/// after it), by the level bought from; when the money is short (`hasInsuficientMoneyToBuy`
+/// 0x421E50: a line before and after the amount, and the two around it); and when a wrecked
+/// car would race without weapons (`enterShop`, 0x4384E2).
+const ENGINE_BOUGHT: u32 = 0x45_0DB8;
+const TIRE_BOUGHT: u32 = 0x45_1538;
+const ARMOUR_BOUGHT: u32 = 0x45_1CB8;
+const SHORT_BEFORE: u32 = 0x44_3428;
+const SHORT_AFTER: u32 = 0x44_341C;
+const SHORT_ABOVE: u32 = 0x44_33FC;
+const SHORT_BELOW: u32 = 0x44_33D8;
+const WRECKED: [u32; 5] = [0x44_4164, 0x44_4160, 0x44_413C, 0x44_4118, 0x44_418C];
+/// The car dealer (`enterShop`, 0x4374A5): the offer's pieces (the refund's words before and
+/// after the amount, its second line, the money returned when the refund passes the price,
+/// the words before the car's name, the question mark, the words before its price and the
+/// question's end), the paint's three lines, and what the car's record says once it is
+/// bought (+0x1F0, six lines).
+const OFFER: [u32; 8] = [
+    0x44_4260, 0x44_4258, 0x44_4238, 0x44_4224, 0x44_421C, 0x44_4218, 0x44_4208, 0x44_41F8,
+];
+const PAINT: [u32; 3] = [0x44_41D8, 0x44_41BC, 0x44_41AC];
+const CAR_BOUGHT: u32 = 0x1F0;
+/// The Underground Market (`enterBlackMarketScreen` 0x436700): six lines each for the four
+/// weapons (240 bytes apart) and once bought, out of stock, the shareware lock and the way
+/// on; the loan shark's offer and its loan granted (by loan, 240 bytes apart), what is owed
+/// (its first line's start, the amount and a full stop make it), the loan refused and
+/// paid back; and the first visit's popup (0x41C770, 80 bytes a line).
+const WEAPON_INFO: u32 = 0x45_33D8;
+const WEAPON_BOUGHT: u32 = 0x45_3A68;
+const OUT_OF_STOCK: u32 = 0x45_3888;
+const SHAREWARE: u32 = 0x45_3978;
+const MARKET_ON: u32 = 0x45_4B48;
+/// A wreck cannot go on from the market (0x4365BA): the shop's message with another last
+/// line.
+const MARKET_WRECKED: [u32; 5] = [0x44_4164, 0x44_4160, 0x44_413C, 0x44_4118, 0x44_40FC];
+const LOAN_OFFER: u32 = 0x45_2078;
+const LOAN_GRANTED: u32 = 0x45_2528;
+const LOAN_OWED: u32 = 0x45_2AC8;
+const LOAN_REFUSED: u32 = 0x45_29D8;
+const LOAN_PAID: u32 = 0x45_2BB8;
+const MARKET_WELCOME: u32 = 0x44_BE88;
+const LOANS: u32 = 5;
+/// The sabotage's popup: its first line, the pieces before and after the damage, before and
+/// after the victim's name, its last three lines.
+const SABOTAGE: [u32; 8] = [
+    0x45_2CA8, 0x45_2CD0, 0x44_3CBC, 0x45_2CF8, 0x44_3CA0, 0x45_2D20, 0x45_2D48, 0x45_2D70,
+];
+/// The drug dealer's offer: two lines, the pieces before and after the pay, seven lines.
+const DRUG_OFFER: [u32; 11] = [
+    0x45_2D98, 0x45_2DE8, 0x45_2E38, 0x44_3FD8, 0x45_2E88, 0x45_2ED8, 0x45_2F28, 0x45_2F78,
+    0x45_2FC8, 0x45_3018, 0x45_3068,
+];
+/// The hitman's offer: five lines, the pieces before and after the victim's name, a line,
+/// the piece before the pay (a full stop follows it), two lines.
+const HITMAN_OFFER: [u32; 11] = [
+    0x45_30B8, 0x45_3108, 0x45_3158, 0x45_31A8, 0x45_31F8, 0x45_3248, 0x44_3FC4, 0x45_3298,
+    0x45_32E8, 0x45_3338, 0x45_3388,
+];
 /// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
 const END_GAME: u32 = 0x44_4280;
 
@@ -270,6 +329,13 @@ pub struct CampaignTexts {
     pub game_loaded: Vec<u8>,
     pub game_saved: Vec<u8>,
     pub save_prompt: Vec<u8>,
+    /// The popups after a sign-up (`sabotageScreen` 0x42DD10, the offer 0x431B30), in
+    /// [`SABOTAGE`], [`DRUG_OFFER`] and [`HITMAN_OFFER`]'s order.
+    pub sabotage: Vec<Vec<u8>>,
+    /// What a quick load says when there is no quicksave (0x4221A0).
+    pub game_not_found: Vec<u8>,
+    pub drug_offer: Vec<Vec<u8>>,
+    pub hitman_offer: Vec<Vec<u8>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -294,6 +360,33 @@ pub struct ShopTexts {
     pub repair_ten: Vec<u8>,
     /// `continues[weapons]`.
     pub continues: [ShopInfo; 2],
+    /// `bought[kind][level]`: engine, tires, armour, by the level bought from.
+    pub bought: Vec<Vec<ShopInfo>>,
+    /// The short-of-money lines: before and after the amount, above and below it.
+    pub short: [Vec<u8>; 4],
+    pub wrecked: ShopInfo,
+    /// The offer's pieces in [`OFFER`]'s order.
+    pub offer: Vec<Vec<u8>>,
+    pub paint: Vec<Vec<u8>>,
+    /// `car_bought[car]`.
+    pub car_bought: Vec<ShopInfo>,
+    /// The Underground Market: `weapons[w]` and `weapons_bought[w]` for mines, spikes,
+    /// rocket fuel and sabotage, then out of stock, the shareware lock, the way on.
+    pub weapons: Vec<ShopInfo>,
+    pub weapons_bought: Vec<ShopInfo>,
+    pub out_of_stock: ShopInfo,
+    pub shareware: ShopInfo,
+    pub market_on: ShopInfo,
+    pub market_wrecked: ShopInfo,
+    /// `loan_offers[loan]`, `loans_granted[loan]` by loan (0 for the biggest).
+    pub loan_offers: Vec<ShopInfo>,
+    pub loans_granted: Vec<ShopInfo>,
+    /// What is owed: the first line's start (the amount and a full stop follow), five more.
+    pub loan_owed: ShopInfo,
+    pub loan_refused: ShopInfo,
+    pub loan_paid: ShopInfo,
+    /// The first visit's popup: ten lines.
+    pub market_welcome: Vec<Vec<u8>>,
 }
 
 /// A font's cell size and the pen advance of each glyph, character 32 first.
@@ -472,6 +565,19 @@ impl Texts {
                 game_loaded: shown(GAME_LOADED, MAX_LINE)?,
                 game_saved: shown(GAME_SAVED, MAX_LINE)?,
                 save_prompt: shown(SAVE_PROMPT, MAX_LINE)?,
+                game_not_found: text(GAME_NOT_FOUND, MAX_LINE)?,
+                sabotage: SABOTAGE
+                    .iter()
+                    .map(|&address| text(address, 79))
+                    .collect::<Result<_, _>>()?,
+                drug_offer: DRUG_OFFER
+                    .iter()
+                    .map(|&address| text(address, 79))
+                    .collect::<Result<_, _>>()?,
+                hitman_offer: HITMAN_OFFER
+                    .iter()
+                    .map(|&address| text(address, 79))
+                    .collect::<Result<_, _>>()?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
                     .map(|warning| {
@@ -526,6 +632,60 @@ impl Texts {
                         .collect::<Result<_, _>>()?,
                     repair_ten: shown(REPAIR_TEN, MAX_LINE)?,
                     continues: [info(CONTINUE_INFO)?, info(CONTINUE_INFO_WEAPONS)?],
+                    bought: [ENGINE_BOUGHT, TIRE_BOUGHT, ARMOUR_BOUGHT]
+                        .iter()
+                        .map(|&base| {
+                            (0..UPGRADE_LEVELS)
+                                .map(|level| info(base + 240 * level))
+                                .collect::<Result<_, _>>()
+                        })
+                        .collect::<Result<_, TextError>>()?,
+                    short: [
+                        shown(SHORT_BEFORE, MAX_LINE)?,
+                        shown(SHORT_AFTER, MAX_LINE)?,
+                        shown(SHORT_ABOVE, MAX_LINE)?,
+                        shown(SHORT_BELOW, MAX_LINE)?,
+                    ],
+                    wrecked: WRECKED
+                        .iter()
+                        .map(|&address| text(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    offer: OFFER
+                        .iter()
+                        .map(|&address| shown(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    paint: PAINT
+                        .iter()
+                        .map(|&address| shown(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    car_bought: (0..CARS as u32)
+                        .map(|k| info(car(k) + CAR_BOUGHT))
+                        .collect::<Result<_, _>>()?,
+                    weapons: (0..4u32)
+                        .map(|w| info(WEAPON_INFO + 240 * w))
+                        .collect::<Result<_, _>>()?,
+                    weapons_bought: (0..4u32)
+                        .map(|w| info(WEAPON_BOUGHT + 240 * w))
+                        .collect::<Result<_, _>>()?,
+                    out_of_stock: info(OUT_OF_STOCK)?,
+                    shareware: info(SHAREWARE)?,
+                    market_on: info(MARKET_ON)?,
+                    market_wrecked: MARKET_WRECKED
+                        .iter()
+                        .map(|&address| text(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    loan_offers: (0..LOANS)
+                        .map(|loan| info(LOAN_OFFER + 240 * loan))
+                        .collect::<Result<_, _>>()?,
+                    loans_granted: (0..LOANS)
+                        .map(|loan| info(LOAN_GRANTED + 240 * loan))
+                        .collect::<Result<_, _>>()?,
+                    loan_owed: info(LOAN_OWED)?,
+                    loan_refused: info(LOAN_REFUSED)?,
+                    loan_paid: info(LOAN_PAID)?,
+                    market_welcome: (0..10u32)
+                        .map(|line| text(MARKET_WELCOME + 80 * line, 79))
+                        .collect::<Result<_, _>>()?,
                 }
             },
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
@@ -664,12 +824,21 @@ mod tests {
         }
         put(CONTINUE, b"go");
         put(END_GAME, b"end?");
+        for (k, &address) in OFFER.iter().chain(&PAINT).enumerate() {
+            put(address, format!("o{k}").as_bytes());
+        }
         put(EMPTY_SLOT, b"empty");
         put(QUICKSAVE_SLOT, b"quick");
         put(GAME_LOADED, b"loaded");
         put(GAME_SAVED, b"saved");
         put(SAVE_PROMPT, b"name?");
         put(REPAIR_TEN, b"10");
+        for (k, &address) in [SHORT_BEFORE, SHORT_AFTER, SHORT_ABOVE, SHORT_BELOW]
+            .iter()
+            .enumerate()
+        {
+            put(address, format!("s{k}").as_bytes());
+        }
         put(NO_SIGN_UP, b"none");
         for warning in 0..2u32 {
             for line in 1..5u32 {

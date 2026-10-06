@@ -34,10 +34,10 @@ const USAGE: &str = "usage:
   deadrally-headless run --ticks N
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
-  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY]]... --out FILE.png
+  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... --out FILE.png
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T[:KEY]]... [--ticks N] SHOT.png...
-  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY]]... [--seconds S] --out FILE.wav
+  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--ticks N] SHOT.png...
+  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
   deadrally-headless compare-audio ORIGINAL.wav OURS.wav [--min-overlap S]";
@@ -85,6 +85,7 @@ enum Command {
         keys: Vec<Press>,
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
+        clock: Option<u32>,
         out: PathBuf,
     },
     Compare {
@@ -96,6 +97,7 @@ enum Command {
         keys: Vec<Press>,
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
+        clock: Option<u32>,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -147,17 +149,20 @@ fn main() -> ExitCode {
             keys,
             seed,
             saves,
+            clock,
             out,
-        } => render(data.as_deref(), tick, &keys, seed, &saves, &out).map(|()| ExitCode::SUCCESS),
+        } => render(data.as_deref(), tick, &keys, (seed, &saves, clock), &out)
+            .map(|()| ExitCode::SUCCESS),
         Command::Compare { a, b } => compare(&a, &b),
         Command::Find {
             data,
             keys,
             seed,
             saves,
+            clock,
             ticks,
             shots,
-        } => find(data.as_deref(), &keys, seed, &saves, ticks, &shots),
+        } => find(data.as_deref(), &keys, (seed, &saves, clock), ticks, &shots),
         Command::RenderAudio {
             data,
             source,
@@ -187,9 +192,24 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
         "run" => &["--ticks"],
         "check-data" => &["--data"],
         "dump-assets" => &["--data", "--out"],
-        "render" => &["--data", "--tick", "--key-at", "--seed", "--save", "--out"],
+        "render" => &[
+            "--data",
+            "--tick",
+            "--key-at",
+            "--seed",
+            "--save",
+            "--sabotage-clock",
+            "--out",
+        ],
         "compare" => &[],
-        "find" => &["--data", "--key-at", "--seed", "--save", "--ticks"],
+        "find" => &[
+            "--data",
+            "--key-at",
+            "--seed",
+            "--save",
+            "--sabotage-clock",
+            "--ticks",
+        ],
         "render-audio" => &[
             "--data",
             "--seed",
@@ -210,6 +230,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut keys = Vec::new();
     let mut seed = 0;
     let mut saves = Vec::new();
+    let mut clock = None;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
@@ -244,6 +265,12 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 "--seed" => {
                     seed = u32::try_from(number()?).map_err(|_| "--seed: at most 4294967295")?;
                 }
+                "--sabotage-clock" => {
+                    clock = Some(
+                        u32::try_from(number()?)
+                            .map_err(|_| "--sabotage-clock: at most 4294967295")?,
+                    );
+                }
                 "--music" => music = Some(value.to_string_lossy().into_owned()),
                 "--effect" => effect = Some(value.to_string_lossy().into_owned()),
                 "--number" => {
@@ -276,6 +303,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             keys,
             seed,
             saves,
+            clock,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
@@ -322,6 +350,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 keys,
                 seed,
                 saves,
+                clock,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -416,8 +445,14 @@ fn locate_data(cli: Option<&Path>) -> Result<Located, String> {
     Ok(located)
 }
 
-/// A key pressed and released after a number of ticks (0: before the first tick).
-type Press = (u64, Key);
+/// A key pressed after a number of ticks (0: before the first tick) and released then or
+/// after the ticks it is held.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Press {
+    tick: u64,
+    key: Key,
+    held: u64,
+}
 
 /// The keys `--key-at T:KEY` can name; `T` alone presses Space.
 const KEY_NAMES: [(&str, Key); 10] = [
@@ -443,9 +478,17 @@ fn read_saves(saves: &[(usize, PathBuf)]) -> Result<Vec<Option<Vec<u8>>>, String
     Ok(slots)
 }
 
-/// Parses `T` or `T:KEY`.
+/// Parses `T`, `T:KEY` or `T:KEY+N` (held for N ticks, as the quick save's F2 must be).
 fn press(text: &str) -> Result<Press, String> {
     let (tick, name) = text.split_once(':').unwrap_or((text, "space"));
+    let (name, held) = match name.split_once('+') {
+        Some((name, held)) => (
+            name,
+            held.parse()
+                .map_err(|_| format!("--key-at: not a number of ticks: {held}"))?,
+        ),
+        None => (name, 0),
+    };
     let tick = tick
         .parse()
         .map_err(|_| format!("--key-at: not a number: {tick}"))?;
@@ -467,14 +510,24 @@ fn press(text: &str) -> Result<Press, String> {
                 names.join(", ")
             )
         })?;
-    Ok((tick, key))
+    Ok(Press { tick, key, held })
 }
 
-/// Presses and releases the keys due before tick `done + 1`, in the order given.
+/// Presses the keys due before tick `done + 1` and releases those whose time is up, in the
+/// order given.
 fn press_due(game: &mut Game, keys: &[Press], done: u64) {
-    for &(_, key) in keys.iter().filter(|(tick, _)| *tick == done) {
-        for pressed in [true, false] {
-            game.input(InputEvent::Key { key, pressed });
+    for press in keys {
+        if press.tick == done {
+            game.input(InputEvent::Key {
+                key: press.key,
+                pressed: true,
+            });
+        }
+        if press.tick + press.held == done {
+            game.input(InputEvent::Key {
+                key: press.key,
+                pressed: false,
+            });
         }
     }
 }
@@ -490,19 +543,30 @@ fn play(game: &mut Game, ticks: u64, keys: &[Press], mut each: impl FnMut(u64, &
 }
 
 /// Writes the frame after `tick` ticks as the original's window would show it.
-fn render(
-    data: Option<&Path>,
-    tick: u64,
-    keys: &[Press],
-    seed: u32,
-    saves: &[(usize, PathBuf)],
-    out: &Path,
-) -> Result<(), String> {
-    let located = locate_data(data)?;
+/// How a run starts: `rand()`'s seed, the saved games given, the sabotage's clock if fixed.
+type Start<'a> = (u32, &'a [(usize, PathBuf)], Option<u32>);
+
+/// A game started as `start` says.
+fn started(located: &Located, (seed, saves, clock): Start) -> Result<Game, String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, seed);
     game.set_saved_games(read_saves(saves)?);
+    if let Some(ms) = clock {
+        game.fix_sabotage_clock(ms);
+    }
+    Ok(game)
+}
+
+fn render(
+    data: Option<&Path>,
+    tick: u64,
+    keys: &[Press],
+    start: Start,
+    out: &Path,
+) -> Result<(), String> {
+    let located = locate_data(data)?;
+    let mut game = started(&located, start)?;
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame())?.write_png(out)
 }
@@ -533,8 +597,7 @@ fn compare(a: &Path, b: &Path) -> Result<ExitCode, String> {
 fn find(
     data: Option<&Path>,
     keys: &[Press],
-    seed: u32,
-    saves: &[(usize, PathBuf)],
+    start: Start,
     ticks: u64,
     shots: &[PathBuf],
 ) -> Result<ExitCode, String> {
@@ -558,47 +621,33 @@ fn find(
     // First only exact matches, which fail fast on the first differing byte.
     let mut matches = vec![Vec::new(); shots.len()];
     let mut equal = vec![false; shots.len()];
-    timeline(
-        &located,
-        keys,
-        seed,
-        saves,
-        ticks,
-        |tick, window, changed| {
-            for (index, picture) in pictures.iter().enumerate() {
-                if changed {
-                    equal[index] = window.pixels == picture.pixels;
-                }
-                if equal[index] {
-                    matches[index].push(tick);
-                }
+    timeline(&located, keys, start, ticks, |tick, window, changed| {
+        for (index, picture) in pictures.iter().enumerate() {
+            if changed {
+                equal[index] = window.pixels == picture.pixels;
             }
-        },
-    )?;
+            if equal[index] {
+                matches[index].push(tick);
+            }
+        }
+    })?;
     // Then, for screenshots without a match, the nearest picture, to help find out why.
     let unmatched: Vec<usize> = (0..shots.len())
         .filter(|&index| matches[index].is_empty())
         .collect();
     let mut closest: Vec<Option<(Difference, u64)>> = vec![None; shots.len()];
     if !unmatched.is_empty() {
-        timeline(
-            &located,
-            keys,
-            seed,
-            saves,
-            ticks,
-            |tick, window, changed| {
-                if !changed {
-                    return;
+        timeline(&located, keys, start, ticks, |tick, window, changed| {
+            if !changed {
+                return;
+            }
+            for &index in &unmatched {
+                let difference = window.difference(&pictures[index]).expect("window-sized");
+                if closest[index].is_none_or(|(best, _)| difference < best) {
+                    closest[index] = Some((difference, tick));
                 }
-                for &index in &unmatched {
-                    let difference = window.difference(&pictures[index]).expect("window-sized");
-                    if closest[index].is_none_or(|(best, _)| difference < best) {
-                        closest[index] = Some((difference, tick));
-                    }
-                }
-            },
-        )?;
+            }
+        })?;
     }
     for (index, path) in shots.iter().enumerate() {
         match closest[index] {
@@ -624,15 +673,11 @@ fn find(
 fn timeline(
     located: &Located,
     keys: &[Press],
-    seed: u32,
-    saves: &[(usize, PathBuf)],
+    start: Start,
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
-    let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
-    let config = assets.menu.default_config.clone();
-    let mut game = Game::with_seed(assets, config, seed);
-    game.set_saved_games(read_saves(saves)?);
+    let mut game = started(located, start)?;
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -903,15 +948,33 @@ mod tests {
         );
         assert_eq!(
             parse(&args(&[
-                "render", "--tick", "300", "--key-at", "10", "--key-at", "20:Down", "--out",
-                "a.png"
+                "render", "--tick", "300", "--key-at", "10", "--key-at", "20:Down", "--key-at",
+                "30:F2+12", "--out", "a.png"
             ])),
             Ok(Command::Render {
                 data: None,
                 tick: 300,
-                keys: vec![(10, Key::Space), (20, Key::Down)],
+                // F2 is held 12 ticks: the quick save looks at the keys held, not pressed.
+                keys: vec![
+                    Press {
+                        tick: 10,
+                        key: Key::Space,
+                        held: 0
+                    },
+                    Press {
+                        tick: 20,
+                        key: Key::Down,
+                        held: 0
+                    },
+                    Press {
+                        tick: 30,
+                        key: Key::F2,
+                        held: 12
+                    }
+                ],
                 seed: 0,
                 saves: vec![],
+                clock: None,
                 out: PathBuf::from("a.png")
             })
         );
@@ -929,6 +992,7 @@ mod tests {
                 keys: vec![],
                 seed: 0,
                 saves: vec![],
+                clock: None,
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })

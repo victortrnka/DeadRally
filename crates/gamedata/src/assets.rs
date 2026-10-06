@@ -133,6 +133,18 @@ pub struct MenuAssets {
     pub repair: Vec<Image>,
     pub continue_flag: Vec<Image>,
     pub maxed: Vec<Image>,
+    /// The Underground Market (spec M3c §3): its title `BLACKTX1`, the loan shark `DEALER2B`,
+    /// the weapons `MARKET1E` (mines, spikes, rocket fuel, sabotage; locked; out of stock),
+    /// and `market_prices[car]`, the four weapons' prices with that car, as
+    /// `setUndergroundMarketPrices` (0x421FB0) sets them.
+    pub market_title: Image,
+    pub loan_shark: Image,
+    pub weapons: Vec<Image>,
+    pub market_prices: Vec<[i32; 4]>,
+    /// The offers after a sign-up (0x431B30): the drug dealer `DRUGDEAL`, the hitman
+    /// `EVENT_2`.
+    pub drug_dealer: Image,
+    pub hitman: Image,
 }
 
 #[derive(Debug)]
@@ -276,6 +288,32 @@ fn full_screen(picture: Picture, path: &std::path::Path) -> Result<Picture, Asse
     }
 }
 
+/// The Underground Market's prices for each car: `setUndergroundMarketPrices` run with the
+/// player (driver 19) in that car, its four prices read where it leaves them.
+fn market_prices(exe: &Exe) -> Result<Vec<[i32; 4]>, crate::machine::MachineError> {
+    const FUNCTION: (u32, u32) = (0x42_1FB0, 0x42_20C8);
+    const DRIVER_ID: u32 = 0x46_3CE8;
+    const PLAYER_CAR: u32 = 0x46_085C + 19 * 0x6C;
+    const PRICES: u32 = 0x46_2D40;
+    (0..6)
+        .map(|car| {
+            let mut machine = crate::machine::Machine::new(exe);
+            machine.poke(DRIVER_ID, 19);
+            machine.poke(PLAYER_CAR, car);
+            machine.run(FUNCTION.0, FUNCTION.1)?;
+            let bytes = machine.bytes(PRICES, 16)?;
+            Ok(std::array::from_fn(|w| {
+                i32::from_le_bytes([
+                    bytes[4 * w],
+                    bytes[4 * w + 1],
+                    bytes[4 * w + 2],
+                    bytes[4 * w + 3],
+                ])
+            }))
+        })
+        .collect()
+}
+
 /// The cars turning in the menus, car 0 to 5 (dRally `___24548h.c`).
 const CAR_TURNING: [&str; 6] = [
     "KUPLA.BPK",
@@ -409,6 +447,12 @@ fn menu_assets(
         repair: frames(menu, "REPAANI.BPK")?,
         continue_flag: frames(menu, "CONTANI.BPK")?,
         maxed: frames(menu, "MAXI1F.BPK")?,
+        market_title: frames(menu, "BLACKTX1.BPK")?.remove(0),
+        loan_shark: frames(menu, "DEALER2B.BPK")?.remove(0),
+        weapons: frames(menu, "MARKET1E.BPK")?,
+        market_prices: market_prices(&exe).map_err(AssetError::Machine)?,
+        drug_dealer: frames(menu, "DRUGDEAL.BPK")?.remove(0),
+        hitman: frames(menu, "EVENT_2.BPK")?.remove(0),
     })
 }
 

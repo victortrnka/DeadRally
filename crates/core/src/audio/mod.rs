@@ -146,6 +146,13 @@ impl Sound {
         }
     }
 
+    /// Silences `channel` (1-based) with a short fade (`stopSoundChannel`, 0x43C3E0).
+    pub(crate) fn stop_channel(&mut self, channel: usize) {
+        if let Some(effects) = &mut self.effects {
+            effects.stop(channel);
+        }
+    }
+
     /// Stops the music and every effect, with a short fade so nothing clicks.
     pub(crate) fn stop(&mut self) {
         if let Some(music) = &mut self.music {
