@@ -1091,6 +1091,38 @@ const MINES_SHOTS: [(u64, &str); 31] = [
     (3896, "h13"),
 ];
 
+/// The keys held in `scripts/reference/rocket.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game with a rocket): Up from the start, the turbo
+/// with it for 71 ticks.
+const ROCKET_HELD: [Held; 2] = [(3388, Key::Up, 122), (3403, Key::LeftShift, 71)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the rocket's flame
+/// behind the car, its two pictures taking turns, gone with the turbo.
+const ROCKET_SHOTS: [(u64, &str); 22] = [
+    (3323, "race"),
+    (3394, "r00"),
+    (3403, "r01"),
+    (3409, "r02"),
+    (3416, "r03"),
+    (3423, "r04"),
+    (3430, "r05"),
+    (3437, "r06"),
+    (3444, "r07"),
+    (3452, "r08"),
+    (3459, "r09"),
+    (3466, "r10"),
+    (3474, "r11"),
+    (3480, "r12"),
+    (3487, "r13"),
+    (3494, "r14"),
+    (3502, "r15"),
+    (3510, "r16"),
+    (3516, "r17"),
+    (3523, "r18"),
+    (3530, "r19"),
+    (3537, "r20"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1683,7 +1715,7 @@ fn the_mines_run_matches_the_committed_manifest() {
     // mine in the wrong place, a wrong blast or a horn that brakes shows here.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
-    slots[0] = Some(armed_save(&assets.menu.texts, 3));
+    slots[0] = Some(armed_save(&assets.menu.texts, [3, 0, 0]));
     let lines = manifest_seeded(
         (SEED, None),
         (&RACE_START_KEYS, &MINES_HELD),
@@ -1692,6 +1724,25 @@ fn the_mines_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("mines-run.sha256", &lines, "the mines run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_rocket_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // flame in the wrong place or turning at the wrong time shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, [0, 0, 1]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &ROCKET_HELD),
+        &ROCKET_SHOTS,
+        3_540,
+        slots,
+    );
+    check_manifest("rocket-run.sha256", &lines, "the rocket run");
 }
 
 #[test]
@@ -1803,11 +1854,15 @@ fn the_shop_purchases_run_matches_the_committed_manifest() {
 /// loads the same file): seed 1's drivers as `initDrivers` sets them up, recomputed here, and
 /// a player part-way through a game.
 fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
-    armed_save(texts, 0)
+    armed_save(texts, [0, 0, 0])
 }
 
-/// The test game with the player's `mines` (`captures/test.sg` with its mines changed).
-fn armed_save(texts: &deadrally_gamedata::text::Texts, mines: i32) -> Vec<u8> {
+/// The test game with the player's mines, spikes and rocket (`captures/test.sg` with them
+/// changed).
+fn armed_save(
+    texts: &deadrally_gamedata::text::Texts,
+    [mines, spikes, rocket]: [i32; 3],
+) -> Vec<u8> {
     let campaign = &texts.campaign;
     let mut state: u32 = 1;
     let mut rand = || {
@@ -1879,8 +1934,8 @@ fn armed_save(texts: &deadrally_gamedata::text::Texts, mines: i32) -> Vec<u8> {
     drivers.extend(record(
         b"Tester",
         [
-            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, mines, 0, 0,
-            0,
+            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, mines,
+            spikes, rocket, 0,
         ],
     ));
     let mut name = [0; 15];

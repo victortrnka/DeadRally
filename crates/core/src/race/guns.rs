@@ -13,7 +13,7 @@ use crate::trig::{cos, sin};
 use super::buffer::{Buffer, STRIDE};
 use super::driving::{Car, RADIANS};
 use super::pedestrians::Pedestrians;
-use super::raster::ftol;
+use super::raster::{ftol, nearest};
 
 /// The gun key's bit, and the frame from which the guns fire.
 pub(super) const GUN: u32 = 0x20;
@@ -44,16 +44,6 @@ pub(super) struct Gunfire {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct Shared {
     pub(super) hit: [i32; 2],
-}
-
-/// A coordinate rounded half up.
-fn nearest(value: f64) -> i32 {
-    let whole = ftol(value);
-    if value - f64::from(whole) < 0.5 {
-        whole
-    } else {
-        ftol(value + 1.0)
-    }
 }
 
 /// What a shot asks the race to play: channel, effect, volume.

@@ -9,7 +9,7 @@ use crate::trig::{cos, sin};
 
 use super::buffer::{Buffer, STRIDE};
 use super::driving::{BRAKE, Car, MINE, RADIANS};
-use super::raster::ftol;
+use super::raster::{ftol, nearest};
 
 /// The mines the race keeps (0x481C00, 16 bytes each), and an armed one's state.
 const SLOTS: usize = 32;
@@ -70,16 +70,6 @@ impl Track<'_> {
                 }
             }
         }
-    }
-}
-
-/// A coordinate rounded half up.
-fn nearest(value: f64) -> i32 {
-    let whole = ftol(value);
-    if value - f64::from(whole) < 0.5 {
-        whole
-    } else {
-        ftol(value + 1.0)
     }
 }
 

@@ -21,6 +21,17 @@ pub(super) fn ftol(value: f64) -> i32 {
     }
 }
 
+/// The original's rounding of a coordinate: `_ftol`, plus 1 when the fraction is 0.5 or more
+/// (so half up for positive values, towards zero for negative ones).
+pub(super) fn nearest(value: f64) -> i32 {
+    let whole = ftol(value);
+    if value - f64::from(whole) < 0.5 {
+        whole
+    } else {
+        ftol(value + 1.0)
+    }
+}
+
 /// A row's span from its edges: from the left + 0.4 to the right + 0.6, rounded down.
 fn span(left: f32, right: f32) -> (i32, i32) {
     let round = |edge: f32, by: f32| ftol((f64::from(edge) + f64::from(by)).floor());

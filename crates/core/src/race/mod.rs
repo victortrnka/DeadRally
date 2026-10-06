@@ -190,6 +190,9 @@ pub(crate) struct Race {
     gun_hits: guns::Shared,
     /// The mines dropped (`MINES1A.BPK`) and their blasts (`BLOWI.BPK`).
     mines: mines::Mines,
+    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`) and the one shown (0x456AFC).
+    rocket_flames: [Vec<u8>; 2],
+    flame_phase: usize,
 }
 
 /// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
@@ -484,6 +487,11 @@ impl Race {
                 hud::decoded(&archives.engine, "MINES1A.BPK")?,
                 hud::decoded(&archives.engine, "BLOWI.BPK")?,
             ),
+            rocket_flames: [
+                hud::decoded(&archives.engine, "ROCKET1.BPK")?,
+                hud::decoded(&archives.engine, "ROCKET2.BPK")?,
+            ],
+            flame_phase: 0,
             wrecks: Vec::new(),
             tough,
         })
@@ -1095,6 +1103,15 @@ impl Race {
         for car in &mut self.cars {
             guns::draw_flash(&mut self.buffer, car, &self.flashes, view, left);
         }
+        for car in &mut self.cars {
+            cars::draw_flame(
+                &mut self.buffer,
+                car,
+                &self.rocket_flames,
+                &mut self.flame_phase,
+                now,
+            );
+        }
         let (x, y) = self.camera();
         let camera = (x as i32, y as i32);
         let cull = self.number != 0;
@@ -1218,6 +1235,9 @@ impl Race {
                 )
             })
             .collect();
+        for (car, &(x, y)) in self.cars.iter_mut().zip(&on_screen) {
+            car.screen = [x, y];
+        }
         let others = (0..self.cars.len()).filter(|&slot| slot != self.player);
         let lit = &self.track.lit;
         let player = &self.cars[self.player];

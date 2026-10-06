@@ -187,6 +187,8 @@ pub(super) struct Car {
     pub(super) push: [f32; 2],
     /// Its seven corners (0x4A7DC4), from its middle.
     pub(super) corners: [[f32; 2]; 7],
+    /// Where it shows in the race's buffer this frame (0x4A7D04), the HUD's width included.
+    pub(super) screen: [i32; 2],
     /// Its sprite's direction (0 to 95) and where its sprite is among all the cars'.
     pub(super) direction: i32,
     pub(super) sprite: usize,
@@ -209,6 +211,8 @@ pub(super) struct Car {
     /// (0x4A8058).
     pub(super) mine_cooldown: i32,
     pub(super) horn: bool,
+    /// The timer's tick its rocket's flame last turned the flames' phase (0x4A7EE0).
+    pub(super) flame_time: u32,
     /// Where it was a tick ago (0x4A7E50).
     pub(super) previous: [f32; 3],
     /// The keys it holds in each tick of the race loop's pass (0x4A7D20).
@@ -258,6 +262,7 @@ impl Car {
             step: [0.0; 2],
             push: [0.0; 2],
             corners: [[0.0; 2]; 7],
+            screen: [0; 2],
             direction: rotation,
             sprite: FRAME * (rotation.max(0) as usize + FRAMES * slot),
             wall: 0,
@@ -272,6 +277,7 @@ impl Car {
             finished: false,
             mine_cooldown: 0,
             horn: false,
+            flame_time: 0,
             previous: [x, y, angle],
             keys: [0; 16],
             lap: 1,
