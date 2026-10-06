@@ -154,6 +154,9 @@ impl Menu {
         self.graphics.small[0].draw(&mut screen, &wait, at(PRESS.0, PRESS.1));
         self.screen = screen;
         self.shown = self.screen.clone();
+        // 0x42B975: loading the menus' pictures (0x419950) turns the cursor back to its first
+        // frame, which the shop's popups show.
+        self.cursor = 0;
         // 0x42B97A: `sub_41EE40` loads the shop's pictures and starts its loops afresh: the
         // car box on the player's next car, the continue item selected, the pulse at 100 %.
         self.shop.reset();
