@@ -16,11 +16,14 @@ pub struct RaceArchives {
     pub tracks: Vec<Archive>,
     pub engine: Archive,
     pub ib_files: Archive,
+    /// `MUSICS.BPA`: each track's music and the race's sounds.
+    pub musics: Archive,
 }
 
 #[derive(Debug)]
 pub enum RaceError {
     Bpa(BpaError),
+    Sound(crate::sound::SoundError),
     Track { name: String, error: TrackError },
 }
 
@@ -28,6 +31,7 @@ impl fmt::Display for RaceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RaceError::Bpa(error) => write!(f, "{error}"),
+            RaceError::Sound(error) => write!(f, "{error}"),
             RaceError::Track { name, error } => write!(f, "{name}: {error}"),
         }
     }

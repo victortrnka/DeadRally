@@ -13,6 +13,11 @@ mod semaphore;
 
 use deadrally_gamedata::image::Palette;
 use deadrally_gamedata::race::{RaceArchives, RaceError, Track};
+use deadrally_gamedata::s3m::Module;
+use deadrally_gamedata::sound;
+use deadrally_gamedata::xm::Bank;
+
+use crate::audio::Sound;
 
 use self::buffer::{Buffer, LEFT, STRIDE};
 
@@ -135,7 +140,22 @@ pub(crate) struct Race {
     semaphore: semaphore::Semaphore,
     pedestrians: pedestrians::Pedestrians,
     clock: Clock,
+    /// The track's music and the race's sounds (`GEN-EFE.CMF`).
+    music: Module,
+    effects: Bank,
 }
+
+/// The sounds' channels and pitches (16.16) in the race's calls of `loadMenuSoundEffect`.
+const ENGINE_CHANNEL: usize = 1;
+const LIGHTS_CHANNEL: usize = 2;
+const START_CHANNEL: usize = 5;
+/// The engine's sound for car 0; the cars' follow it.
+const ENGINE_SOUND: u8 = 25;
+const ENGINE_PITCH: u32 = 0x2_8000;
+const READY_SOUND: (u8, u32) = (3, 0x5_0000);
+const SET_SOUND: (u8, u32) = (44, 0x2_0000);
+const GO_SOUND: (u8, u32) = (44, 0x2_8000);
+const FULL: u32 = 0x1_0000;
 
 /// The race's clocks: its frame count (`raceFrame` 0x481E14, the countdown under 190), the
 /// ticks the timer has counted (0x503500, and at the HUD's last frame 0x4A7CFC), the ticks
@@ -218,6 +238,10 @@ impl Race {
         let mut shade = [0; 256];
         let table = archives.engine.read("VARJO.TAB")?;
         shade[..table.len().min(256)].copy_from_slice(&table[..table.len().min(256)]);
+        let music = sound::load_music(&archives.musics, &format!("TR{number}-MUS.CMF"))
+            .map_err(RaceError::Sound)?;
+        let effects =
+            sound::load_effects(&archives.musics, "GEN-EFE.CMF").map_err(RaceError::Sound)?;
         let pedestrians = pedestrians::Pedestrians::new(
             &track.info,
             hud::decoded(&archives.engine, "PEDESTR.BPK")?,
@@ -256,28 +280,39 @@ impl Race {
                 timer: 1000,
                 ..Clock::default()
             },
+            music,
+            effects,
         })
     }
 
-    /// The race loop's first frame, up to its wait.
-    pub(crate) fn begin(&mut self) {
-        self.frame();
+    /// The race's sound set up (0x416215: the menu's stopped, the track's music started at
+    /// the configured volumes but silent until the intro raises it, the player's engine), then
+    /// the race loop's first frame, up to its wait.
+    pub(crate) fn begin(&mut self, sound: &mut Sound, (music_volume, effects_volume): (u32, u32)) {
+        sound.stop();
+        sound.load_effects(&self.effects);
+        sound.set_mask(0);
+        sound.play_music(&self.music, 0, music_volume);
+        sound.set_effects_volume(effects_volume);
+        let car = self.drivers[self.player].car as u8;
+        sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
+        self.frame(sound);
     }
 
     /// A pass of the race loop up to its wait: a step of the race for each tick waited, then
     /// the frame drawn into the buffer.
-    fn frame(&mut self) {
+    fn frame(&mut self, sound: &mut Sound) {
         let steps = self.clock.waiting;
         self.clock.waiting = 0;
         for _ in 0..steps {
             self.clock.frame += 1;
         }
-        self.draw();
+        self.draw(sound);
     }
 
     /// From this wait to the next: the frame drawn onto the screen and, on the first, the
     /// intro; or the intro's next step, and once it is over the loop's next frame.
-    pub(crate) fn tick(&mut self) {
+    pub(crate) fn tick(&mut self, sound: &mut Sound) {
         self.clock.tick();
         match &mut self.stage {
             Stage::Loop { first } => {
@@ -292,6 +327,7 @@ impl Race {
                         hud.extend((0..HUD_WIDTH as usize).map(|x| self.buffer.pixel(x, y)));
                     }
                     let intro = intro::Intro::new(&self.palette, self.player, &view, &hud);
+                    sound.set_mask(intro.volume() >> 8);
                     self.show_intro(&intro);
                     self.stage = Stage::Intro(Box::new(intro));
                     return;
@@ -299,6 +335,7 @@ impl Race {
             }
             Stage::Intro(intro) => {
                 let going = intro.wait();
+                sound.set_mask(intro.volume() >> 8);
                 self.screen.copy_from_slice(intro.screen());
                 self.shown = intro.palette().clone();
                 if going {
@@ -308,7 +345,7 @@ impl Race {
             }
         }
         self.stage = Stage::Loop { first: false };
-        self.frame();
+        self.frame(sound);
     }
 
     /// The palette as shown.
@@ -359,7 +396,7 @@ impl Race {
     }
 
     /// A frame: the track under the camera copied right of the HUD (0x4170C1), the HUD.
-    fn draw(&mut self) {
+    fn draw(&mut self, sound: &mut Sound) {
         let (x, y) = self.camera();
         let width = self.track.info.width as usize;
         let image = &self.track.image.pixels;
@@ -393,8 +430,17 @@ impl Race {
             let event = self
                 .semaphore
                 .draw(&mut self.buffer, self.clock.frame, self.clock.between);
-            if event == Some(semaphore::Event::Go) {
-                self.clock.restart();
+            let (channel, (effect, pitch)) = match event {
+                Some(semaphore::Event::Ready) => (LIGHTS_CHANNEL, READY_SOUND),
+                Some(semaphore::Event::Set) => (START_CHANNEL, SET_SOUND),
+                Some(semaphore::Event::Go) => {
+                    self.clock.restart();
+                    (START_CHANNEL, GO_SOUND)
+                }
+                None => (0, (0, 0)),
+            };
+            if channel != 0 {
+                sound.trigger_at(channel, effect, FULL, pitch);
             }
         }
         self.clock.between = self.clock.ticks - self.clock.seen;

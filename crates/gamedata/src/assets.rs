@@ -261,6 +261,7 @@ impl Assets {
                     .collect::<Result<_, _>>()?,
                 engine: Archive::open(&path("ENGINE.BPA"))?,
                 ib_files: Archive::open(&path("IBFILES.BPA"))?,
+                musics,
             },
         })
     }

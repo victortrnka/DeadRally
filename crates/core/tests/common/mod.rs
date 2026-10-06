@@ -328,5 +328,6 @@ pub fn race_archives() -> deadrally_gamedata::race::RaceArchives {
         tracks: (0..10).map(|n| empty(&format!("TR{n}.BPA"))).collect(),
         engine: empty("ENGINE.BPA"),
         ib_files: empty("IBFILES.BPA"),
+        musics: empty("MUSICS.BPA"),
     }
 }

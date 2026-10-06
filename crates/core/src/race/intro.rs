@@ -65,6 +65,8 @@ pub(crate) struct Intro {
     factor: f32,
     step: f32,
     phase: Phase,
+    /// The sound's volume as the zoom last set it (0x404E5C), 0..=0xFFFF.
+    volume: u32,
 }
 
 impl Intro {
@@ -98,6 +100,7 @@ impl Intro {
             factor: 1.0,
             step: STEP_START,
             phase: Phase::Zoom,
+            volume: 0,
         };
         intro.zoom(0);
         intro
@@ -109,6 +112,11 @@ impl Intro {
 
     pub(crate) fn palette(&self) -> &Palette {
         &self.palette
+    }
+
+    /// The sound's volume, rising with the zoom: the factor times 728, at most 0xFFFF.
+    pub(crate) fn volume(&self) -> u32 {
+        self.volume
     }
 
     /// Runs from this wait to the next; false once the intro has ended instead.
@@ -136,6 +144,7 @@ impl Intro {
         for (entry, colour) in self.table.iter().enumerate() {
             self.palette.0[entry] = colour.map(|c| (factor * f64::from(c)) as u8);
         }
+        self.volume = ((factor as u32) * 728).min(0xFFFF);
         self.draw(factor);
         if self.factor == FACTOR_END {
             self.phase = Phase::Hold(19);
@@ -323,6 +332,20 @@ mod tests {
             );
             assert_eq!(row[WIDTH - 1], 0, "row {y}");
         }
+    }
+
+    /// The race's sound rises with the zoom, from almost nothing at its first frame (the factor
+    /// 1 times 728) to full at its last (90 times 728), and stays there.
+    #[test]
+    fn the_sound_rises_with_the_zoom() {
+        let mut intro = intro();
+        assert_eq!(intro.volume(), 728);
+        for _ in 0..41 {
+            intro.wait();
+        }
+        assert_eq!(intro.volume(), 90 * 728);
+        run(&mut intro);
+        assert_eq!(intro.volume(), 90 * 728);
     }
 
     /// At the zoom's first frame the track lies nearly edge-on: only its first 4 rows show,

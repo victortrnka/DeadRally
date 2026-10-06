@@ -195,7 +195,8 @@ impl Menu {
         let weapons = self.campaign.use_weapons;
         match crate::race::Race::new(&self.assets.race, (circuit, laps), drivers, player, weapons) {
             Ok(mut race) => {
-                race.begin();
+                let volumes = (self.config.music_volume(), self.config.effects_volume());
+                race.begin(&mut self.sound, volumes);
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }
@@ -208,7 +209,7 @@ impl Menu {
         let Some(race) = self.race.as_mut() else {
             return self.race_stand_in();
         };
-        race.tick();
+        race.tick(&mut self.sound);
         race.present(self.shown.pixels_mut());
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
