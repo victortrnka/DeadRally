@@ -1275,8 +1275,8 @@ fn the_sabotage_damages_one_rival_by_25_to_49_percent() {
     let mut game = new_game_in_shop();
     to_a_race(&mut game, true, &[Key::Left, Key::Enter, Key::Right]);
     step(&mut game, Key::Enter);
-    // The race's preview wipes in, then the shop.
-    run(&mut game, 150);
+    // The race's preview wipes in, stays while the race loads, fades out; then the shop.
+    run(&mut game, 330);
     assert_eq!(
         pixel(&game, (300, 95)),
         common::SHOP,
@@ -1316,7 +1316,7 @@ fn an_offer_after_a_sign_up_waits_for_its_answer_and_escape_does_not_give_one() 
     run(&mut game, 20);
     assert!(offered(&game), "Escape does not answer");
     step(&mut game, Key::Enter);
-    run(&mut game, 60);
+    run(&mut game, 330);
     assert_eq!(
         pixel(&game, (300, 95)),
         common::SHOP,
@@ -1431,8 +1431,16 @@ fn the_race_s_preview_wipes_in_after_the_sign_up() {
     to_a_race(&mut game, true, &[]);
     step(&mut game, Key::Space);
     run(&mut game, 20);
-    assert_eq!(pixel(&game, (5, 450)), common::PREVIEW, "the banner's left on its way");
-    assert_ne!(pixel(&game, (600, 450)), common::PREVIEW, "its right still to come");
+    assert_eq!(
+        pixel(&game, (5, 450)),
+        common::PREVIEW,
+        "the banner's left on its way"
+    );
+    assert_ne!(
+        pixel(&game, (600, 450)),
+        common::PREVIEW,
+        "its right still to come"
+    );
     run(&mut game, 30);
     assert_eq!(pixel(&game, (600, 450)), common::PREVIEW, "the banner");
     assert_eq!(pixel(&game, (400, 200)), common::PREVIEW + 2, "the circuit");

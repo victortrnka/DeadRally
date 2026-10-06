@@ -28,6 +28,11 @@ const FULL_MASK: u32 = 0x1_0000 >> 8;
 /// An opponent carries each weapon at one chance in five, with weapons on.
 const WEAPON_CHANCE: i32 = 5;
 const MINES: i32 = 8;
+/// The preview held 2000 ms of 14 ms ticks, then 41 waits to black (k = 40 down to 0), the
+/// music's volume `k` times 1638.4.
+const HOLD_WAITS: u32 = 143;
+const FADE_STEPS: i32 = 40;
+const VOLUME_STEP: f64 = 1638.4;
 
 impl Menu {
     /// The preview drawn into the second buffer over the background, then wiped in.
@@ -120,6 +125,32 @@ impl Menu {
                 }
             })
             .collect();
-        self.race_stand_in()
+        State::PreviewHold { waits: 0 }
+    }
+
+    /// `startRace` (0x415710) loads the race, then holds the preview two seconds
+    /// (`waitTwoSeconds` 0x43CBB0, 2000 ms of the clock); `drawToBlackScreen` (0x404920)
+    /// then sets the palette at 40 fortieths before its first wait.
+    pub(super) fn preview_hold(&mut self, waits: u32) -> State {
+        if waits + 1 < HOLD_WAITS {
+            return State::PreviewHold { waits: waits + 1 };
+        }
+        self.saved_palette = self.palette.shown().clone();
+        self.palette.darken(&self.saved_palette.clone(), FADE_STEPS);
+        State::ToBlack { k: FADE_STEPS }
+    }
+
+    /// After a wait of `drawToBlackScreen`: the music at `k` fortieths, then the palette at
+    /// one fortieth less before the next wait; after the last, the race (M4b) or, until it
+    /// exists, the stand-in.
+    pub(super) fn fading_out(&mut self, k: i32) -> State {
+        self.sound
+            .set_mask(((f64::from(k) * VOLUME_STEP) as u32) >> 8);
+        if k == 0 {
+            return self.race_stand_in();
+        }
+        let from = self.saved_palette.clone();
+        self.palette.darken(&from, k - 1);
+        State::ToBlack { k: k - 1 }
     }
 }
