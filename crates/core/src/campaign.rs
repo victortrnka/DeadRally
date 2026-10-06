@@ -309,10 +309,8 @@ pub(crate) struct Campaign {
     pub(crate) win_streak: i32,
     pub(crate) clean_race: bool,
     pub(crate) all_wrecked: bool,
-    /// The rocket flames' picture (0x456AFC), which only a flame's turn sets: the next race's
-    /// flames go on from the last race's.
-    pub(crate) flame_phase: usize,
-    /// The race's switches and the effect power-up's waves, which no race sets back either.
+    /// The race's switches, the effect power-up's waves and the rocket flames' picture, which
+    /// no race sets back: the next race goes on from the last race's.
     pub(crate) race_session: crate::race::Session,
 }
 
@@ -366,7 +364,6 @@ impl Campaign {
             win_streak: 0,
             clean_race: false,
             all_wrecked: false,
-            flame_phase: 0,
             race_session: crate::race::Session::default(),
         }
     }
