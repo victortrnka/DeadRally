@@ -546,7 +546,7 @@ struct Press {
 }
 
 /// The keys `--key-at T:KEY` can name; `T` alone presses Space.
-const KEY_NAMES: [(&str, Key); 12] = [
+const KEY_NAMES: [(&str, Key); 22] = [
     ("space", Key::Space),
     ("ctrl", Key::LeftCtrl),
     ("alt", Key::LeftAlt),
@@ -559,6 +559,16 @@ const KEY_NAMES: [(&str, Key); 12] = [
     ("y", Key::Y),
     ("n", Key::N),
     ("q", Key::Q),
+    ("a", Key::A),
+    ("d", Key::D),
+    ("e", Key::E),
+    ("i", Key::I),
+    ("l", Key::L),
+    ("o", Key::O),
+    ("p", Key::P),
+    ("r", Key::R),
+    ("v", Key::V),
+    ("w", Key::W),
 ];
 
 /// The saved games given with `--save`, slot by slot.

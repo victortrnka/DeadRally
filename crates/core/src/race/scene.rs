@@ -10,10 +10,9 @@ use deadrally_gamedata::race::{MAX_TRIANGLES, Scene, SceneObject, SceneTexture, 
 use super::buffer::{Buffer, LEFT, STRIDE};
 use super::raster;
 
-/// The view's half size, which the scene's perspective centres on.
-const HALF_WIDTH: i32 = 128;
+/// The view's half height, which the scene's perspective centres on, and its height; its
+/// width and half width change as the status bar slides (0x445010, 0x445014).
 const HALF_HEIGHT: i32 = 100;
-const VIEW_WIDTH: i32 = 256;
 const VIEW_HEIGHT: i32 = 200;
 /// The kinds of triangles beyond plain colours: shaded by the corners' places (0x80), darkened
 /// to black through one of three tables the original leaves all 0 (0x81 to 0x83), and shaded
@@ -220,30 +219,33 @@ fn draw_picture(buffer: &mut Buffer, pixels: &[u8], (x, y): (i32, i32), picture:
 }
 
 /// The scene over the frame, the view's top left at `camera` on the track, the view `left`
-/// pixels from the screen's left; `cull` leaves out objects far off the view (every track but
-/// the first).
+/// pixels from the screen's left and `width` wide; `cull` leaves out objects far off the view
+/// (every track but the first), and the triangles' pictures are drawn only with `pictures`
+/// (F4, 0x44502C).
 pub(crate) fn draw(
     buffer: &mut Buffer,
     scene: &Scene,
     setup: &Setup,
     (camera_x, camera_y): (i32, i32),
     cull: bool,
-    left: i32,
+    (left, width): (i32, i32),
+    pictures: bool,
 ) {
+    let half = width >> 1;
     let objects = &scene.objects;
     let places: Vec<(i32, i32)> = objects
         .iter()
         .map(|object| {
             (
-                object.position.0 - HALF_WIDTH - camera_x,
+                object.position.0 - half - camera_x,
                 object.position.1 - HALF_HEIGHT - camera_y,
             )
         })
         .collect();
     let far = |object: &SceneObject, (x, y): (i32, i32)| {
         let [least_x, most_x, least_y, most_y] = object.bounds;
-        (x << 8) > most_x.wrapping_add(HALF_WIDTH << 8)
-            || (x << 8) < least_x.wrapping_sub(HALF_WIDTH << 8)
+        (x << 8) > most_x.wrapping_add(half << 8)
+            || (x << 8) < least_x.wrapping_sub(half << 8)
             || (y << 8) > most_y.wrapping_add(HALF_HEIGHT << 8)
             || (y << 8) < least_y.wrapping_sub(HALF_HEIGHT << 8)
     };
@@ -267,7 +269,7 @@ pub(crate) fn draw(
             .iter()
             .map(|&[px, py, depth]| {
                 (
-                    project(px.wrapping_add(x << 8), depth, HALF_WIDTH),
+                    project(px.wrapping_add(x << 8), depth, half),
                     project(py.wrapping_add(y << 8), depth, HALF_HEIGHT),
                 )
             })
@@ -277,7 +279,7 @@ pub(crate) fn draw(
             let facing = (c.1 - a.1)
                 .wrapping_mul(b.0 - a.0)
                 .wrapping_sub((b.1 - a.1).wrapping_mul(c.0 - a.0));
-            let across = |v: i32| (v - HALF_WIDTH).wrapping_abs() < HALF_WIDTH;
+            let across = |v: i32| (v - half).wrapping_abs() < half;
             let down = |v: i32| (v - HALF_HEIGHT).wrapping_abs() < HALF_HEIGHT;
             if facing <= 0
                 && (across(a.0) || across(b.0) || across(c.0))
@@ -287,19 +289,15 @@ pub(crate) fn draw(
                 draw_triangle(buffer, object, setup, (index, triangle), at);
             }
             let picture = setup.picture(index, number);
-            if picture != -1 {
+            if pictures && picture != -1 {
                 let picture = &scene.textures[picture as usize];
                 let place = |at: i32, camera: i32, half: i32, middle: i32| {
                     let at = at.wrapping_sub(camera << 8).wrapping_sub(half << 8);
                     project(at, picture.depth, middle)
                 };
-                let px = place(picture.position.0, camera_x, HALF_WIDTH, HALF_WIDTH);
+                let px = place(picture.position.0, camera_x, half, half);
                 let py = place(picture.position.1, camera_y, HALF_HEIGHT, HALF_HEIGHT);
-                if px > -picture.width
-                    && py > -picture.height
-                    && px < VIEW_WIDTH
-                    && py < VIEW_HEIGHT
-                {
+                if px > -picture.width && py > -picture.height && px < width && py < VIEW_HEIGHT {
                     draw_picture(buffer, &scene.pixels, (left + px, py), picture);
                 }
             }

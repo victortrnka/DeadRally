@@ -1628,6 +1628,211 @@ const RESULTS_SHOTS: [(u64, &str); 91] = [
     (5315, "s092"),
 ];
 
+/// The keys of `scripts/reference/cheats.scenario`'s run of `docs/verification/m5.md`: the
+/// test game loaded into the shop as in the race start's run, then DRAW, DROOL, DRIVE and
+/// DROP typed, a key every 300 ms.
+const CHEATS_KEYS: [(u64, Key); 24] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2190, Key::D),
+    (2212, Key::R),
+    (2233, Key::A),
+    (2254, Key::W),
+    (2326, Key::D),
+    (2347, Key::R),
+    (2369, Key::O),
+    (2390, Key::O),
+    (2412, Key::L),
+    (2483, Key::D),
+    (2504, Key::R),
+    (2526, Key::I),
+    (2547, Key::V),
+    (2569, Key::E),
+    (2640, Key::D),
+    (2662, Key::R),
+    (2683, Key::O),
+    (2704, Key::P),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the shop, then the
+/// side panel after each word.
+const CHEATS_SHOTS: [(u64, &str); 5] = [
+    (2140, "k05-space"),
+    (2290, "draw"),
+    (2447, "drool"),
+    (2604, "drive"),
+    (2740, "drop"),
+];
+
+/// The keys of `scripts/reference/no-sign-up.scenario`'s run of `docs/verification/m5.md`:
+/// the race start's way into the sign-up, no choice until every race is full, Enter on the
+/// popup saying so, then Enter on each results screen.
+const NO_SIGN_UP_KEYS: [(u64, Key); 13] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (4693, Key::Enter),
+    (4976, Key::Enter),
+    (5190, Key::Enter),
+    (5404, Key::Enter),
+    (5623, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the sign-up filling,
+/// the popup, the fade, the three races' pages (none of them the player's), the statistics,
+/// and the screen kept after the last key (s036, caught as the hard race's page came in, left
+/// out; docs/verification/m5.md).
+const NO_SIGN_UP_SHOTS: [(u64, &str); 71] = [
+    (3879, "w20"),
+    (3882, "w21"),
+    (4158, "w22"),
+    (4161, "w23"),
+    (4298, "w24"),
+    (4372, "w25"),
+    (4375, "w26"),
+    (4379, "s000"),
+    (4371, "s001"),
+    (4585, "s002"),
+    (4602, "s003"),
+    (4586, "s004"),
+    (4604, "s005"),
+    (4656, "s006"),
+    (4672, "s007"),
+    (4653, "s008"),
+    (4710, "s009"),
+    (4727, "s010"),
+    (132, "s011"),
+    (4763, "s012"),
+    (4781, "s013"),
+    (4799, "s014"),
+    (4799, "s015"),
+    (4835, "s016"),
+    (4832, "s017"),
+    (4870, "s018"),
+    (4830, "s019"),
+    (4838, "s020"),
+    (4822, "s021"),
+    (4874, "s022"),
+    (4826, "s023"),
+    (4980, "s024"),
+    (4995, "s025"),
+    (5011, "s026"),
+    (5031, "s027"),
+    (5043, "s028"),
+    (5033, "s029"),
+    (5075, "s030"),
+    (5035, "s031"),
+    (5040, "s032"),
+    (5070, "s033"),
+    (5038, "s034"),
+    (5174, "s035"),
+    (5210, "s037"),
+    (5228, "s038"),
+    (5245, "s039"),
+    (5263, "s040"),
+    (5281, "s041"),
+    (5299, "s042"),
+    (5249, "s043"),
+    (5301, "s044"),
+    (5284, "s045"),
+    (5266, "s046"),
+    (5248, "s047"),
+    (5297, "s048"),
+    (5416, "s049"),
+    (5432, "s050"),
+    (5414, "s051"),
+    (5409, "s052"),
+    (5427, "s053"),
+    (5429, "s054"),
+    (5531, "s055"),
+    (5549, "s056"),
+    (5545, "s057"),
+    (5527, "s058"),
+    (5602, "s059"),
+    (5622, "s060"),
+    (5622, "s061"),
+    (5622, "s062"),
+    (5623, "s063"),
+    (5694, "s064"),
+];
+
+/// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
+/// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
+/// menu, Up to "See current statistics", Enter, and Enter on the statistics.
+const STATISTICS_KEYS: [(u64, Key); 10] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2162, Key::Escape),
+    (2261, Key::Up),
+    (2312, Key::Enter),
+    (2668, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the menu fading out,
+/// the statistics in, their wait, out, and the menu back in (seven shots whose pulsing line is
+/// a step off left out; docs/verification/m5.md).
+const STATISTICS_SHOTS: [(u64, &str); 46] = [
+    (2325, "s000"),
+    (2339, "s001"),
+    (2354, "s002"),
+    (2426, "s007"),
+    (2418, "s008"),
+    (2455, "s009"),
+    (2457, "s010"),
+    (2443, "s011"),
+    (2428, "s012"),
+    (2448, "s013"),
+    (2458, "s014"),
+    (2420, "s015"),
+    (2555, "s016"),
+    (2569, "s017"),
+    (2581, "s018"),
+    (2563, "s019"),
+    (2552, "s020"),
+    (2626, "s021"),
+    (2626, "s022"),
+    (2645, "s023"),
+    (2664, "s024"),
+    (2365, "s028"),
+    (2365, "s029"),
+    (2365, "s030"),
+    (2365, "s031"),
+    (2781, "s032"),
+    (2795, "s033"),
+    (2810, "s034"),
+    (2823, "s035"),
+    (2837, "s036"),
+    (2853, "s037"),
+    (2867, "s038"),
+    (2881, "s039"),
+    (2895, "s040"),
+    (2909, "s041"),
+    (2923, "s042"),
+    (2937, "s043"),
+    (2953, "s044"),
+    (2967, "s045"),
+    (2981, "s046"),
+    (2995, "s047"),
+    (3009, "s048"),
+    (3023, "s049"),
+    (3037, "s050"),
+    (3053, "s051"),
+    (3067, "s052"),
+];
+
 /// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
 /// run of `docs/verification/m5.md` (no keys held: the player stands while the opponents race
 /// three laps round it).
@@ -1760,6 +1965,663 @@ const OPPONENTS_SHOTS: [(u64, &str); 126] = [
     (7737, "o125"),
 ];
 
+/// The keys held in `scripts/reference/effect.scenario`'s run of `docs/verification/m5.md`
+/// (`--no-ai --drive`), as the original sampled them: Up held 14 ticks before the first
+/// power-ups (so the effect power-up lies after the first U-turn), then the car driven over it.
+const EFFECT_HELD: [Held; 33] = [
+    (3488, Key::Up, 14),
+    (3669, Key::Up, 292),
+    (3670, Key::Left, 5),
+    (3701, Key::Right, 3),
+    (3708, Key::Right, 3),
+    (3720, Key::Right, 2),
+    (3733, Key::Right, 2),
+    (3750, Key::Right, 2),
+    (3763, Key::Right, 2),
+    (3782, Key::Right, 2),
+    (3787, Key::Right, 2),
+    (3795, Key::Right, 2),
+    (3801, Key::Right, 2),
+    (3807, Key::Right, 34),
+    (3843, Key::Right, 6),
+    (3851, Key::Right, 15),
+    (3869, Key::Right, 5),
+    (3877, Key::Right, 2),
+    (3882, Key::Right, 3),
+    (3889, Key::Right, 2),
+    (3895, Key::Right, 2),
+    (3903, Key::Right, 2),
+    (3924, Key::Left, 4),
+    (3931, Key::Left, 10),
+    (3943, Key::Left, 72),
+    (3986, Key::Up, 135),
+    (4020, Key::Left, 2),
+    (4031, Key::Left, 2),
+    (4043, Key::Left, 2),
+    (4091, Key::Left, 2),
+    (4103, Key::Left, 2),
+    (4109, Key::Left, 3),
+    (4116, Key::Left, 3),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the drive, the effect
+/// power-up taken at frame 886 and the view wavering for its 560 ticks, then still again.
+const EFFECT_SHOTS: [(u64, &str); 131] = [
+    (3363, "e000"),
+    (3394, "e001"),
+    (3430, "e002"),
+    (3466, "e003"),
+    (3503, "e004"),
+    (3537, "e005"),
+    (3573, "e006"),
+    (3608, "e007"),
+    (3644, "e008"),
+    (3680, "e009"),
+    (3715, "e010"),
+    (3751, "e011"),
+    (3787, "e012"),
+    (3823, "e013"),
+    (3858, "e014"),
+    (3894, "w000"),
+    (3901, "w001"),
+    (3908, "w002"),
+    (3916, "w003"),
+    (3923, "w004"),
+    (3930, "w005"),
+    (3937, "w006"),
+    (3944, "w007"),
+    (3951, "w008"),
+    (3958, "w009"),
+    (3965, "w010"),
+    (3973, "w011"),
+    (3980, "w012"),
+    (3987, "w013"),
+    (3994, "w014"),
+    (4001, "w015"),
+    (4008, "w016"),
+    (4015, "w017"),
+    (4023, "w018"),
+    (4030, "w019"),
+    (4037, "w020"),
+    (4044, "w021"),
+    (4051, "w022"),
+    (4058, "w023"),
+    (4065, "w024"),
+    (4073, "w025"),
+    (4080, "w026"),
+    (4087, "w027"),
+    (4094, "w028"),
+    (4101, "w029"),
+    (4108, "w030"),
+    (4115, "w031"),
+    (4123, "w032"),
+    (4130, "w033"),
+    (4137, "w034"),
+    (4144, "w035"),
+    (4151, "w036"),
+    (4158, "w037"),
+    (4166, "w038"),
+    (4173, "w039"),
+    (4180, "w040"),
+    (4187, "w041"),
+    (4194, "w042"),
+    (4201, "w043"),
+    (4208, "w044"),
+    (4216, "w045"),
+    (4223, "w046"),
+    (4230, "w047"),
+    (4237, "w048"),
+    (4244, "w049"),
+    (4251, "w050"),
+    (4258, "w051"),
+    (4266, "w052"),
+    (4273, "w053"),
+    (4280, "w054"),
+    (4287, "w055"),
+    (4294, "w056"),
+    (4301, "w057"),
+    (4308, "w058"),
+    (4316, "w059"),
+    (4323, "w060"),
+    (4330, "w061"),
+    (4337, "w062"),
+    (4344, "w063"),
+    (4351, "w064"),
+    (4358, "w065"),
+    (4366, "w066"),
+    (4373, "w067"),
+    (4380, "w068"),
+    (4387, "w069"),
+    (4394, "w070"),
+    (4401, "w071"),
+    (4408, "w072"),
+    (4415, "w073"),
+    (4423, "w074"),
+    (4430, "w075"),
+    (4437, "w076"),
+    (4444, "w077"),
+    (4451, "w078"),
+    (4458, "w079"),
+    (4465, "w080"),
+    (4473, "w081"),
+    (4480, "w082"),
+    (4487, "w083"),
+    (4494, "w084"),
+    (4501, "w085"),
+    (4508, "w086"),
+    (4515, "w087"),
+    (4523, "w088"),
+    (4530, "w089"),
+    (4537, "w090"),
+    (4544, "w091"),
+    (4551, "w092"),
+    (4558, "w093"),
+    (4566, "w094"),
+    (4573, "w095"),
+    (4580, "w096"),
+    (4587, "w097"),
+    (4594, "w098"),
+    (4601, "w099"),
+    (4608, "w100"),
+    (4616, "w101"),
+    (4623, "w102"),
+    (4630, "w103"),
+    (4637, "w104"),
+    (4644, "w105"),
+    (4651, "w106"),
+    (4658, "w107"),
+    (4665, "w108"),
+    (4672, "w109"),
+    (4679, "w110"),
+    (4686, "w111"),
+    (4693, "w112"),
+    (4700, "w113"),
+    (4707, "w114"),
+    (4714, "w115"),
+];
+
+/// The keys held in `scripts/reference/race-keys.scenario`'s run of `docs/verification/m5.md`
+/// (`--no-ai --drive`): the car's keys as the original sampled them, and TAB, F5, F4, P and
+/// Enter at the ticks whose frames equal the run's screenshots.
+const RACE_KEYS_HELD: [Held; 36] = [
+    (3395, Key::Tab, 7),
+    (3459, Key::F5, 7),
+    (3488, Key::F5, 7),
+    (3509, Key::Up, 317),
+    (3510, Key::Left, 9),
+    (3528, Key::Right, 2),
+    (3537, Key::Right, 2),
+    (3549, Key::Right, 2),
+    (3560, Key::Right, 2),
+    (3578, Key::Right, 2),
+    (3600, Key::Right, 2),
+    (3620, Key::Right, 2),
+    (3642, Key::Right, 3),
+    (3651, Key::Right, 3),
+    (3662, Key::Right, 2),
+    (3669, Key::Right, 36),
+    (3707, Key::Right, 7),
+    (3716, Key::Right, 11),
+    (3729, Key::Right, 6),
+    (3739, Key::Right, 3),
+    (3745, Key::Right, 2),
+    (3750, Key::Right, 2),
+    (3757, Key::Right, 3),
+    (3768, Key::Right, 2),
+    (3773, Key::F4, 7),
+    (3784, Key::Left, 3),
+    (3790, Key::Left, 4),
+    (3796, Key::Left, 8),
+    (3807, Key::Left, 65),
+    (3816, Key::F4, 7),
+    (3829, Key::Up, 2),
+    (3844, Key::Up, 34),
+    (3866, Key::Tab, 7),
+    (3930, Key::Tab, 7),
+    (4002, Key::P, 7),
+    (4145, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the status bar sliding
+/// away, the small board, the shadows off and on, the drive, the scene's pictures off and on,
+/// the status bar back and away again, and the game paused in the middle of the wider view.
+const RACE_KEYS_SHOTS: [(u64, &str); 126] = [
+    (3387, "k000"),
+    (3396, "k001"),
+    (3403, "k002"),
+    (3409, "k003"),
+    (3416, "k004"),
+    (3423, "k005"),
+    (3430, "k006"),
+    (3437, "k007"),
+    (3444, "k008"),
+    (3451, "k009"),
+    (3459, "k010"),
+    (3466, "k011"),
+    (3473, "k012"),
+    (3480, "k013"),
+    (3490, "k014"),
+    (3497, "k015"),
+    (3503, "k016"),
+    (3510, "k017"),
+    (3516, "k018"),
+    (3523, "k019"),
+    (3530, "k020"),
+    (3537, "k021"),
+    (3544, "k022"),
+    (3552, "k023"),
+    (3559, "k024"),
+    (3566, "k025"),
+    (3573, "k026"),
+    (3580, "k027"),
+    (3587, "k028"),
+    (3595, "k029"),
+    (3602, "k030"),
+    (3609, "k031"),
+    (3616, "k032"),
+    (3623, "k033"),
+    (3630, "k034"),
+    (3637, "k035"),
+    (3644, "k036"),
+    (3652, "k037"),
+    (3659, "k038"),
+    (3666, "k039"),
+    (3673, "k040"),
+    (3680, "k041"),
+    (3687, "k042"),
+    (3695, "k043"),
+    (3702, "k044"),
+    (3709, "k045"),
+    (3716, "k046"),
+    (3723, "k047"),
+    (3731, "k048"),
+    (3737, "k049"),
+    (3744, "k050"),
+    (3752, "k051"),
+    (3759, "k052"),
+    (3766, "k053"),
+    (3775, "k054"),
+    (3782, "k055"),
+    (3787, "k056"),
+    (3794, "k057"),
+    (3802, "k058"),
+    (3809, "k059"),
+    (3817, "k060"),
+    (3825, "k061"),
+    (3830, "k062"),
+    (3837, "k063"),
+    (3845, "k064"),
+    (3852, "k065"),
+    (3859, "k066"),
+    (3867, "k067"),
+    (3875, "k068"),
+    (3881, "k069"),
+    (3887, "k070"),
+    (3895, "k071"),
+    (3902, "k072"),
+    (3909, "k073"),
+    (3916, "k074"),
+    (3923, "k075"),
+    (3931, "k076"),
+    (3939, "k077"),
+    (3944, "k078"),
+    (3952, "k079"),
+    (3959, "k080"),
+    (3966, "k081"),
+    (3973, "k082"),
+    (3980, "k083"),
+    (3987, "k084"),
+    (3994, "k085"),
+    (4002, "k086"),
+    (4010, "k087"),
+    (4016, "k088"),
+    (4023, "k089"),
+    (4030, "k090"),
+    (4037, "k091"),
+    (4044, "k092"),
+    (4052, "k093"),
+    (4059, "k094"),
+    (4066, "k095"),
+    (4073, "k096"),
+    (4080, "k097"),
+    (4087, "k098"),
+    (4095, "k099"),
+    (4102, "k100"),
+    (4109, "k101"),
+    (4116, "k102"),
+    (4123, "k103"),
+    (4130, "k104"),
+    (4137, "k105"),
+    (4144, "k106"),
+    (4152, "k107"),
+    (4158, "k108"),
+    (4165, "k109"),
+    (4172, "k110"),
+    (4179, "k111"),
+    (4186, "k112"),
+    (4194, "k113"),
+    (4201, "k114"),
+    (4208, "k115"),
+    (4215, "k116"),
+    (4222, "k117"),
+    (4229, "k118"),
+    (4236, "k119"),
+    (4243, "k120"),
+    (4250, "k121"),
+    (4257, "k122"),
+    (4264, "k123"),
+    (4271, "k124"),
+    (4279, "k125"),
+];
+
+/// The keys held in `scripts/reference/lap.scenario`'s run of `docs/verification/m5.md`
+/// (the test game without weapons, `--no-ai --drive`): the car's keys for a whole lap as the
+/// original sampled them, and TAB twice after the lap.
+const LAP_HELD: [Held; 215] = [
+    (3199, Key::Up, 329),
+    (3200, Key::Left, 12),
+    (3231, Key::Right, 2),
+    (3239, Key::Right, 2),
+    (3250, Key::Right, 2),
+    (3267, Key::Right, 2),
+    (3287, Key::Right, 2),
+    (3311, Key::Right, 2),
+    (3333, Key::Right, 2),
+    (3341, Key::Right, 2),
+    (3346, Key::Right, 2),
+    (3354, Key::Right, 2),
+    (3361, Key::Right, 6),
+    (3369, Key::Right, 31),
+    (3402, Key::Right, 10),
+    (3414, Key::Right, 9),
+    (3425, Key::Right, 4),
+    (3432, Key::Right, 3),
+    (3439, Key::Right, 3),
+    (3446, Key::Right, 2),
+    (3452, Key::Right, 2),
+    (3459, Key::Right, 2),
+    (3484, Key::Left, 2),
+    (3489, Key::Left, 5),
+    (3497, Key::Left, 4),
+    (3503, Key::Left, 3),
+    (3508, Key::Left, 62),
+    (3540, Key::Up, 1083),
+    (3579, Key::Left, 2),
+    (3599, Key::Left, 2),
+    (3649, Key::Left, 3),
+    (3656, Key::Left, 3),
+    (3663, Key::Left, 2),
+    (3668, Key::Left, 4),
+    (3676, Key::Left, 4),
+    (3684, Key::Left, 2),
+    (3689, Key::Left, 6),
+    (3699, Key::Left, 4),
+    (3705, Key::Left, 3),
+    (3711, Key::Left, 2),
+    (3717, Key::Left, 2),
+    (3723, Key::Left, 2),
+    (3731, Key::Left, 2),
+    (3741, Key::Left, 2),
+    (3788, Key::Right, 2),
+    (3819, Key::Left, 3),
+    (3826, Key::Left, 2),
+    (3831, Key::Left, 3),
+    (3839, Key::Left, 3),
+    (3847, Key::Left, 3),
+    (3854, Key::Left, 2),
+    (3862, Key::Left, 2),
+    (3869, Key::Left, 2),
+    (3878, Key::Left, 2),
+    (3894, Key::Left, 2),
+    (3919, Key::Right, 2),
+    (3924, Key::Right, 2),
+    (3930, Key::Right, 3),
+    (3937, Key::Right, 2),
+    (3968, Key::Left, 2),
+    (3973, Key::Left, 3),
+    (3980, Key::Left, 4),
+    (3987, Key::Left, 3),
+    (3995, Key::Left, 3),
+    (4001, Key::Left, 4),
+    (4010, Key::Left, 2),
+    (4017, Key::Left, 2),
+    (4025, Key::Left, 2),
+    (4034, Key::Left, 2),
+    (4041, Key::Left, 2),
+    (4054, Key::Left, 2),
+    (4062, Key::Left, 2),
+    (4070, Key::Left, 2),
+    (4076, Key::Left, 2),
+    (4082, Key::Left, 3),
+    (4087, Key::Left, 5),
+    (4095, Key::Left, 3),
+    (4101, Key::Left, 3),
+    (4106, Key::Left, 2),
+    (4114, Key::Left, 2),
+    (4120, Key::Left, 2),
+    (4142, Key::Right, 3),
+    (4147, Key::Right, 21),
+    (4182, Key::Right, 2),
+    (4188, Key::Right, 2),
+    (4193, Key::Right, 4),
+    (4199, Key::Right, 32),
+    (4234, Key::Right, 3),
+    (4240, Key::Right, 2),
+    (4254, Key::Left, 5),
+    (4262, Key::Left, 9),
+    (4273, Key::Left, 4),
+    (4281, Key::Left, 2),
+    (4288, Key::Left, 2),
+    (4304, Key::Left, 2),
+    (4321, Key::Right, 2),
+    (4328, Key::Right, 3),
+    (4336, Key::Right, 2),
+    (4369, Key::Left, 3),
+    (4375, Key::Left, 5),
+    (4383, Key::Left, 7),
+    (4392, Key::Left, 21),
+    (4415, Key::Left, 11),
+    (4428, Key::Left, 8),
+    (4439, Key::Left, 2),
+    (4444, Key::Left, 2),
+    (4478, Key::Right, 2),
+    (4509, Key::Left, 2),
+    (4514, Key::Left, 2),
+    (4521, Key::Left, 3),
+    (4529, Key::Left, 4),
+    (4536, Key::Left, 3),
+    (4541, Key::Left, 3),
+    (4547, Key::Left, 4),
+    (4554, Key::Left, 3),
+    (4562, Key::Left, 2),
+    (4568, Key::Left, 2),
+    (4594, Key::Right, 5),
+    (4601, Key::Right, 70),
+    (4652, Key::Up, 654),
+    (4680, Key::Right, 2),
+    (4709, Key::Left, 3),
+    (4715, Key::Left, 5),
+    (4722, Key::Left, 5),
+    (4729, Key::Left, 8),
+    (4739, Key::Left, 12),
+    (4753, Key::Left, 14),
+    (4769, Key::Left, 7),
+    (4778, Key::Left, 4),
+    (4784, Key::Left, 3),
+    (4789, Key::Left, 5),
+    (4797, Key::Left, 3),
+    (4803, Key::Left, 3),
+    (4809, Key::Left, 3),
+    (4816, Key::Left, 3),
+    (4822, Key::Left, 2),
+    (4828, Key::Left, 3),
+    (4835, Key::Left, 2),
+    (4847, Key::Left, 5),
+    (4854, Key::Left, 4),
+    (4867, Key::Left, 2),
+    (4910, Key::Right, 3),
+    (4916, Key::Right, 6),
+    (4927, Key::Right, 3),
+    (4933, Key::Right, 2),
+    (4938, Key::Right, 2),
+    (4944, Key::Right, 2),
+    (4950, Key::Right, 2),
+    (4973, Key::Right, 3),
+    (4979, Key::Right, 2),
+    (4983, Key::Right, 2),
+    (4987, Key::Right, 2),
+    (4993, Key::Right, 2),
+    (5004, Key::Right, 2),
+    (5040, Key::Left, 3),
+    (5058, Key::Left, 3),
+    (5068, Key::Left, 2),
+    (5075, Key::Left, 2),
+    (5089, Key::Left, 2),
+    (5099, Key::Left, 2),
+    (5106, Key::Left, 2),
+    (5114, Key::Left, 2),
+    (5119, Key::Left, 2),
+    (5124, Key::Left, 2),
+    (5129, Key::Left, 2),
+    (5134, Key::Left, 2),
+    (5139, Key::Left, 4),
+    (5146, Key::Left, 4),
+    (5154, Key::Left, 4),
+    (5160, Key::Left, 3),
+    (5165, Key::Left, 3),
+    (5170, Key::Left, 5),
+    (5177, Key::Left, 5),
+    (5184, Key::Left, 3),
+    (5189, Key::Left, 5),
+    (5196, Key::Left, 4),
+    (5203, Key::Left, 3),
+    (5208, Key::Left, 4),
+    (5216, Key::Left, 4),
+    (5224, Key::Left, 3),
+    (5231, Key::Left, 3),
+    (5237, Key::Left, 3),
+    (5245, Key::Left, 2),
+    (5272, Key::Right, 5),
+    (5280, Key::Right, 8),
+    (5290, Key::Right, 62),
+    (5327, Key::Up, 398),
+    (5362, Key::Right, 2),
+    (5373, Key::Right, 3),
+    (5380, Key::Right, 2),
+    (5392, Key::Left, 2),
+    (5399, Key::Left, 2),
+    (5410, Key::Left, 2),
+    (5435, Key::Left, 2),
+    (5533, Key::Right, 2),
+    (5545, Key::Right, 2),
+    (5554, Key::Right, 2),
+    (5561, Key::Right, 2),
+    (5565, Key::Right, 3),
+    (5571, Key::Right, 2),
+    (5576, Key::Right, 4),
+    (5583, Key::Right, 4),
+    (5590, Key::Right, 49),
+    (5631, Key::Tab, 7),
+    (5642, Key::Right, 5),
+    (5650, Key::Right, 5),
+    (5658, Key::Right, 4),
+    (5666, Key::Right, 2),
+    (5673, Key::Right, 2),
+    (5689, Key::Left, 4),
+    (5695, Key::Left, 9),
+    (5707, Key::Left, 2),
+    (5717, Key::Left, 2),
+    (5722, Key::Left, 4),
+    (5788, Key::Tab, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the HUD's clock through
+/// the lap, the lap's time after it, the status bar sliding away with the small board showing
+/// the lap's time and then the new lap's clock, and the bar back.
+const LAP_SHOTS: [(u64, &str); 81] = [
+    (3359, "c000"),
+    (3430, "c001"),
+    (3502, "c002"),
+    (3573, "c003"),
+    (3645, "c004"),
+    (3716, "c005"),
+    (3788, "c006"),
+    (3859, "c007"),
+    (3931, "c008"),
+    (4002, "c009"),
+    (4073, "c010"),
+    (4145, "c011"),
+    (4216, "c012"),
+    (4288, "c013"),
+    (4359, "c014"),
+    (4431, "c015"),
+    (4502, "c016"),
+    (4573, "c017"),
+    (4645, "c018"),
+    (4716, "c019"),
+    (4788, "c020"),
+    (4859, "c021"),
+    (4930, "c022"),
+    (5002, "c023"),
+    (5074, "c024"),
+    (5145, "c025"),
+    (5216, "c026"),
+    (5288, "c027"),
+    (5359, "c028"),
+    (5431, "c029"),
+    (5502, "t000"),
+    (5509, "t001"),
+    (5516, "t002"),
+    (5523, "t003"),
+    (5531, "t004"),
+    (5538, "t005"),
+    (5545, "t006"),
+    (5552, "t007"),
+    (5559, "t008"),
+    (5566, "t009"),
+    (5574, "t010"),
+    (5581, "t011"),
+    (5588, "t012"),
+    (5595, "t013"),
+    (5602, "t014"),
+    (5609, "t015"),
+    (5616, "t016"),
+    (5623, "t017"),
+    (5632, "t018"),
+    (5639, "t019"),
+    (5645, "t020"),
+    (5652, "t021"),
+    (5659, "t022"),
+    (5666, "t023"),
+    (5674, "t024"),
+    (5681, "t025"),
+    (5688, "t026"),
+    (5695, "t027"),
+    (5702, "t028"),
+    (5709, "t029"),
+    (5716, "t030"),
+    (5723, "t031"),
+    (5731, "t032"),
+    (5738, "t033"),
+    (5745, "t034"),
+    (5752, "t035"),
+    (5759, "t036"),
+    (5767, "t037"),
+    (5773, "t038"),
+    (5781, "t039"),
+    (5789, "t040"),
+    (5797, "t041"),
+    (5802, "t042"),
+    (5809, "t043"),
+    (5816, "t044"),
+    (5823, "t045"),
+    (5831, "t046"),
+    (5838, "t047"),
+    (5845, "t048"),
+    (5852, "t049"),
+    (5859, "t050"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1842,6 +2704,73 @@ const ABORT_SHOTS: [(u64, &str); 16] = [
     (3669, "a13"),
     (3676, "a14"),
     (3680, "a15"),
+];
+
+/// The keys held in `scripts/reference/tab-abort.scenario`'s run of `docs/verification/m5.md`
+/// (`--no-ai`), at the ticks whose frames equal its screenshots: TAB once the race is on,
+/// Escape, Y.
+const TAB_ABORT_HELD: [Held; 3] = [
+    (3359, Key::Tab, 7),
+    (3430, Key::Escape, 7),
+    (3609, Key::Y, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the status bar away,
+/// the box over the wider view, and the race's last frame spinning away.
+const TAB_ABORT_SHOTS: [(u64, &str); 53] = [
+    (3417, "hidden"),
+    (3428, "last"),
+    (3596, "box"),
+    (3616, "s00"),
+    (3619, "s01"),
+    (3622, "s02"),
+    (3626, "s03"),
+    (3629, "s04"),
+    (3633, "s05"),
+    (3637, "s06"),
+    (3640, "s07"),
+    (3644, "s08"),
+    (3647, "s09"),
+    (3651, "s10"),
+    (3654, "s11"),
+    (3658, "s12"),
+    (3662, "s13"),
+    (3665, "s14"),
+    (3669, "s15"),
+    (3673, "s16"),
+    (3677, "s17"),
+    (3680, "s18"),
+    (3684, "s19"),
+    (3688, "s20"),
+    (3691, "s21"),
+    (3695, "s22"),
+    (3698, "s23"),
+    (3702, "s24"),
+    (3705, "s25"),
+    (3709, "s26"),
+    (3710, "s27"),
+    (3713, "s28"),
+    (3717, "s29"),
+    (3720, "s30"),
+    (3724, "s31"),
+    (3727, "s32"),
+    (3731, "s33"),
+    (3735, "s34"),
+    (3738, "s35"),
+    (3742, "s36"),
+    (3745, "s37"),
+    (3749, "s38"),
+    (3753, "s39"),
+    (3756, "s40"),
+    (3760, "s41"),
+    (3763, "s42"),
+    (3767, "s43"),
+    (3770, "s44"),
+    (3774, "s45"),
+    (3777, "s46"),
+    (3781, "s47"),
+    (3785, "s48"),
+    (3788, "s49"),
 ];
 
 /// The keys held in `scripts/reference/abort-early.scenario`'s run: Escape held through the
@@ -2705,6 +3634,65 @@ fn the_opponents_run_matches_the_committed_manifest() {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_effect_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m5.md): a
+    // view wavering differently, or for longer, under the effect power-up shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &EFFECT_HELD),
+        &EFFECT_SHOTS,
+        4_720,
+        slots,
+    );
+    check_manifest("effect-run.sha256", &lines, "the effect run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_keys_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m5.md): the
+    // status bar sliding at the wrong speed, a view centred wrongly without it, a missing small
+    // board, shadows or pictures that do not switch, or the paused box out of place show here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &RACE_KEYS_HELD),
+        &RACE_KEYS_SHOTS,
+        4_290,
+        slots,
+    );
+    check_manifest("race-keys-run.sha256", &lines, "the race keys run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_lap_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m5.md): a
+    // whole lap of the player's car, the HUD's clock, the lap's time shown for its 210 ticks
+    // (counted down twice a frame by the small board) and the small board's time.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(unarmed_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &LAP_HELD),
+        &LAP_SHOTS,
+        5_870,
+        slots,
+    );
+    check_manifest("lap-run.sha256", &lines, "the lap run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_results_run_matches_the_committed_manifest() {
     // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
     // the race to a wreck with the opponents driving, the results fading in with the medium
@@ -2723,6 +3711,63 @@ fn the_results_run_matches_the_committed_manifest() {
         false,
     );
     check_manifest("results-run.sha256", &lines, "the results run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_cheats_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // DRAW's $1000, DROOL's $500000, DRIVE's and DROP's ranks after the standings are sorted
+    // afresh, in the shop's side panel.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&CHEATS_KEYS, &[]),
+        &CHEATS_SHOTS,
+        2_800,
+        slots,
+    );
+    check_manifest("cheats-run.sha256", &lines, "the cheats run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_no_sign_up_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // signing up for no race fills every race with the others, draws the cars' places, and
+    // shows the three races' results, every one placed by car, then the statistics.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&NO_SIGN_UP_KEYS, &[]),
+        &NO_SIGN_UP_SHOTS,
+        5_700,
+        slots,
+    );
+    check_manifest("no-sign-up-run.sha256", &lines, "the no sign-up run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_statistics_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // the Start Racing menu out but for the title's colours, the player's statistics without a
+    // race's part beside the standings, the blinking line, and the menus back.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&STATISTICS_KEYS, &[]),
+        &STATISTICS_SHOTS,
+        3_100,
+        slots,
+    );
+    check_manifest("statistics-run.sha256", &lines, "the statistics run");
 }
 
 #[test]
@@ -2781,6 +3826,25 @@ fn the_abort_early_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("abort-early-run.sha256", &lines, "the abort-early run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_tab_abort_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m5.md): a race abandoned with the status bar hidden must spin away
+    // round its top left corner, not tilt.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &TAB_ABORT_HELD),
+        &TAB_ABORT_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("tab-abort-run.sha256", &lines, "the tab-abort run");
 }
 
 #[test]
@@ -2855,6 +3919,13 @@ fn the_shop_purchases_run_matches_the_committed_manifest() {
 /// a player part-way through a game.
 fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
     armed_save(texts, 37, [0, 0, 0])
+}
+
+/// The test game with its weapons switched off (`captures/test.sg` with the weapons byte 0).
+fn unarmed_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&test_save(texts));
+    game.use_weapons = 0;
+    game.encode(77)
 }
 
 /// The test game with the player's damage (37 in it), mines, spikes and rocket

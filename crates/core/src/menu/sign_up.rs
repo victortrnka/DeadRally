@@ -13,6 +13,10 @@ use crate::canvas::{Canvas, at};
 use crate::keys;
 
 /// The three races' columns are 160 pixels apart; their snapshots, prices, popups and border.
+/// The music's volume as the screen fades after signing up for no race: from 0xFFDC down by
+/// 0x51E a step.
+const NO_SIGN_UP_VOLUME: u32 = 0xFFDC;
+const NO_SIGN_UP_VOLUME_STEP: u32 = 0x51E;
 const COLUMN: usize = 160;
 const SNAPSHOT: (usize, usize) = (32, 128);
 const PRICE_XS: [usize; 3] = [73, 226, 383];
@@ -472,13 +476,25 @@ impl Menu {
         State::NoSignUpFade { step: 0 }
     }
 
-    /// The fade to black after the "no race" popup: 51 steps of 2 %.
+    /// The fade to black after the "no race" popup: 51 steps of 2 %, the music fading with it
+    /// when the sign-up was reached through the Underground Market (0x4355E6); then its music's
+    /// order back as an Escape from the market brings it (0x43568C), and the results.
     pub(super) fn no_sign_up_fade(&mut self, step: u32) -> State {
+        let through_market = self.campaign.use_weapons && self.shop.continue_seen;
+        if through_market {
+            self.sound
+                .set_mask((NO_SIGN_UP_VOLUME - NO_SIGN_UP_VOLUME_STEP * step) >> 8);
+        }
         self.palette.fade(100 - 2 * i64::from(step));
         if step < 50 {
             return State::NoSignUpFade { step: step + 1 };
         }
-        self.race_stand_in()
+        if through_market {
+            self.sound.set_music_order(self.music_order);
+            self.shop.market_escaped = true;
+            self.sound.stop_channel(1);
+        }
+        self.results_without_race()
     }
 
     /// Every race is full: the entrants sorted, then the sabotage's popup or an offer, else

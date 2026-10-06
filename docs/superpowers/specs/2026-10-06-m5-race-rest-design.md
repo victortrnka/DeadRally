@@ -19,6 +19,8 @@ A race runs from the start to the results as the original's does: the opponents 
 
 - **The opponents' driving** (`calculateIAMovements` 0x40AFC0, for each opponent each logic tick, before the cars move): the keys it holds come from the track's guide (`-LR1.BPK`, a byte for each 4x4 pixels, 16 on the line) under two feelers 40 pixels out, 26 degrees either side of ahead; the zone's tables (`-DRV.DAT`: the share of its engine to drive at and of its steering to turn with; `-OHI.DAT`: how far off the line to keep while getting round a car); a car or a mine ahead (it gets round them, with the turbo), walls and knocks; the effect power-up's count; cars behind (a mine) and ahead (the guns); now and then the horn. It draws `rand()` once a tick, and once more on the tick it may sound its horn.
 
+- **What M4c left (M5c, details in `docs/verification/m5.md`):** the race's other keys between F1 and the pass's drawing (0x416D13): TAB slides the status bar away 2 columns a tick and back 4, the track's view and everything on it following, the small board at the top left while it is away; F2 and F3 the music's and the effects' volume, F4 and F5 the scene's pictures and the shadows, P the paused box over the help's calmer music; none set back between races. The effect power-up wavers the player's view in 2x2 blocks while its count lasts (`sub_404730`). A race without weapons shows the lap's clock, and for 210 ticks after each lap the lap's time, where the weapons bar would be (0x414B82).
+
 ## 4. Verification
 
 Each part has a scenario from the test game of M3b, its state watched in the original's memory frame by frame against ours, a shot every 500 ms, and its manifest.

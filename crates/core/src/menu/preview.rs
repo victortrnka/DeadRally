@@ -248,6 +248,7 @@ impl Menu {
             weapons,
             pause_lines: lines,
             race_over_lines: self.assets.menu.texts.campaign.race_over.clone(),
+            paused_lines: self.assets.menu.texts.campaign.game_paused.clone(),
             help: self.assets.menu.texts.help.clone(),
             pads: std::array::from_fn(|control| self.config.pad(control)),
             still: self.campaign.still_opponents,
@@ -258,6 +259,7 @@ impl Menu {
                 .record(circuit, record.car.clamp(0, 5) as usize)
                 .1
                 .map(|part| part as i32),
+            session: self.campaign.race_session,
             flame_phase: self.campaign.flame_phase,
         };
         let race =
@@ -288,6 +290,7 @@ impl Menu {
         self.palette.show(&palette, 100);
         if outcome != crate::race::Outcome::Racing {
             self.campaign.flame_phase = race.flame_phase();
+            self.campaign.race_session = race.session();
             // 0x4334F7: the books settled, then the news in the panel (0x434512).
             self.outcome = race.outcome();
             self.race = None;
@@ -297,6 +300,7 @@ impl Menu {
             self.after_race();
             // 0x434670: every entry black before the results fade in.
             self.palette.fade(0);
+            self.results_after_race = true;
             return self.open_results();
         }
         State::Race { ticks: ticks + 1 }
