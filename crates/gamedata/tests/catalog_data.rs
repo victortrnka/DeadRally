@@ -256,6 +256,21 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         ]
     );
     assert_eq!((menu.weapons.len(), menu.loan_shark.width), (12, 96));
+    // The cars' handling tables, as initParticipantValues (0x401060) fills them when run; the
+    // values agree with DreeRally's copy of them. A wrong value changes how a car drives.
+    let handling = &assets.race.handling;
+    assert_eq!(handling.size, [8.3, 9.7, 9.0, 10.5, 8.5, 9.2]);
+    assert_eq!((handling.steering[0], handling.steering[23]), (1.8, 1.35));
+    assert_eq!(
+        (handling.engine[0], handling.engine[1], handling.engine[119]),
+        (2.55, 2.6, 4.2)
+    );
+    assert_eq!((handling.tires[0], handling.tires[119]), (0.5, 0.0));
+    assert_eq!((handling.armour[0], handling.armour[23]), (120, 400));
+    assert_eq!(
+        (handling.armour_upgrade[0], handling.armour_upgrade[19]),
+        (360, 440)
+    );
 }
 
 /// One line per decoded picture: the SHA-256 of its frames' pixels (palettes first where the

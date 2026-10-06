@@ -190,7 +190,12 @@ impl Menu {
                     colour: colours.0[record.colour.clamp(0, 255) as usize],
                     name: record.name().to_ascii_uppercase(),
                     car: record.car.clamp(0, 5) as usize,
+                    level: if racer.driver == PLAYER { 3 } else { race },
+                    engine: record.engine,
+                    tires: record.tires,
+                    armour: record.armour,
                     damage: record.damage,
+                    rocket: racer.rocket,
                     mines: racer.mines,
                     spikes: racer.spikes != 0,
                 }
@@ -199,18 +204,19 @@ impl Menu {
         let laps = LAPS[race];
         let weapons = self.campaign.use_weapons;
         let lines = self.assets.menu.texts.campaign.abort_race.clone();
+        let controls = std::array::from_fn(|control| self.config.key(control));
         let race = crate::race::Race::new(
             &self.assets.race,
             (circuit, laps),
             drivers,
             (player, weapons),
-            lines,
+            (lines, controls),
             &mut self.campaign.rand,
         );
         match race {
             Ok(mut race) => {
                 let volumes = (self.config.music_volume(), self.config.effects_volume());
-                race.begin(&mut self.sound, volumes);
+                race.begin(&mut self.sound, volumes, &mut self.campaign.rand);
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }

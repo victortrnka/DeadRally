@@ -10,6 +10,7 @@ use crate::catalog::{self, CatalogError};
 use crate::dr_cfg::DrCfg;
 use crate::exe::{Exe, ExeError};
 use crate::haf::{Animation, HafError};
+use crate::handling::HandlingTables;
 use crate::image::{Image, Palette, PaletteError};
 use crate::machine::MachineError;
 use crate::s3m::Module;
@@ -235,6 +236,12 @@ impl Assets {
         };
         let menu = Archive::open(&path("MENU.BPA"))?;
         let musics = Archive::open(&path(sound::ARCHIVE))?;
+        let exe_path = path("DR.EXE");
+        let exe_bytes = std::fs::read(&exe_path).map_err(|source| AssetError::Read {
+            path: exe_path,
+            source,
+        })?;
+        let exe = Exe::parse(exe_bytes).map_err(AssetError::Exe)?;
         let remedy_path = path("RMD.BMP");
         let remedy_bytes = std::fs::read(&remedy_path).map_err(|source| AssetError::Read {
             path: remedy_path.clone(),
@@ -254,7 +261,7 @@ impl Assets {
             intro_effects: sound::load_effects(&musics, "SANIM-E.CMF")
                 .map_err(AssetError::Sound)?,
             menu_music: sound::load_music(&musics, "MEN-MUS.CMF").map_err(AssetError::Sound)?,
-            menu: menu_assets(&menu, &musics, &path("END.BMP"), &path("DR.EXE"))?,
+            menu: menu_assets(&menu, &musics, &path("END.BMP"), &exe)?,
             race: crate::race::RaceArchives {
                 tracks: (0..10)
                     .map(|n| Archive::open(&path(&format!("TR{n}.BPA"))))
@@ -262,6 +269,7 @@ impl Assets {
                 engine: Archive::open(&path("ENGINE.BPA"))?,
                 ib_files: Archive::open(&path("IBFILES.BPA"))?,
                 musics,
+                handling: HandlingTables::read(&exe).map_err(AssetError::Machine)?,
             },
         })
     }
@@ -392,7 +400,7 @@ fn menu_assets(
     menu: &Archive,
     musics: &Archive,
     end: &std::path::Path,
-    exe: &std::path::Path,
+    exe: &Exe,
 ) -> Result<MenuAssets, AssetError> {
     const BGCOP: &str = "BGCOP.PAL";
     let background_copper = menu.read(BGCOP)?;
@@ -410,11 +418,6 @@ fn menu_assets(
             error: PaletteError::NotSixBit { index, value },
         });
     }
-    let exe_bytes = std::fs::read(exe).map_err(|source| AssetError::Read {
-        path: exe.to_path_buf(),
-        source,
-    })?;
-    let exe = Exe::parse(exe_bytes).map_err(AssetError::Exe)?;
     Ok(MenuAssets {
         background: frames(menu, "MENUBG5.BPK")?.remove(0),
         panel_line: frames(menu, "CHATLIN1.BPK")?.remove(0),
@@ -437,10 +440,10 @@ fn menu_assets(
         ],
         end: full_screen(bmp_picture(end)?, end)?,
         effects: sound::load_effects(musics, "MEN-SAM.CMF").map_err(AssetError::Sound)?,
-        texts: Texts::read(&exe).map_err(AssetError::Text)?,
+        texts: Texts::read(exe).map_err(AssetError::Text)?,
         slider: frames(menu, "SLIDMUS2.BPK")?.remove(0),
         knob: frames(menu, "VOLCUR2.BPK")?.remove(0),
-        default_config: DrCfg::defaults(&exe).map_err(AssetError::Machine)?,
+        default_config: DrCfg::defaults(exe).map_err(AssetError::Machine)?,
         medium: frames(menu, "F-MED1A.BPK")?,
         fame_title: frames(menu, "FAMETXT.BPK")?.remove(0),
         records_title: frames(menu, "RECOTXT.BPK")?.remove(0),
@@ -491,7 +494,7 @@ fn menu_assets(
         market_title: frames(menu, "BLACKTX1.BPK")?.remove(0),
         loan_shark: frames(menu, "DEALER2B.BPK")?.remove(0),
         weapons: frames(menu, "MARKET1E.BPK")?,
-        market_prices: market_prices(&exe).map_err(AssetError::Machine)?,
+        market_prices: market_prices(exe).map_err(AssetError::Machine)?,
         drug_dealer: frames(menu, "DRUGDEAL.BPK")?.remove(0),
         hitman: frames(menu, "EVENT_2.BPK")?.remove(0),
         preview_banner: frames(menu, "PREP4.BPK")?.remove(0),

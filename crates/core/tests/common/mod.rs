@@ -330,5 +330,14 @@ pub fn race_archives() -> deadrally_gamedata::race::RaceArchives {
         engine: empty("ENGINE.BPA"),
         ib_files: empty("IBFILES.BPA"),
         musics: empty("MUSICS.BPA"),
+        handling: deadrally_gamedata::handling::HandlingTables {
+            engine: vec![2.5; 120],
+            tires: vec![0.5; 120],
+            steering: vec![1.5; 24],
+            armour: vec![300; 24],
+            armour_upgrade: vec![400; 20],
+            size: vec![9.0; 6],
+            tough: b"TOUGH\0".to_vec(),
+        },
     }
 }

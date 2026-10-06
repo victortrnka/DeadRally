@@ -108,6 +108,12 @@ impl<'a> Machine<'a> {
             .collect()
     }
 
+    /// The stack pointer as the code left it, for the locals of a function stopped before
+    /// its end.
+    pub fn stack_pointer(&self) -> u32 {
+        self.registers[4]
+    }
+
     /// Sets the 32-bit value at `address` before a run, as the original's globals would hold
     /// it.
     pub fn poke(&mut self, address: u32, value: u32) {

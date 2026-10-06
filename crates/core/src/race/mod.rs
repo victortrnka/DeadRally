@@ -4,8 +4,10 @@
 
 mod buffer;
 mod cars;
+mod driving;
 mod hud;
 mod intro;
+mod marks;
 mod pause;
 mod pedestrians;
 mod power_ups;
@@ -22,8 +24,11 @@ use deadrally_gamedata::xm::Bank;
 use crate::audio::Sound;
 use crate::campaign::Rand;
 use crate::keys::Keys;
+use crate::trig::{cos, sin};
 
 use self::buffer::{Buffer, LEFT, STRIDE};
+use self::driving::Car;
+use self::raster::ftol;
 
 /// The race buffer's shown size, and the window rows it is doubled into from.
 pub(crate) const VIEW_WIDTH: usize = 320;
@@ -45,7 +50,15 @@ pub(crate) struct Driver {
     /// The name, upper-cased.
     pub(crate) name: Vec<u8>,
     pub(crate) car: usize,
+    /// The race's level the car is set up for: the race's (0 to 2) for an opponent, 3 for the
+    /// player (0x4330A5).
+    pub(crate) level: usize,
+    /// The engine, tires and armour upgrades.
+    pub(crate) engine: i32,
+    pub(crate) tires: i32,
+    pub(crate) armour: i32,
     pub(crate) damage: i32,
+    pub(crate) rocket: i32,
     pub(crate) mines: i32,
     /// Spiked wheels, which have sprites of their own.
     pub(crate) spikes: bool,
@@ -98,24 +111,6 @@ fn shadow_in_view(points: [(i32, i32); 3]) -> bool {
         && points.iter().any(|&(_, y)| near(y, HALF_HEIGHT))
 }
 
-/// A car in the race.
-#[derive(Clone, Debug, PartialEq)]
-struct Car {
-    x: f32,
-    y: f32,
-    /// Its direction in steps of 3.75 degrees (`directionRotation` 0x4A7D0C), and in degrees
-    /// (`carAngle` 0x4A7DAC).
-    rotation: i32,
-    angle: f32,
-    /// Where its sprite is among all the cars' (`participantBpkOffset` 0x4A7D10).
-    sprite: usize,
-    lap: i32,
-    place: i32,
-    /// What is left of the car, 102400 for none of 100 % damage (`damageBar` 0x4A6898).
-    damage_bar: i32,
-    speed: f32,
-}
-
 #[derive(Debug)]
 pub(crate) struct Race {
     track: Track,
@@ -150,6 +145,37 @@ pub(crate) struct Race {
     /// The pause's box (`GEN-MES.BPK`, 0x479688) and its nine lines.
     pause_box: Vec<u8>,
     pause_lines: Vec<Vec<u8>>,
+    /// The scancodes of the eight controls in `dr.cfg`.
+    controls: [u32; 8],
+    /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
+    /// goes (0x4A7DA0).
+    samples: [u32; 16],
+    sampled: usize,
+    /// The ticks the player's rocket has burned (0x456AAC).
+    rocket_ticks: i32,
+    /// The view's lead ahead of the player's car.
+    lead: Lead,
+    /// The view's corner on the track for the frame being drawn (0x456ABC, 0x456AC0).
+    view: (usize, usize),
+    /// The smoke puffs' pictures (`SMOKE.BPK`).
+    smoke: Vec<u8>,
+    power_ups: power_ups::PowerUps,
+    /// How loud the player's tires squeal (0x4AA92C) and whether the squeal plays
+    /// (0x456AD0).
+    squeal: i32,
+    squealing: bool,
+    /// Whether the start has been given (`0x456AD4` at 2).
+    started: bool,
+}
+
+/// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
+/// a fifth of the way to where its speed points each frame the target changes, then
+/// closing in over the frames after.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Lead {
+    target: [i32; 2],
+    at: [i32; 2],
+    steps: i32,
 }
 
 /// The sounds' channels and pitches (16.16) in the race's calls of `loadMenuSoundEffect`.
@@ -163,6 +189,21 @@ const READY_SOUND: (u8, u32) = (3, 0x5_0000);
 const SET_SOUND: (u8, u32) = (44, 0x2_0000);
 const GO_SOUND: (u8, u32) = (44, 0x2_8000);
 const FULL: u32 = 0x1_0000;
+/// The channels of the crash sounds and of the fire.
+const CRASH_CHANNEL: usize = 5;
+const FIRE_CHANNEL: usize = 6;
+/// A car-car knock's sound by the timer's tick (0x4167C9), and a wall's of kind 0.
+const KNOCK_SOUNDS: [(u8, u32); 3] = [(11, 0x2_1000), (13, 0x2_3000), (16, 0x2_3000)];
+const WALL_SOUNDS: [u8; 3] = [10, 15, 16];
+/// The most a knock takes off a car at once.
+const MAX_HURT: i32 = 10_000;
+/// The countdown's frames: the cars move from the next.
+const START_FRAME: i32 = 190;
+/// The tires' squeal (on the fire's channel).
+const SQUEAL_SOUND: u8 = 37;
+/// What each logic tick leaves of a car's push back and spin (0x442168, 0x442160).
+const PUSH_EASE: f64 = 0.869_565_217_391_304_4;
+const SPIN_EASE: f64 = 0.833_333_333_333_333_4;
 
 /// The race's clocks: its frame count (`raceFrame` 0x481E14, the countdown under 190), the
 /// ticks the timer has counted (0x503500, and at the HUD's last frame 0x4A7CFC), the ticks
@@ -238,7 +279,7 @@ impl Race {
         (circuit, laps): (usize, i32),
         drivers: Vec<Driver>,
         (player, weapons): (usize, bool),
-        pause_lines: Vec<Vec<u8>>,
+        (pause_lines, controls): (Vec<Vec<u8>>, [u32; 8]),
         rand: &mut Rand,
     ) -> Result<Race, RaceError> {
         let number = circuit % 9 + 1;
@@ -268,8 +309,7 @@ impl Race {
             },
         )?;
         let spots = track.info.power_ups;
-        // The power-ups' values matter once the race picks them up (M4c).
-        power_ups::place(&mut track.image, &spots, &obstacles, rand);
+        let power_ups = power_ups::PowerUps::new(&mut track.image, &spots, obstacles, rand);
         let cars = drivers
             .iter()
             .enumerate()
@@ -286,17 +326,13 @@ impl Race {
                         rotation - 48
                     };
                 }
-                Car {
-                    x: x as f32,
-                    y: y as f32,
-                    rotation,
-                    angle: rotation as f32 * 3.75,
-                    sprite: cars::FRAME * (rotation as usize + cars::FRAMES * slot),
-                    lap: 1,
-                    place: slot as i32 + 1,
-                    damage_bar: (100 - driver.damage) << 10,
-                    speed: 0.0,
-                }
+                let handling = driving::Handling::new(&archives.handling, driver, slot == player);
+                Car::new(
+                    (x as f32, y as f32, rotation),
+                    slot,
+                    handling,
+                    driver.engine,
+                )
             })
             .collect();
         let hud = hud::HudImages::load(&archives.ib_files, player, drivers[player].car, weapons)?;
@@ -344,21 +380,41 @@ impl Race {
             pedestrians,
             // The timer has run for minutes by any race; what counts is that it is past the
             // pedestrians' first step, which comes on the first frame as in the original.
+            // Loading the race leaves the timer a tick behind the clock, which the first
+            // frame's pedestrians catch up before its HUD counts the ticks since the set-up
+            // (0x4022A0): the first frame's `between` is 1, as the power-ups' wait shows.
             clock: Clock {
                 timer: 1000,
+                ticks: 1,
                 ..Clock::default()
             },
             music,
             effects,
             pause_box: hud::decoded(&archives.engine, "GEN-MES.BPK")?,
             pause_lines,
+            controls,
+            samples: [0; 16],
+            sampled: 0,
+            rocket_ticks: 0,
+            lead: Lead::default(),
+            view: (0, 0),
+            smoke: hud::decoded(&archives.engine, "SMOKE.BPK")?,
+            power_ups,
+            squeal: 0,
+            squealing: false,
+            started: false,
         })
     }
 
     /// The race's sound set up (0x416215: the menu's stopped, the track's music started at
     /// the configured volumes but silent until the intro raises it, the player's engine), then
     /// the race loop's first frame, up to its wait.
-    pub(crate) fn begin(&mut self, sound: &mut Sound, (music_volume, effects_volume): (u32, u32)) {
+    pub(crate) fn begin(
+        &mut self,
+        sound: &mut Sound,
+        (music_volume, effects_volume): (u32, u32),
+        rand: &mut Rand,
+    ) {
         sound.stop();
         sound.load_effects(&self.effects);
         sound.set_mask(0);
@@ -366,23 +422,165 @@ impl Race {
         sound.set_effects_volume(effects_volume);
         let car = self.drivers[self.player].car as u8;
         sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-        self.frame(sound);
+        self.frame(sound, rand);
     }
 
-    /// A pass of the race loop up to its wait: a step of the race for each tick waited, then
-    /// the frame drawn into the buffer.
-    fn frame(&mut self, sound: &mut Sound) {
-        let steps = self.clock.waiting;
+    /// A pass of the race loop up to its wait (0x416390): the player's keys of the ticks
+    /// waited, a step of the race for each, then the frame drawn into the buffer.
+    fn frame(&mut self, sound: &mut Sound, rand: &mut Rand) {
+        let steps = self.clock.waiting as usize;
         self.clock.waiting = 0;
-        for _ in 0..steps {
+        // The samples since the last pass, oldest first (0x41641F).
+        let mut at = self.sampled;
+        for k in 0..steps {
+            at = (at + 15) % 16;
+            self.cars[self.player].keys[steps - 1 - k] = self.samples[at];
+        }
+        self.power_ups.step(
+            &mut self.track.image,
+            self.clock.between,
+            self.weapons,
+            rand,
+        );
+        for tick in 0..steps {
             self.clock.frame += 1;
+            if self.clock.frame > START_FRAME {
+                self.drive(tick, rand);
+            }
+            self.after_tick(tick, sound, rand);
         }
         self.draw(sound);
+    }
+
+    /// The cars' step of a tick once the race is on (0x4164B6): the opponents' driving comes
+    /// with M5, so they hold no keys.
+    fn drive(&mut self, tick: usize, rand: &mut Rand) {
+        for car in &mut self.cars {
+            car.wall = 0;
+        }
+        let ground = driving::Ground {
+            mask: &self.track.mask.pixels,
+            width: self.track.info.width as i32,
+            height: self.track.info.height as i32,
+        };
+        for (slot, car) in self.cars.iter_mut().enumerate() {
+            let keys = car.keys[tick];
+            let rocket = (slot == self.player).then_some(&mut self.rocket_ticks);
+            car.drive(keys, slot, &ground, &self.sprites, rand, rocket);
+        }
+        for car in &mut self.cars {
+            car.knocks = [0, 0];
+        }
+        // `sub_40CD10` first eases every car's push back and spin.
+        for car in &mut self.cars {
+            car.push = car.push.map(|d| (f64::from(d) * PUSH_EASE) as f32);
+            car.spin = (f64::from(car.spin) * SPIN_EASE) as f32;
+        }
+    }
+
+    /// What every tick does after the cars' steps (0x41661A): the counters of walls and
+    /// knocks, the knocks' damage, the player's crash sounds and engine.
+    fn after_tick(&mut self, tick: usize, sound: &mut Sound, rand: &mut Rand) {
+        for car in &mut self.cars {
+            if car.stuck > 0 {
+                car.stuck -= 1;
+            }
+            if car.knocked > 0 {
+                car.knocked -= 1;
+            }
+            if car.wall == 1 {
+                car.stuck += 2;
+            }
+            if car.knocks[0] == 1 {
+                car.x = car.previous[0];
+                car.knocked += 2;
+            }
+            if car.knocks[1] == 1 {
+                car.y = car.previous[1];
+                car.knocked += 2;
+            }
+        }
+        for car in &mut self.cars {
+            car.previous = [car.x, car.y, car.angle];
+        }
+        // 0x4166E0: the push back from a wall or a car hurts as its square, less the armour.
+        for car in &mut self.cars {
+            if (car.stuck == 2 || car.knocked == 2) && !car.finished {
+                let [x, y] = car.push.map(f64::from);
+                let hurt =
+                    ftol((x * x + y * y) * f64::from(0x400 - car.handling.armour)).min(MAX_HURT);
+                car.handling.damage = (car.handling.damage - hurt).max(0);
+            }
+        }
+        self.crash_sounds(sound, rand);
+        // 0x4168E6: the tires' squeal from the tick before, once the start is given.
+        let player = &self.cars[self.player];
+        let alive = player.handling.damage > 0 && !player.finished;
+        if self.squeal > 0 && !self.squealing && alive && self.started {
+            sound.trigger_at(FIRE_CHANNEL, SQUEAL_SOUND, self.squeal as u32, ENGINE_PITCH);
+            self.squealing = true;
+        }
+        if self.squeal == 0 && self.squealing {
+            sound.stop_channel(FIRE_CHANNEL);
+            self.squealing = false;
+        }
+        self.squeal = 0;
+        if player.handling.damage <= 0 || player.finished {
+            sound.stop_channel(ENGINE_CHANNEL);
+            sound.stop_channel(FIRE_CHANNEL);
+        }
+        // 0x4169A2: the engine's pitch from the speed.
+        let speed = (f64::from(player.speed) / f64::from(player.handling.engine)).abs();
+        let [idle, rise] = player.note;
+        let pitch =
+            ftol(f64::from(rise.wrapping_mul(5)) * speed + f64::from(idle.wrapping_add(0x2_8000)));
+        sound.set_channel(ENGINE_CHANNEL, FULL, pitch as u32);
+        let mut track = marks::Track {
+            mask: &self.track.mask.pixels,
+            image: &mut self.track.image.pixels,
+            width: self.track.info.width as i32,
+            skid: &self.track.skid,
+            blood: &self.track.blood,
+        };
+        for (slot, car) in self.cars.iter_mut().enumerate() {
+            let keys = car.keys[tick];
+            let squeal = (slot == self.player).then_some(&mut self.squeal);
+            marks::roll(car, keys, &mut track, rand, squeal, self.weapons);
+        }
+    }
+
+    /// 0x41674F: the player's car against a wall or a car, its sounds as loud as the push
+    /// back; `rand()` drawn for the wall's pitch.
+    fn crash_sounds(&mut self, sound: &mut Sound, rand: &mut Rand) {
+        let player = &self.cars[self.player];
+        if player.wall == 0 && player.knocks == [0, 0] {
+            return;
+        }
+        let [x, y] = player.push.map(f64::from);
+        let volume = ftol((x * x + y * y).sqrt() * 25000.0).min(FULL as i32) as u32;
+        let third = self.clock.ticks.rem_euclid(3);
+        if player.knocks != [0, 0] {
+            let (effect, pitch) = KNOCK_SOUNDS[third as usize];
+            sound.trigger_at(CRASH_CHANNEL, effect, volume, pitch);
+        }
+        let pitch = (rand.next() % 0x6000 + 0x2_2000) as u32;
+        let effect = match player.hit {
+            0 => Some(WALL_SOUNDS[third as usize]),
+            1 => Some(11),
+            2 => Some(15),
+            3 => Some(16),
+            _ => None,
+        };
+        if let Some(effect) = effect {
+            sound.trigger_at(CRASH_CHANNEL, effect, volume, pitch);
+        }
     }
 
     /// From this wait to the next: the frame drawn onto the screen and, on the first, the
     /// intro; or the intro's next step, and once it is over the loop's next frame.
     pub(crate) fn tick(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) -> Outcome {
+        self.samples[self.sampled] = sample(keys, &self.controls);
+        self.sampled = (self.sampled + 1) % 16;
         self.clock.tick();
         match &mut self.stage {
             Stage::Loop { first } => {
@@ -437,7 +635,7 @@ impl Race {
             }
         }
         self.stage = Stage::Loop { first: false };
-        self.frame(sound);
+        self.frame(sound, rand);
         Outcome::Racing
     }
 
@@ -520,16 +718,40 @@ impl Race {
         self.shown = intro.palette().clone();
     }
 
-    /// `recalculateCircuitImageOffset` (0x40D560) without the lead of a moving car: the view
-    /// centred on the player, kept inside the track.
-    fn camera(&self) -> (usize, usize) {
+    /// `recalculateCircuitImageOffset` (0x40D560), once a frame: the view centred on the
+    /// player plus its lead, kept inside the track.
+    fn move_view(&mut self) {
         let car = &self.cars[self.player];
+        let r = (f64::from(car.angle) + 180.0) * RADIANS;
+        let speed = f64::from(car.speed);
+        let target = [
+            ftol(sin(r) * speed * 16.0),
+            ftol(cos(r) * speed * 10.666_666_666_666_666),
+        ];
+        let lead = &mut self.lead;
+        let steps = if target == lead.target { lead.steps } else { 5 };
+        lead.target = target;
+        if steps > 0 {
+            for (at, target) in lead.at.iter_mut().zip(target) {
+                *at += (target - *at) / steps;
+            }
+            lead.steps = steps - 1;
+        }
         let info = &self.track.info;
         let max_x = info.width as i32 - TRACK_VIEW_WIDTH;
         let max_y = info.height as i32 - VIEW_HEIGHT as i32;
-        let x = (car.x as i32 - HALF_WIDTH).min(max_x).max(0);
-        let y = (car.y as i32 - HALF_HEIGHT).min(max_y).max(0);
-        (x as usize, y as usize)
+        let x = (ftol(f64::from(car.x)) - HALF_WIDTH + lead.at[0])
+            .min(max_x)
+            .max(0);
+        let y = (ftol(f64::from(car.y)) - HALF_HEIGHT + lead.at[1])
+            .min(max_y)
+            .max(0);
+        self.view = (x as usize, y as usize);
+    }
+
+    /// The view's corner on the track for this frame.
+    fn camera(&self) -> (usize, usize) {
+        self.view
     }
 
     /// The HUD's drivers: the player, then the others in their places.
@@ -542,14 +764,15 @@ impl Race {
                 name: self.drivers[slot].name.clone(),
                 lap: self.cars[slot].lap,
                 place: self.cars[slot].place,
-                damage_bar: self.cars[slot].damage_bar,
-                finished: false,
+                damage_bar: self.cars[slot].handling.damage,
+                finished: self.cars[slot].finished,
             })
             .collect()
     }
 
     /// A frame: the track under the camera copied right of the HUD (0x4170C1), the HUD.
     fn draw(&mut self, sound: &mut Sound) {
+        self.move_view();
         let (x, y) = self.camera();
         let width = self.track.info.width as usize;
         let image = &self.track.image.pixels;
@@ -565,6 +788,16 @@ impl Race {
         let now = self.clock.timer;
         self.pedestrians
             .draw(&mut self.buffer, now, car, view, left);
+        for car in &mut self.cars {
+            marks::draw_puffs(
+                &mut self.buffer,
+                car,
+                &self.smoke,
+                view,
+                left,
+                self.clock.between,
+            );
+        }
         self.draw_cars();
         self.draw_shadows();
         let (x, y) = self.camera();
@@ -587,7 +820,10 @@ impl Race {
                 Some(semaphore::Event::Ready) => (LIGHTS_CHANNEL, READY_SOUND),
                 Some(semaphore::Event::Set) => (START_CHANNEL, SET_SOUND),
                 Some(semaphore::Event::Go) => {
+                    // 0x415079: the clocks and the player's samples from the start.
                     self.clock.restart();
+                    self.sampled = 0;
+                    self.started = true;
                     (START_CHANNEL, GO_SOUND)
                 }
                 None => (0, (0, 0)),
@@ -601,10 +837,10 @@ impl Race {
         let player = &self.cars[self.player];
         let gauge = hud::Player {
             speed: player.speed,
-            engine: 1.0,
+            engine: player.handling.engine,
             weapons: self.weapons,
             weapons_bar: hud::FULL_BAR,
-            turbo_bar: hud::FULL_BAR,
+            turbo_bar: player.handling.turbo,
             mines: self.drivers[self.player].mines,
         };
         let boards = self.boards();
@@ -618,26 +854,32 @@ impl Race {
         );
     }
 
-    /// Where the player's car is on the screen (0x40D929): in the middle of the view unless
-    /// the view has stopped at the track's edge.
+    /// Where the player's car is on the screen (0x40D929): where the view's lead puts it,
+    /// unless the view has stopped at the track's edge.
     fn player_on_screen(&self) -> (i32, i32) {
         let car = &self.cars[self.player];
         let info = &self.track.info;
-        let axis = |position: f32, half: i32, size: i32, view: i32| {
-            let at = f64::from(position);
+        let axis = |position: f32, lead: i32, half: i32, size: i32, view: i32| {
+            let at = f64::from(lead) + f64::from(position);
             if at < f64::from(half) {
-                position as i32
+                ftol(f64::from(position))
             } else if at > f64::from(size - half) {
-                (at - f64::from(size - view)) as i32
+                ftol(f64::from(position) - f64::from(size - view))
             } else {
-                half
+                half - lead
             }
         };
         let width = info.width as i32;
         let height = info.height as i32;
         (
-            axis(car.x, HALF_WIDTH, width, TRACK_VIEW_WIDTH) + HUD_WIDTH as i32,
-            axis(car.y, HALF_HEIGHT, height, VIEW_HEIGHT as i32),
+            axis(car.x, self.lead.at[0], HALF_WIDTH, width, TRACK_VIEW_WIDTH) + HUD_WIDTH as i32,
+            axis(
+                car.y,
+                self.lead.at[1],
+                HALF_HEIGHT,
+                height,
+                VIEW_HEIGHT as i32,
+            ),
         )
     }
 
@@ -661,13 +903,13 @@ impl Race {
         let others = (0..self.cars.len()).filter(|&slot| slot != self.player);
         let lit = &self.track.lit;
         let player = &self.cars[self.player];
-        if player.damage_bar > 0 {
+        if player.handling.damage > 0 {
             cars::headlights(&mut self.buffer, on_screen[self.player], player.angle, lit);
         }
         for slot in others.clone() {
             let (x, y) = on_screen[slot];
             let near = x > left - 40 && x < 360 && y > -40 && y < VIEW_HEIGHT as i32 + 40;
-            if near && self.cars[slot].damage_bar > 0 {
+            if near && self.cars[slot].handling.damage > 0 {
                 cars::headlights(&mut self.buffer, (x, y), self.cars[slot].angle, lit);
             }
         }
@@ -724,9 +966,106 @@ impl Race {
     }
 }
 
+/// Degrees to radians as the original has it (0x4412B0).
+const RADIANS: f64 = 0.017_453_292_519_944_444;
+
+/// `sub_4138A0`: the race's keys as the timer samples them each tick, from the eight
+/// controls' scancodes in `dr.cfg` (accelerate, brake, left, right, turbo, gun, and the two
+/// that drop a mine) and the arrows, which always drive; the arrows count for the
+/// controls set to their extended codes. The first mine control's key is let go once seen.
+fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
+    let held = |keys: &Keys, code: u32| u8::try_from(code).is_ok_and(|code| keys.held(code));
+    let mut bits = 0;
+    let arrows = [
+        (0xC8, 0x48, 1),
+        (0xD0, 0x50, 2),
+        (0xCB, 0x4B, 4),
+        (0xCD, 0x4D, 8),
+    ];
+    for (&control, (extended, arrow, bit)) in controls.iter().zip(arrows) {
+        if control == extended && keys.held(arrow) {
+            bits |= bit;
+        }
+    }
+    for (code, bit) in [(0xC8, 1), (0x48, 1), (controls[0], 1)] {
+        if held(keys, code) {
+            bits |= bit;
+        }
+    }
+    for (code, bit) in [(0xD0, 2), (0x50, 2), (controls[1], 2)] {
+        if held(keys, code) {
+            bits |= bit;
+        }
+    }
+    for (control, bit) in [(2, 4), (3, 8), (4, 0x10), (5, 0x20)] {
+        if held(keys, controls[control]) {
+            bits |= bit;
+        }
+    }
+    if held(keys, controls[6]) {
+        bits |= driving::MINE;
+        if let Ok(code) = u8::try_from(controls[6]) {
+            keys.release(code);
+        }
+    }
+    if bits & driving::BRAKE != 0 && bits & driving::MINE != 0 {
+        bits &= !driving::BRAKE;
+    }
+    if held(keys, controls[7]) {
+        bits |= driving::MINE | driving::BRAKE;
+    }
+    if bits & driving::TURBO != 0 {
+        bits |= driving::ACCELERATE;
+    }
+    bits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::{InputEvent, Key};
+
+    /// The defaults `dr.cfg` gets: A, Z, the arrows' extended codes, left shift, left
+    /// control, left alt and space.
+    const DEFAULT_CONTROLS: [u32; 8] = [0x1E, 0x2C, 0xCB, 0xCD, 0x2A, 0x1D, 0x38, 0x39];
+
+    fn holding(held: &[Key]) -> Keys {
+        let mut keys = Keys::default();
+        for &key in held {
+            keys.event(InputEvent::Key { key, pressed: true });
+        }
+        keys
+    }
+
+    /// The arrows drive whatever `dr.cfg` sets, and the turbo key also accelerates: a player
+    /// on the default keys steers with the arrows and boosts with shift alone.
+    #[test]
+    fn the_arrows_always_drive_and_the_turbo_accelerates() {
+        let mut keys = holding(&[Key::Up, Key::Left]);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS),
+            driving::ACCELERATE | driving::LEFT
+        );
+        let mut keys = holding(&[Key::Down, Key::Right, Key::LeftShift]);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS),
+            driving::BRAKE | driving::RIGHT | driving::TURBO | driving::ACCELERATE
+        );
+    }
+
+    /// The first mine control is seen once a press and cancels the brake held with it; the
+    /// second holds both bits, which drops a mine.
+    #[test]
+    fn a_mine_key_counts_once_and_takes_the_brake() {
+        let mut keys = holding(&[Key::Z, Key::LeftAlt]);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS), driving::MINE);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS), driving::BRAKE);
+        let mut keys = holding(&[Key::Space]);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS),
+            driving::MINE | driving::BRAKE
+        );
+    }
 
     /// The original checks a shadow's corners, not its area: one stretched across the whole
     /// view with its corners outside is never drawn, and cars under it stay lit.

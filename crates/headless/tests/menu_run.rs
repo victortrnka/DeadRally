@@ -742,6 +742,81 @@ const RACE_START_SHOTS: [(u64, &str); 55] = [
     (3248, "r55"),
 ];
 
+/// The keys held in `scripts/reference/drive.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`): Up from before the start for 324 ticks, Left and Right 14 ticks each on the way.
+const DRIVE_HELD: [Held; 3] = [
+    (3359, Key::Up, 324),
+    (3540, Key::Left, 14),
+    (3583, Key::Right, 14),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the countdown, the
+/// car pulling away with its wheels spinning, smoke and tire marks, the turns, the grass
+/// slowing it, rolling out.
+const DRIVE_SHOTS: [(u64, &str); 61] = [
+    (3324, "race"),
+    (3366, "d01"),
+    (3374, "d02"),
+    (3381, "d03"),
+    (3389, "d04"),
+    (3396, "d05"),
+    (3403, "d06"),
+    (3410, "d07"),
+    (3417, "d08"),
+    (3424, "d09"),
+    (3432, "d10"),
+    (3439, "d11"),
+    (3446, "d12"),
+    (3453, "d13"),
+    (3460, "d14"),
+    (3468, "d15"),
+    (3475, "d16"),
+    (3481, "d17"),
+    (3489, "d18"),
+    (3496, "d19"),
+    (3503, "d20"),
+    (3510, "d21"),
+    (3517, "d22"),
+    (3525, "d23"),
+    (3532, "d24"),
+    (3540, "d25"),
+    (3546, "d26"),
+    (3555, "d27"),
+    (3560, "d28"),
+    (3567, "d29"),
+    (3574, "d30"),
+    (3583, "d31"),
+    (3589, "d32"),
+    (3597, "d33"),
+    (3603, "d34"),
+    (3610, "d35"),
+    (3617, "d36"),
+    (3624, "d37"),
+    (3632, "d38"),
+    (3639, "d39"),
+    (3646, "d40"),
+    (3653, "d41"),
+    (3660, "d42"),
+    (3667, "d43"),
+    (3673, "d44"),
+    (3684, "d45"),
+    (3689, "d46"),
+    (3696, "d47"),
+    (3703, "d48"),
+    (3710, "d49"),
+    (3716, "d50"),
+    (3724, "d51"),
+    (3730, "d52"),
+    (3739, "d53"),
+    (3746, "d54"),
+    (3752, "d55"),
+    (3759, "d56"),
+    (3766, "d57"),
+    (3774, "d58"),
+    (3781, "d59"),
+    (3789, "d60"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1248,6 +1323,25 @@ fn the_pause_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("pause-run.sha256", &lines, "the pause run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_drive_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4c.md): a wrong step of the car's physics, its wheelspin, marks or
+    // the power-ups' draws of `rand()` moves or turns the car on screen within a second.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &DRIVE_HELD),
+        &DRIVE_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("drive-run.sha256", &lines, "the drive run");
 }
 
 #[test]

@@ -1,65 +1,230 @@
-//! The race's big power-ups as it starts (`generateBigPowerUps` 0x409460): a value for each of
-//! the 20 spots, then one time in four a power-up painted onto the track's picture at the 13th
-//! or 14th of the track's spots (from `INF.BIN`), its picture from `ENGINE.BPA`'s
-//! `OBSTACLE.BPK`.
+//! The race's power-ups (spec M4c): 20 places on the track (from `INF.BIN`) where the original
+//! paints a power-up into the track's picture, keeping the 16x16 pixels under it to put back
+//! when it goes. At the start (`generateBigPowerUps` 0x409460) one time in four a big one
+//! lies at the 13th or 14th place; from 350 ticks on (`sub_410220`, once a pass of the race
+//! loop) the first 12 places get power-ups at random, at most four at once, which blink out
+//! after 2000 ticks. The pictures are `ENGINE.BPA`'s `OBSTACLE.BPK`.
 
 use deadrally_gamedata::image::Image;
 
 use crate::campaign::Rand;
 
-/// The spots, and a power-up's picture: 16x16, drawn centred on its spot.
-const SPOTS: usize = 20;
+/// The places, the ones power-ups come and go at, and a power-up's picture: 16x16, drawn
+/// centred on its place.
+const PLACES: usize = 20;
+const CHANGING: usize = 12;
 const SIDE: usize = 16;
+/// The ticks before the first power-up, and before the next once one has gone.
+const FIRST: i32 = 350;
+const AFTER_ONE_WENT: i32 = 280;
+/// The most power-ups out at once.
+const MOST: usize = 4;
+/// The age a power-up goes at, and how often it blinks before.
+const LIFE: i32 = 2000;
+const BLINKS: i32 = 24;
 
-/// What the start set up: each spot's value (100 to 149) and the power-up painted, if any (its
-/// spot and kind).
+/// A place for a power-up (0x501BA0, 0x120 bytes a place).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BigPowerUps {
-    pub(crate) values: [i32; SPOTS],
-    pub(crate) painted: Option<(usize, i32)>,
+struct Place {
+    at: [i32; 2],
+    /// The power-up lying there (1 to 8), 0 for none.
+    kind: i32,
+    /// The ticks before one may come here, and how long the one here has lain.
+    wait: i32,
+    age: i32,
+    /// The track's pixels under the power-up.
+    under: [u8; SIDE * SIDE],
 }
 
-/// The start's power-ups on `image` (the track's picture), `spots` the track's places for
-/// them, `pictures` the power-ups' 16x16 pictures one after another.
-pub(crate) fn place(
-    image: &mut Image,
-    spots: &[[i32; 2]],
-    pictures: &[u8],
-    rand: &mut Rand,
-) -> BigPowerUps {
-    let values = std::array::from_fn(|_| rand.next() % 50 + 100);
-    let mut painted = None;
-    if rand.next() % 4 == 0 {
-        let spot = (rand.next() % 2 + 12) as usize;
-        if spots.get(spot).is_some_and(|&[x, _]| x > 0) {
-            let kind = rand.next() % 2 + 7;
-            paint(image, spots[spot], pictures, kind);
-            painted = Some((spot, kind));
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PowerUps {
+    places: Vec<Place>,
+    /// The ticks before the next power-up may come (0x456AC4).
+    wait: i32,
+    /// The power-ups' pictures one after another.
+    pictures: Vec<u8>,
+}
+
+impl PowerUps {
+    /// The start's power-ups (`generateBigPowerUps`) on `image`, the track's picture: a wait
+    /// of 100 to 149 ticks for each place, then one time in four a big power-up at the 13th
+    /// or 14th place, if the track has it.
+    pub(crate) fn new(
+        image: &mut Image,
+        spots: &[[i32; 2]],
+        pictures: Vec<u8>,
+        rand: &mut Rand,
+    ) -> PowerUps {
+        let places = (0..PLACES)
+            .map(|place| Place {
+                at: spots.get(place).copied().unwrap_or([0, 0]),
+                kind: 0,
+                wait: rand.next() % 50 + 100,
+                age: 0,
+                under: [0; SIDE * SIDE],
+            })
+            .collect();
+        let mut power_ups = PowerUps {
+            places,
+            wait: FIRST,
+            pictures,
+        };
+        if rand.next() % 4 == 0 {
+            let place = (rand.next() % 2 + 12) as usize;
+            if power_ups.places[place].at[0] > 0 {
+                let kind = rand.next() % 2 + 7;
+                power_ups.lay(image, place, kind);
+            }
         }
+        power_ups
     }
-    BigPowerUps { values, painted }
-}
 
-/// Picture `kind - 1` painted centred on `spot`, its 0 bytes left out.
-fn paint(image: &mut Image, [x, y]: [i32; 2], pictures: &[u8], kind: i32) {
-    let width = image.width as i32;
-    let start = usize::try_from(kind - 1).unwrap_or(0) * SIDE * SIDE;
-    for row in 0..SIDE as i32 {
-        for column in 0..SIDE as i32 {
-            let pixel = pictures
-                .get(start + (row * SIDE as i32 + column) as usize)
-                .copied()
-                .unwrap_or(0);
-            let at = (y + row - 8) * width + x + column - 8;
-            if pixel != 0
-                && let Some(slot) = usize::try_from(at)
+    /// A power-up of `kind` laid at `place`, the pixels under it kept.
+    fn lay(&mut self, image: &mut Image, place: usize, kind: i32) {
+        let spot = &mut self.places[place];
+        spot.kind = kind;
+        let width = image.width as i32;
+        let [x, y] = spot.at;
+        for row in 0..SIDE as i32 {
+            for column in 0..SIDE as i32 {
+                let at = (y + row - 8) * width + x + column - 8;
+                spot.under[(row * SIDE as i32 + column) as usize] = usize::try_from(at)
                     .ok()
-                    .and_then(|at| image.pixels.get_mut(at))
-            {
-                *slot = pixel;
+                    .and_then(|at| image.pixels.get(at))
+                    .copied()
+                    .unwrap_or(0);
+            }
+        }
+        self.paint(image, place);
+    }
+
+    /// The picture of the power-up at `place` painted over the track, its 0 bytes left out.
+    fn paint(&self, image: &mut Image, place: usize) {
+        let spot = &self.places[place];
+        let width = image.width as i32;
+        let start = usize::try_from(spot.kind - 1).unwrap_or(0) * SIDE * SIDE;
+        let [x, y] = spot.at;
+        for row in 0..SIDE as i32 {
+            for column in 0..SIDE as i32 {
+                let pixel = self
+                    .pictures
+                    .get(start + (row * SIDE as i32 + column) as usize)
+                    .copied()
+                    .unwrap_or(0);
+                let at = (y + row - 8) * width + x + column - 8;
+                if pixel != 0
+                    && let Some(slot) = usize::try_from(at)
+                        .ok()
+                        .and_then(|at| image.pixels.get_mut(at))
+                {
+                    *slot = pixel;
+                }
             }
         }
     }
+
+    /// The track's pixels put back where the power-up at `place` lay.
+    fn clear(&self, image: &mut Image, place: usize) {
+        let spot = &self.places[place];
+        let width = image.width as i32;
+        let [x, y] = spot.at;
+        for row in 0..SIDE as i32 {
+            for column in 0..SIDE as i32 {
+                let at = (y + row - 8) * width + x + column - 8;
+                if let Some(slot) = usize::try_from(at)
+                    .ok()
+                    .and_then(|at| image.pixels.get_mut(at))
+                {
+                    *slot = spot.under[(row * SIDE as i32 + column) as usize];
+                }
+            }
+        }
+    }
+
+    /// `sub_410220`, once a pass of the race loop, `between` the ticks the HUD's last two
+    /// frames were apart: the power-ups age; once the wait is over, the first 12 places are
+    /// tried in a random order and an empty one whose own wait is over gets a power-up (by
+    /// `rand()`, the weapons' kinds only in a race with `weapons`) while fewer than four lie
+    /// out; then the old ones blink and go.
+    pub(crate) fn step(&mut self, image: &mut Image, between: i32, weapons: bool, rand: &mut Rand) {
+        self.wait = if self.wait > 0 {
+            self.wait - between
+        } else {
+            0
+        };
+        for spot in &mut self.places[..CHANGING] {
+            if spot.age < LIFE && spot.kind != 0 {
+                spot.age += between;
+            }
+        }
+        if self.wait == 0 {
+            let mut out = self.places[..CHANGING]
+                .iter()
+                .filter(|spot| spot.kind > 0)
+                .count();
+            let mut tried = [false; CHANGING];
+            for _ in 0..CHANGING {
+                let place = loop {
+                    let place = (rand.next() % CHANGING as i32) as usize;
+                    if !tried[place] {
+                        break place;
+                    }
+                };
+                tried[place] = true;
+                let spot = &mut self.places[place];
+                spot.wait = if spot.wait > 0 {
+                    spot.wait - between
+                } else {
+                    0
+                };
+                if spot.kind == 0 && spot.at[0] > 0 && spot.wait == 0 && out < MOST {
+                    let kind = kind(rand.next() % 100, weapons);
+                    out += 1;
+                    self.places[place].age = 0;
+                    self.lay(image, place, kind);
+                }
+            }
+        }
+        for place in 0..CHANGING {
+            let age = self.places[place].age;
+            // Shown in the tens of ticks before 2000, 1980 and so on down to 1540, hidden in
+            // those before 1990, 1970 down to 1530.
+            let within = |last: i32| {
+                (0..BLINKS).any(|k| {
+                    let end = last - 20 * k;
+                    age > end - 10 && age < end
+                })
+            };
+            if within(LIFE) {
+                self.paint(image, place);
+            }
+            if within(LIFE - 10) {
+                self.clear(image, place);
+            }
+            if age >= LIFE {
+                self.clear(image, place);
+                let spot = &mut self.places[place];
+                spot.age = 0;
+                spot.kind = 0;
+                self.wait = AFTER_ONE_WENT;
+                self.places[place].wait = rand.next() % 200 + 300;
+            }
+        }
+    }
+}
+
+/// A new power-up's kind from a draw of 0 to 99: with weapons 30 % kind 1, 35 % kind 2,
+/// 15 % kind 3, 5 % kind 4 and 15 % kind 5; without, no kind 1 (45 %, 35 %, 10 %, 10 %).
+fn kind(draw: i32, weapons: bool) -> i32 {
+    let bounds: [(i32, i32); 5] = if weapons {
+        [(30, 1), (65, 2), (80, 3), (85, 4), (100, 5)]
+    } else {
+        [(0, 1), (45, 2), (80, 3), (90, 4), (100, 5)]
+    };
+    bounds
+        .iter()
+        .find(|&&(below, _)| draw < below)
+        .map_or(0, |&(_, kind)| kind)
 }
 
 #[cfg(test)]
@@ -74,36 +239,105 @@ mod tests {
         }
     }
 
-    /// The start draws `rand()` 21 times, and a power-up's spot and kind when the 21st comes
+    fn pictures() -> Vec<u8> {
+        (0..8u8)
+            .flat_map(|kind| vec![kind + 1; SIDE * SIDE])
+            .collect()
+    }
+
+    /// The start draws `rand()` 21 times, and a power-up's place and kind when the 21st comes
     /// out a multiple of 4: later races depend on the numbers left.
     #[test]
     fn the_start_draws_rand_as_the_original_does() {
         let mut spots = [[0; 2]; 16];
         spots[12] = [20, 20];
         spots[13] = [40, 40];
-        let pictures: Vec<u8> = (0..8u8)
-            .flat_map(|kind| vec![kind + 1; SIDE * SIDE])
-            .collect();
         for seed in 0..64 {
             let mut rand = Rand::new(seed);
             let mut image = track();
-            let placed = place(&mut image, &spots, &pictures, &mut rand);
+            let power_ups = PowerUps::new(&mut image, &spots, pictures(), &mut rand);
             let mut expected = Rand::new(seed);
-            for _ in 0..20 {
-                expected.next();
+            for place in 0..20 {
+                assert_eq!(power_ups.places[place].wait, expected.next() % 50 + 100);
             }
             if expected.next() % 4 == 0 {
-                let spot = (expected.next() % 2 + 12) as usize;
+                let place = (expected.next() % 2 + 12) as usize;
                 let kind = expected.next() % 2 + 7;
-                assert_eq!(placed.painted, Some((spot, kind)));
-                // Painted centred on the spot, its picture the kind's.
-                let [x, y] = spots[spot];
+                assert_eq!(power_ups.places[place].kind, kind);
+                // Painted centred on the place, its picture the kind's.
+                let [x, y] = spots[place];
                 assert_eq!(image.pixels[(y * 64 + x) as usize], kind as u8);
             } else {
-                assert_eq!(placed.painted, None);
+                assert!(power_ups.places.iter().all(|place| place.kind == 0));
                 assert!(image.pixels.iter().all(|&p| p == 0));
             }
             assert_eq!(rand, expected, "seed {seed}");
         }
+    }
+
+    /// The weapons' power-up (kind 1) comes only in a race with weapons, and the kinds keep
+    /// the original's odds.
+    #[test]
+    fn the_kinds_keep_the_originals_odds() {
+        let count =
+            |weapons: bool, kind_: i32| (0..100).filter(|&d| kind(d, weapons) == kind_).count();
+        assert_eq!(
+            (1..=5).map(|k| count(true, k)).collect::<Vec<_>>(),
+            [30, 35, 15, 5, 15]
+        );
+        assert_eq!(
+            (1..=5).map(|k| count(false, k)).collect::<Vec<_>>(),
+            [0, 45, 35, 10, 10]
+        );
+    }
+
+    /// Nothing comes before 350 ticks; then every pass tries all 12 places in a random order,
+    /// which draws `rand()` until each has come up, and lays at most four power-ups.
+    #[test]
+    fn power_ups_come_after_350_ticks_four_at_most() {
+        let spots: Vec<[i32; 2]> = (0..16).map(|i| [10 + 3 * i, 30]).collect();
+        let mut rand = Rand::new(7);
+        let mut image = track();
+        let mut power_ups = PowerUps::new(&mut image, &spots, pictures(), &mut rand);
+        for place in &mut power_ups.places {
+            place.wait = 0;
+        }
+        power_ups.places[12].kind = 0;
+        let before = rand.clone();
+        power_ups.step(&mut image, 349, true, &mut rand);
+        assert_eq!(rand, before, "no draws while waiting");
+        power_ups.step(&mut image, 1, true, &mut rand);
+        let out = power_ups.places[..CHANGING]
+            .iter()
+            .filter(|p| p.kind > 0)
+            .count();
+        assert_eq!(out, MOST);
+        assert!(power_ups.places[..CHANGING].iter().all(|p| p.kind <= 5));
+    }
+
+    /// A power-up blinks out in its last ticks and goes at 2000, its pixels put back, and the
+    /// next waits 280 ticks.
+    #[test]
+    fn an_old_power_up_goes_and_leaves_the_track_as_it_was() {
+        let mut spots = [[0; 2]; 16];
+        spots[0] = [20, 20];
+        let mut rand = Rand::new(3);
+        let mut image = track();
+        image.pixels[20 * 64 + 20] = 99;
+        let mut power_ups = PowerUps::new(&mut image, &spots, pictures(), &mut rand);
+        power_ups.lay(&mut image, 0, 2);
+        power_ups.wait = 50;
+        assert_eq!(image.pixels[20 * 64 + 20], 2);
+        power_ups.places[0].age = 1985;
+        power_ups.step(&mut image, 0, true, &mut rand);
+        assert_eq!(image.pixels[20 * 64 + 20], 99, "hidden while it blinks");
+        power_ups.places[0].age = 1995;
+        power_ups.step(&mut image, 0, true, &mut rand);
+        assert_eq!(image.pixels[20 * 64 + 20], 2, "shown while it blinks");
+        power_ups.step(&mut image, 10, true, &mut rand);
+        assert_eq!(power_ups.places[0].kind, 0);
+        assert_eq!(image.pixels[20 * 64 + 20], 99);
+        assert_eq!(power_ups.wait, AFTER_ONE_WENT);
+        assert!((300..500).contains(&power_ups.places[0].wait));
     }
 }
