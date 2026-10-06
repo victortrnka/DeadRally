@@ -9,6 +9,7 @@ use std::fmt::Write as _;
 use common::{check_manifest, hash, hex, located};
 use deadrally_core::{Game, InputEvent, Key};
 use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::dr_cfg::DrCfg;
 use sha2::{Digest, Sha256};
 
 /// The keys of `scripts/reference/menu-keys.scenario`, at the ticks where the original read
@@ -2463,6 +2464,76 @@ fn the_spikes_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("spikes-run.sha256", &lines, "the spikes run");
+}
+
+/// The keys held in `scripts/reference/wreck.scenario`'s run with the music off
+/// (docs/verification/m5.md): the mine key, Down backing over the mine, and Enter once the
+/// race is over.
+const QUIET_WRECK_HELD: [Held; 3] = [
+    (3640, Key::LeftAlt, 7),
+    (3698, Key::Down, 49),
+    (4184, Key::Enter, 7),
+];
+
+/// The sound of a run seeded as the reference runs are, the opponents still, from the saved
+/// game `save` with the race-start keys and `held`, under `config`, for `ticks`.
+fn run_sound(save: Vec<u8>, held: &[Held], ticks: u64, config: DrCfg) -> String {
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut game = Game::with_seed(assets, config, SEED);
+    let mut slots = vec![None; 8];
+    slots[0] = Some(save);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    let mut audio = Vec::new();
+    for done in 0..ticks {
+        for &(_, key) in RACE_START_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        game.take_audio(&mut audio);
+    }
+    let mut hasher = Sha256::new();
+    hash(&audio, &mut hasher);
+    hex(hasher)
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_effects_sound_matches_the_committed_manifest() {
+    // Written after the recordings of the original with the music off measured as ours
+    // (docs/verification/m5.md): the mines dropped and the blast, the horn, the wreck's fire
+    // and the race's end call, each where and as loud as the original plays it.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let texts = &assets.menu.texts;
+    let mut quiet = assets.menu.default_config.clone();
+    quiet.set_music_volume(0);
+    let mines = run_sound(
+        armed_save(texts, 37, [3, 0, 0]),
+        &MINES_HELD,
+        3_900,
+        quiet.clone(),
+    );
+    let wreck = run_sound(
+        armed_save(texts, 99, [1, 0, 0]),
+        &QUIET_WRECK_HELD,
+        4_300,
+        quiet,
+    );
+    let lines = format!(
+        "{mines}  the mines and the horn, the music off, 3900 ticks\n\
+         {wreck}  the wreck and the race's end, the music off, 4300 ticks\n"
+    );
+    check_manifest("race-effects-sound.sha256", &lines, "the race's effects");
 }
 
 #[test]
