@@ -9,6 +9,7 @@ use std::fmt::Write as _;
 use common::{check_manifest, hash, hex, located};
 use deadrally_core::{Game, InputEvent, Key};
 use deadrally_gamedata::assets::Assets;
+use deadrally_gamedata::dr_cfg::DrCfg;
 use sha2::{Digest, Sha256};
 
 /// The keys of `scripts/reference/menu-keys.scenario`, at the ticks where the original read
@@ -1503,6 +1504,130 @@ const HELP_SHOTS: [(u64, &str); 224] = [
     (5007, "h222"),
 ];
 
+/// The keys of `scripts/reference/results.scenario`'s run of `docs/verification/m5.md`: the
+/// race start's (the space ending the sign-up's linger four waits later in this run, as the
+/// menu's pulse after the race shows), the mine, Down backing over it and Enter on the race's
+/// end as in the wreck run, then Enter after the medium race's page, after the hard race's and
+/// after the statistics.
+const RESULTS_KEYS: [(u64, Key); 13] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2787, Key::Space),
+    (4470, Key::Enter),
+    (4827, Key::Enter),
+    (5216, Key::Enter),
+];
+const RESULTS_HELD: [Held; 3] = [
+    (3643, Key::LeftAlt, 7),
+    (3700, Key::Down, 50),
+    (4184, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run, one every 200 ms
+/// from the race's end on: the box, the view tilting away, the results fading in, the three
+/// races' pages, the statistics and the way out (s035 and s064, caught as the screen changed,
+/// left out; docs/verification/m5.md).
+const RESULTS_SHOTS: [(u64, &str); 91] = [
+    (3901, "s000"),
+    (3901, "s001"),
+    (3901, "s002"),
+    (3901, "s003"),
+    (3901, "s004"),
+    (3901, "s005"),
+    (3901, "s006"),
+    (3901, "s007"),
+    (3901, "s008"),
+    (3901, "s009"),
+    (3901, "s010"),
+    (3901, "s011"),
+    (3901, "s012"),
+    (3901, "s013"),
+    (3901, "s014"),
+    (3901, "s015"),
+    (4197, "s016"),
+    (4211, "s017"),
+    (4225, "s018"),
+    (4240, "s019"),
+    (4254, "s020"),
+    (4268, "s021"),
+    (4282, "s022"),
+    (4292, "s023"),
+    (4306, "s024"),
+    (4320, "s025"),
+    (4335, "s026"),
+    (4349, "s027"),
+    (4359, "s028"),
+    (4377, "s029"),
+    (4392, "s030"),
+    (4350, "s031"),
+    (4352, "s032"),
+    (4389, "s033"),
+    (4375, "s034"),
+    (4478, "s036"),
+    (4492, "s037"),
+    (4506, "s038"),
+    (4474, "s039"),
+    (4527, "s040"),
+    (4549, "s041"),
+    (4563, "s042"),
+    (4553, "s043"),
+    (4592, "s044"),
+    (4592, "s045"),
+    (4552, "s046"),
+    (4563, "s047"),
+    (4547, "s048"),
+    (4595, "s049"),
+    (4554, "s050"),
+    (4692, "s051"),
+    (4706, "s052"),
+    (4716, "s053"),
+    (4735, "s054"),
+    (4687, "s055"),
+    (4763, "s056"),
+    (4761, "s057"),
+    (4758, "s058"),
+    (4800, "s059"),
+    (4785, "s060"),
+    (4829, "s061"),
+    (4842, "s062"),
+    (4862, "s063"),
+    (4833, "s065"),
+    (4909, "s066"),
+    (4923, "s067"),
+    (4926, "s068"),
+    (4946, "s069"),
+    (4898, "s070"),
+    (4913, "s071"),
+    (4927, "s072"),
+    (4907, "s073"),
+    (4909, "s074"),
+    (4928, "s075"),
+    (5050, "s076"),
+    (5066, "s077"),
+    (5081, "s078"),
+    (5061, "s079"),
+    (5041, "s080"),
+    (5047, "s081"),
+    (5066, "s082"),
+    (5084, "s083"),
+    (5038, "s084"),
+    (5216, "s085"),
+    (5217, "s086"),
+    (5217, "s087"),
+    (5217, "s088"),
+    (5272, "s089"),
+    (5286, "s090"),
+    (5300, "s091"),
+    (5315, "s092"),
+];
+
 /// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
 /// run of `docs/verification/m5.md` (no keys held: the player stands while the opponents race
 /// three laps round it).
@@ -2376,6 +2501,90 @@ const ABORT_SHOTS: [(u64, &str); 16] = [
     (3680, "a15"),
 ];
 
+/// The keys held in `scripts/reference/abort-early.scenario`'s run: Escape held through the
+/// race's load, so the loop's first pass pauses before the intro, then Y.
+const ABORT_EARLY_HELD: [Held; 2] = [(2990, Key::Escape, 40), (3213, Key::Y, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview's fade,
+/// the box flying in and apart over the black palette, the intro run all the same and the view
+/// tilting away.
+const ABORT_EARLY_SHOTS: [(u64, &str); 74] = [
+    (2974, "e11"),
+    (2981, "e12"),
+    (2988, "e13"),
+    (2996, "e14"),
+    (3003, "e15"),
+    (3010, "e16"),
+    (3017, "e17"),
+    (3024, "e18"),
+    (3031, "e19"),
+    (3038, "e20"),
+    (3045, "e21"),
+    (3052, "e22"),
+    (3059, "e23"),
+    (3066, "e24"),
+    (3073, "e25"),
+    (3080, "e26"),
+    (3087, "e27"),
+    (3094, "e28"),
+    (3101, "e29"),
+    (3108, "e30"),
+    (3115, "e31"),
+    (3122, "e32"),
+    (3129, "e33"),
+    (3136, "e34"),
+    (3143, "e35"),
+    (3150, "e36"),
+    (3157, "e37"),
+    (3164, "e38"),
+    (3171, "e39"),
+    (3178, "e40"),
+    (3185, "e41"),
+    (3192, "e42"),
+    (3199, "e43"),
+    (3206, "e44"),
+    (3213, "e45"),
+    (3220, "e46"),
+    (3227, "e47"),
+    (3234, "e48"),
+    (3241, "e49"),
+    (3248, "e50"),
+    (3255, "e51"),
+    (3262, "e52"),
+    (3269, "e53"),
+    (3276, "e54"),
+    (3283, "e55"),
+    (3290, "e56"),
+    (3298, "e57"),
+    (3305, "e58"),
+    (3312, "e59"),
+    (3319, "e60"),
+    (3326, "e61"),
+    (3333, "e62"),
+    (3340, "e63"),
+    (3348, "e64"),
+    (3355, "e65"),
+    (3362, "e66"),
+    (3369, "e67"),
+    (3376, "e68"),
+    (3383, "e69"),
+    (3390, "e70"),
+    (3397, "e71"),
+    (3404, "e72"),
+    (3411, "e73"),
+    (3419, "e74"),
+    (3426, "e75"),
+    (3433, "e76"),
+    (3441, "e77"),
+    (3448, "e78"),
+    (3455, "e79"),
+    (3462, "e80"),
+    (3469, "e81"),
+    (3476, "e82"),
+    (3483, "e83"),
+    (3491, "e84"),
+];
+
 /// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
 /// the preview run with the medium race chosen (Right at the sign-up), circuit 17.
 const REVERSED_KEYS: [(u64, Key); 11] = [
@@ -2937,6 +3146,72 @@ fn the_rocket_run_matches_the_committed_manifest() {
     check_manifest("rocket-run.sha256", &lines, "the rocket run");
 }
 
+/// Two races in a row with a rocket: the rocket run's way into the race, the turbo held 75
+/// ticks (the flames turning to their second picture last), Escape and Y; then, as the
+/// original's run does, Enter every two seconds through the results, the shop, the
+/// Underground Market and the sign-up into the next race.
+const TWO_RACES_HELD: [Held; 4] = [
+    (3388, Key::Up, 122),
+    (3403, Key::LeftShift, 75),
+    (3540, Key::Escape, 7),
+    (3670, Key::Y, 7),
+];
+const TWO_RACES_ENTER_EVERY: u64 = 140;
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_later_race_starts_its_rocket_flames_where_the_last_race_left_them() {
+    // The original never sets the flames' picture (0x456AFC) back: only a flame's turn writes
+    // it (0x40F651). A player who ends a race on the second picture sees the next race's first
+    // flame in it, not in the first.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 0, 1]));
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::with_seed(assets, config, SEED);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    // Each race's flame pictures, tick by tick.
+    let mut races: Vec<Vec<String>> = Vec::new();
+    let mut racing = false;
+    for done in 0..9_000 {
+        if races.len() == 1 && !racing && done % TWO_RACES_ENTER_EVERY == 0 {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key {
+                    key: Key::Enter,
+                    pressed,
+                });
+            }
+        }
+        for &(_, key) in RACE_START_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in &TWO_RACES_HELD {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        let trace = game.race_trace();
+        if let Some(trace) = &trace {
+            if !racing {
+                races.push(Vec::new());
+            }
+            let phase = trace.split_whitespace().nth(1).unwrap_or_default();
+            races.last_mut().unwrap().push(phase.to_owned());
+        }
+        racing = trace.is_some();
+    }
+    assert_eq!(races.len(), 2, "two races");
+    assert_eq!(races[0].last().map(String::as_str), Some("fp1"));
+    assert_eq!(races[1].first().map(String::as_str), Some("fp1"));
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_wreck_run_matches_the_committed_manifest() {
@@ -2974,6 +3249,76 @@ fn the_spikes_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("spikes-run.sha256", &lines, "the spikes run");
+}
+
+/// The keys held in `scripts/reference/wreck.scenario`'s run with the music off
+/// (docs/verification/m5.md): the mine key, Down backing over the mine, and Enter once the
+/// race is over.
+const QUIET_WRECK_HELD: [Held; 3] = [
+    (3640, Key::LeftAlt, 7),
+    (3698, Key::Down, 49),
+    (4184, Key::Enter, 7),
+];
+
+/// The sound of a run seeded as the reference runs are, the opponents still, from the saved
+/// game `save` with the race-start keys and `held`, under `config`, for `ticks`.
+fn run_sound(save: Vec<u8>, held: &[Held], ticks: u64, config: DrCfg) -> String {
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut game = Game::with_seed(assets, config, SEED);
+    let mut slots = vec![None; 8];
+    slots[0] = Some(save);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    let mut audio = Vec::new();
+    for done in 0..ticks {
+        for &(_, key) in RACE_START_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        game.take_audio(&mut audio);
+    }
+    let mut hasher = Sha256::new();
+    hash(&audio, &mut hasher);
+    hex(hasher)
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_effects_sound_matches_the_committed_manifest() {
+    // Written after the recordings of the original with the music off measured as ours
+    // (docs/verification/m5.md): the mines dropped and the blast, the horn, the wreck's fire
+    // and the race's end call, each where and as loud as the original plays it.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let texts = &assets.menu.texts;
+    let mut quiet = assets.menu.default_config.clone();
+    quiet.set_music_volume(0);
+    let mines = run_sound(
+        armed_save(texts, 37, [3, 0, 0]),
+        &MINES_HELD,
+        3_900,
+        quiet.clone(),
+    );
+    let wreck = run_sound(
+        armed_save(texts, 99, [1, 0, 0]),
+        &QUIET_WRECK_HELD,
+        4_300,
+        quiet,
+    );
+    let lines = format!(
+        "{mines}  the mines and the horn, the music off, 3900 ticks\n\
+         {wreck}  the wreck and the race's end, the music off, 4300 ticks\n"
+    );
+    check_manifest("race-effects-sound.sha256", &lines, "the race's effects");
 }
 
 #[test]
@@ -3076,6 +3421,28 @@ fn the_lap_run_matches_the_committed_manifest() {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_results_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // the race to a wreck with the opponents driving, the results fading in with the medium
+    // race's page at once (the race's last Enter), the hard race's, every first three's
+    // points, the standings sorted afresh with the player's statistics, and the way back out
+    // through the Underground Market's fade.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 99, [1, 0, 0]));
+    let lines = manifest_run(
+        (SEED, None),
+        (&RESULTS_KEYS, &RESULTS_HELD),
+        &RESULTS_SHOTS,
+        5_330,
+        slots,
+        false,
+    );
+    check_manifest("results-run.sha256", &lines, "the results run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_guns_run_matches_the_committed_manifest() {
     // Written after every screenshot of the run equalled our frame at its tick, and every
     // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
@@ -3111,6 +3478,25 @@ fn the_abort_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("abort-run.sha256", &lines, "the abort run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_abort_early_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m5.md): a race abandoned before its intro must still show the intro
+    // before the view tilts away.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &ABORT_EARLY_HELD),
+        &ABORT_EARLY_SHOTS,
+        3_560,
+        slots,
+    );
+    check_manifest("abort-early-run.sha256", &lines, "the abort-early run");
 }
 
 #[test]

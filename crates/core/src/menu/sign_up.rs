@@ -8,7 +8,7 @@
 use super::draw::Focus;
 use super::hall_of_fame::Wipe;
 use super::{MOVE_SOUND, Menu, State};
-use crate::campaign::{Offer, PLAYER, SignUp};
+use crate::campaign::{Offer, SignUp};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
@@ -79,6 +79,7 @@ impl Menu {
             &mut campaign.rand,
             &order,
             &mut campaign.last_circuits,
+            campaign.player_index,
         ));
         campaign.entered_race = None;
         // 0x435806: the copper ramp, entries 176 to 182.
@@ -396,9 +397,10 @@ impl Menu {
             true,
         );
         let sign_up = self.campaign.sign_up.as_mut().expect("a sign-up is on");
-        let place = sign_up.enter(race, PLAYER);
+        let player = self.campaign.player_index;
+        let place = sign_up.enter(race, player);
         self.campaign.entered_race = Some(race);
-        self.draw_entry(race, place, PLAYER);
+        self.draw_entry(race, place, player);
         self.shown = self.screen.clone();
         State::SignUp {
             second: false,
@@ -504,8 +506,9 @@ impl Menu {
     /// damaged by 25 to 49 % (`rand()` seeded again from the clock) and the popup says so.
     fn sabotage(&mut self) -> Option<State> {
         let campaign = &mut self.campaign;
+        let me = campaign.player_index;
         for (index, driver) in campaign.drivers.iter_mut().enumerate() {
-            if index != PLAYER {
+            if index != me {
                 driver.damage = 0;
             }
         }
@@ -582,7 +585,7 @@ impl Menu {
             let entrants = self.race_entrants();
             let victim = loop {
                 let driver = entrants[(self.campaign.rand.next() % 4) as usize];
-                if driver != PLAYER {
+                if driver != self.campaign.player_index {
                     break driver;
                 }
             };

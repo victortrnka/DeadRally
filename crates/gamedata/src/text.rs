@@ -223,6 +223,30 @@ const BOX_BLANK: u32 = 0x44_251C;
 const ABORT_RACE: u32 = 0x44_23FC;
 const YES_NO: u32 = 0x44_23D8;
 const RACE_OVER: u32 = 0x44_24B0;
+/// The results (spec M5): each race's title and the points of its first three places (0x429280,
+/// 0x4295E0, 0x429990), the waits' lines and the statistics' title.
+const RESULTS_TITLES: [u32; 3] = [0x44_3B24, 0x44_3B3C, 0x44_3B5C];
+const RESULTS_POINTS: [[u32; 3]; 3] = [
+    [0x44_3B18, 0x44_3B1C, 0x44_3B20],
+    [0x44_3B38, 0x44_3B18, 0x44_3B20],
+    [0x44_3B50, 0x44_3B54, 0x44_3B58],
+];
+const PLEASE_WAIT: u32 = 0x44_3C04;
+const PRESS_TO_GO_ON: u32 = 0x44_364C;
+const STATISTICS: u32 = 0x44_3608;
+/// The statistics' rows (`drawStadistics` 0x4245D0): position, races won, total races, total
+/// income, total money; placing, race income, bonus income, total race income, number of
+/// laps, race time, best lap, best lap ever; the race's kind after its circuit's name (the
+/// fourth, the Arena's, in its place); and what parts a row's label from its value.
+const STATISTICS_ROWS: [u32; 13] = [
+    0x44_35FC, 0x44_35EC, 0x44_35E0, 0x44_35CC, 0x44_35C0, 0x44_35A8, 0x44_359C, 0x44_358C,
+    0x44_3578, 0x44_3568, 0x44_355C, 0x44_351C, 0x44_350C,
+];
+const RACE_KINDS: [u32; 4] = [0x44_3550, 0x44_3540, 0x44_3534, 0x44_3528];
+const LABEL_SEPARATOR: u32 = 0x44_35F8;
+/// The headlines after a race (0x4279C0): 19 of four lines, 0x118 apart, the lines 0x46.
+const HEADLINES: u32 = 0x45_5150;
+const HEADLINE_COUNT: u32 = 19;
 const PRESS_ENTER: u32 = 0x44_24D4;
 const GAME_PAUSED: u32 = 0x44_24F8;
 const BOX_LINE: usize = 32;
@@ -400,6 +424,18 @@ pub struct CampaignTexts {
     /// The box when P pauses the race (0x416FC3): blank but for the fourth line, the game
     /// paused, and the ninth, how to go on.
     pub game_paused: Vec<Vec<u8>>,
+    /// The results: each race's title, the points of its first three places, the waits'
+    /// lines and the statistics' title.
+    pub results_titles: Vec<Vec<u8>>,
+    pub results_points: Vec<Vec<Vec<u8>>>,
+    pub please_wait: Vec<u8>,
+    pub press_to_go_on: Vec<u8>,
+    pub statistics: Vec<u8>,
+    pub statistics_rows: Vec<Vec<u8>>,
+    pub race_kinds: Vec<Vec<u8>>,
+    pub label_separator: Vec<u8>,
+    /// The bottom panel's headlines after a race, four lines each.
+    pub headlines: Vec<Vec<Vec<u8>>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -652,6 +688,37 @@ impl Texts {
                 .chain([BOX_BLANK; 3])
                 .map(|address| text(address, BOX_LINE))
                 .collect::<Result<_, _>>()?,
+                results_titles: RESULTS_TITLES
+                    .iter()
+                    .map(|&address| shown(address, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                results_points: RESULTS_POINTS
+                    .iter()
+                    .map(|race| {
+                        race.iter()
+                            .map(|&address| shown(address, MAX_LINE))
+                            .collect()
+                    })
+                    .collect::<Result<_, _>>()?,
+                please_wait: shown(PLEASE_WAIT, MAX_LINE)?,
+                press_to_go_on: shown(PRESS_TO_GO_ON, MAX_LINE)?,
+                statistics: shown(STATISTICS, MAX_LINE)?,
+                statistics_rows: STATISTICS_ROWS
+                    .iter()
+                    .map(|&address| shown(address, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                race_kinds: RACE_KINDS
+                    .iter()
+                    .map(|&address| shown(address, MAX_LINE))
+                    .collect::<Result<_, _>>()?,
+                label_separator: shown(LABEL_SEPARATOR, MAX_LINE)?,
+                headlines: (0..HEADLINE_COUNT)
+                    .map(|k| {
+                        (0..4)
+                            .map(|line| text(HEADLINES + 0x118 * k + 0x46 * line, 0x45))
+                            .collect()
+                    })
+                    .collect::<Result<_, _>>()?,
                 race_over: [BOX_BLANK, BOX_BLANK, BOX_BLANK, RACE_OVER]
                     .into_iter()
                     .chain([BOX_BLANK; 4])
@@ -983,7 +1050,42 @@ mod tests {
                 );
             }
         }
+        for &address in RESULTS_TITLES.iter().chain(RESULTS_POINTS.iter().flatten()) {
+            // The points' strings are four bytes apart: two-letter labels.
+            put(address, format!("{:x}", address & 0xFF).as_bytes());
+        }
+        put(PLEASE_WAIT, b"wait");
+        put(PRESS_TO_GO_ON, b"press");
+        put(STATISTICS, b"stats");
+        for &address in STATISTICS_ROWS.iter().chain(&RACE_KINDS) {
+            put(address, format!("{:x}", address & 0xFF).as_bytes());
+        }
+        put(LABEL_SEPARATOR, b": ");
+        for k in 0..HEADLINE_COUNT {
+            for line in 0..4 {
+                put(
+                    HEADLINES + 0x118 * k + 0x46 * line,
+                    format!("h{k}.{line}").as_bytes(),
+                );
+            }
+        }
         build_at(0x4_1000, 0x1_6000, &data)
+    }
+
+    #[test]
+    fn the_headlines_are_four_lines_each_and_the_points_by_race() {
+        // A wrong stride puts half of another headline in the bottom panel after a race; the
+        // medium race gives +5 to its winner, the easy race's +3 to its second.
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let headlines = &texts.campaign.headlines;
+        assert_eq!(headlines.len(), 19);
+        assert_eq!(headlines[18][3], b"h18.3");
+        assert_eq!(headlines[1][0], b"h1.0");
+        assert_eq!(
+            texts.campaign.results_points[1],
+            [b"38".to_vec(), b"18".to_vec(), b"20".to_vec()]
+        );
+        assert_eq!(texts.campaign.results_titles[2], b"5c");
     }
 
     #[test]

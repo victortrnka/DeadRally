@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod audio;
+mod books;
 mod campaign;
 mod canvas;
 mod fade;

@@ -1,0 +1,28 @@
+# The race's effects on their own (spec M5): mines.scenario's keys with the test game armed
+# with three mines (--save 0:FILE, the player's mines at 3): a mine dropped, a second press
+# inside its wait, the car backed over it through the blast, another mine, then Up with the
+# horn. Run with --sound, --no-ai, --watch and --cfg FILE, a dr.cfg whose music volume is 0,
+# so that the effects are heard without the track's music; recorded to the race's 60th s.
+at 2000 key space
+at 24500 key Return
+at 25600 key Down
+at 26500 key Return
+at 27600 key Return
+at 28800 key space
+at 30600 key Return
+at 34150 key Return
+at 36850 key Return
+at 39300 key space
+at 51400 keydown Alt_L
+at 51500 keyup Alt_L
+at 51600 keydown Alt_L
+at 51700 keyup Alt_L
+at 52200 keydown Down
+at 52900 keyup Down
+at 53600 keydown Alt_L
+at 53700 keyup Alt_L
+at 53800 keydown Up
+at 54000 keydown space
+at 54600 keyup space
+at 54700 keyup Up
+at 60000 shot end

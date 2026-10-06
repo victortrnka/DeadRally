@@ -53,6 +53,8 @@ pub const DRUG_DEALER: u8 = SHOP + 30;
 pub const HITMAN: u8 = SHOP + 31;
 /// The race's preview: its banner, the grid's frame, the circuit's picture.
 pub const PREVIEW: u8 = 110;
+/// The results' pictures (spec M5): 120 on.
+pub const RESULTS: u8 = 120;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -179,6 +181,15 @@ fn texts() -> Texts {
             abort_race: vec![b"A".to_vec(); 9],
             race_over: vec![b"A".to_vec(); 9],
             game_paused: vec![b"A".to_vec(); 9],
+            results_titles: vec![b"R".to_vec(); 3],
+            results_points: vec![vec![b"+".to_vec(); 3]; 3],
+            please_wait: b"W".to_vec(),
+            press_to_go_on: b"K".to_vec(),
+            statistics: b"S".to_vec(),
+            statistics_rows: vec![b"r".to_vec(); 13],
+            race_kinds: vec![b"k".to_vec(); 4],
+            label_separator: b": ".to_vec(),
+            headlines: vec![vec![b"N".to_vec(); 4]; 19],
         },
         shop: shop_texts(),
         help: deadrally_gamedata::text::HelpTexts {
@@ -293,6 +304,18 @@ pub fn menu_assets() -> MenuAssets {
         colour_slider: solid(294, 16, LICENCE + 13),
         colour_knob: solid(10, 24, LICENCE + 14),
         price_digits: (0..11).map(|k| solid(16, 13, LICENCE + 15 + k)).collect(),
+        results: deadrally_gamedata::assets::ResultsPictures {
+            ranking: solid(54, 386, RESULTS),
+            panel: solid(272, 386, RESULTS + 1),
+            placing: solid(202, 74, RESULTS + 2),
+            races: (0..3).map(|k| solid(272, 20, RESULTS + 3 + k)).collect(),
+            points: (0..3).map(|k| solid(42, 18, RESULTS + 6 + k)).collect(),
+            player_row: [31, 101, 53].map(|w| solid(w, 18, RESULTS + 9)).to_vec(),
+            other_row: [31, 101, 53].map(|w| solid(w, 18, RESULTS + 10)).to_vec(),
+            cars: (0..24)
+                .map(|k| solid(100, 52, RESULTS + 11 + k % 4))
+                .collect(),
+        },
         sign_up_title: solid(640, 32, SIGN_UP),
         side_panel: solid(96, 224, SIGN_UP + 1),
         side_cars: (0..6).map(|k| solid(96, 64, SIGN_UP + 2 + k)).collect(),

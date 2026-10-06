@@ -35,6 +35,24 @@ pub(crate) fn player_ramp(colour: [u8; 3]) -> [[u8; 3]; 32] {
     ramp
 }
 
+/// A car's 16-entry ramp on the results (`sub_424240`): eight steps from a tenth of the colour
+/// up to it, then eight on towards white, an eighth of the way a step.
+pub(crate) fn place_ramp(colour: [u8; 3]) -> [[u8; 3]; 16] {
+    let mut ramp = [[0; 3]; 16];
+    for c in 0..3 {
+        let a = f32::from(colour[c]);
+        let tenth = 0.1 * f64::from(a);
+        let rise = ((f64::from(a) - tenth) * 0.125) as f32;
+        let to_white = (63.0 - a) * 0.125;
+        for i in 0..8u8 {
+            let step = f64::from(f32::from(i));
+            ramp[usize::from(i)][c] = (step * f64::from(rise) + tenth) as u8;
+            ramp[8 + usize::from(i)][c] = (step * f64::from(to_white) + f64::from(a)) as u8;
+        }
+    }
+    ramp
+}
+
 /// The copper ramp at 176..=182 (`sub_41ED20`): from a sixth of the colour up to it.
 pub(crate) fn copper_ramp(colour: [u8; 3]) -> [[u8; 3]; 7] {
     // The f32 constant at 0x443198, 1/7 rounded.
@@ -127,6 +145,11 @@ impl MenuPalette {
         self.shown.0[64..96].copy_from_slice(&player_ramp(colour));
     }
 
+    /// A place's ramp written into the composed palette from entry `first` (`sub_424240`).
+    pub(crate) fn set_place_ramp(&mut self, first: usize, colour: [u8; 3]) {
+        self.composed.0[first..first + 16].copy_from_slice(&place_ramp(colour));
+    }
+
     /// Composed entries `range` shown at 100 % (`convertColorToPaletteColor`, rounded).
     pub(crate) fn show_composed(&mut self, range: std::ops::Range<usize>) {
         let full = fade(&self.composed, 100 << 16);
@@ -163,6 +186,12 @@ impl MenuPalette {
     /// What follows each wait of 0x42A570 (and 0x42A480) in the menu: the pulse writes entries
     /// 16–31 at its level and moves on; every 70th call the background steps a row, its 32
     /// entries shown at full brightness.
+    /// `sub_41EE40`'s reset of the pulse: at 100 %, falling.
+    pub(crate) fn reset_pulse(&mut self) {
+        self.pulse = PULSE_TOP;
+        self.rising = false;
+    }
+
     pub(crate) fn after_wait(&mut self) {
         self.calls += 1;
         let level = self.pulse << 16;
@@ -218,6 +247,22 @@ mod tests {
         let other = player_ramp([40, 21, 7]);
         assert_eq!(other[4], [13, 6, 2]);
         assert_eq!(other[25], [52, 44, 38]);
+    }
+
+    #[test]
+    fn a_places_ramp_has_sixteen_entries_in_eighths() {
+        // Values from an emulation of 0x424240's f32/f64 steps: the cars on the results show
+        // their drivers' colours through these entries.
+        let ramp = place_ramp([63, 0, 32]);
+        assert_eq!(ramp[0], [6, 0, 3]);
+        assert_eq!(ramp[1], [13, 0, 6]);
+        assert_eq!(ramp[7], [55, 0, 28]);
+        assert_eq!(ramp[8], [63, 0, 32]);
+        assert_eq!(ramp[9], [63, 7, 35]);
+        assert_eq!(ramp[15], [63, 55, 59]);
+        let other = place_ramp([40, 21, 7]);
+        assert_eq!(other[3], [17, 9, 3]);
+        assert_eq!(other[12], [51, 42, 35]);
     }
 
     #[test]

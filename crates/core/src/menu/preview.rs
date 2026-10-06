@@ -6,7 +6,7 @@
 
 use super::hall_of_fame::Wipe;
 use super::{Menu, State};
-use crate::campaign::{PLAYER, Racer};
+use crate::campaign::Racer;
 use crate::canvas::at;
 
 /// The banner, the grid's frame and the circuit's picture.
@@ -103,11 +103,12 @@ impl Menu {
             .entrants[race];
         let campaign = &mut self.campaign;
         let weapons = campaign.use_weapons;
+        let me = campaign.player_index;
         campaign.racers = entrants
             .iter()
             .map(|&driver| {
                 let record = campaign.drivers[driver];
-                if driver == PLAYER {
+                if driver == me {
                     return Racer {
                         driver,
                         rocket: record.rocket,
@@ -165,15 +166,10 @@ impl Menu {
     /// others by the player's rank, more the higher the rank and the harder the race; $400
     /// when the player leads everyone on points (the Adversary's race).
     fn pickup_money(&self, race: usize) -> i32 {
-        let drivers = &self.campaign.drivers;
-        let leader = (0..drivers.len())
-            .filter(|&driver| driver != PLAYER)
-            .map(|driver| drivers[driver].points)
-            .fold(0, i32::max);
-        if drivers[PLAYER].points > leader {
+        if self.campaign.player_leads() {
             return 400;
         }
-        let rank = drivers[PLAYER].rank;
+        let rank = self.campaign.player().rank;
         let by_race = |second: i32, third: i32| match race {
             1 => Some(second),
             2 => Some(third),
@@ -207,7 +203,7 @@ impl Menu {
             .campaign
             .racers
             .iter()
-            .position(|racer| racer.driver == PLAYER)
+            .position(|racer| racer.driver == self.campaign.player_index)
             .unwrap_or(0);
         let drivers = self
             .campaign
@@ -215,7 +211,7 @@ impl Menu {
             .iter()
             .map(|racer| {
                 let record = &self.campaign.drivers[racer.driver];
-                let colours = if racer.driver == PLAYER {
+                let colours = if racer.driver == self.campaign.player_index {
                     &self.assets.menu.copper
                 } else {
                     &self.assets.menu.car_colours
@@ -224,7 +220,7 @@ impl Menu {
                     colour: colours.0[record.colour.clamp(0, 255) as usize],
                     name: record.name().to_ascii_uppercase(),
                     car: record.car.clamp(0, 5) as usize,
-                    level: if racer.driver == PLAYER {
+                    level: if racer.driver == self.campaign.player_index {
                         3
                     } else {
                         self.config.difficulty().min(2) as usize
@@ -243,7 +239,7 @@ impl Menu {
         let weapons = self.campaign.use_weapons;
         let lines = self.assets.menu.texts.campaign.abort_race.clone();
         let controls = std::array::from_fn(|control| self.config.key(control));
-        let record = &self.campaign.drivers[PLAYER];
+        let record = self.campaign.player();
         let setup = crate::race::Setup {
             circuit,
             race,
@@ -263,7 +259,8 @@ impl Menu {
                 .record(circuit, record.car.clamp(0, 5) as usize)
                 .1
                 .map(|part| part as i32),
-            session: self.race_session,
+            session: self.campaign.race_session,
+            flame_phase: self.campaign.flame_phase,
         };
         let race =
             crate::race::Race::new(&self.assets.race, setup, drivers, &mut self.campaign.rand);
@@ -274,24 +271,36 @@ impl Menu {
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }
-            Err(_) => self.after_race(),
+            Err(_) => {
+                self.after_race();
+                self.race_stand_in()
+            }
         }
     }
 
     /// A tick of the race; Escape leaves it for the stand-in until the pause menu (M4b).
     pub(super) fn race_tick(&mut self, ticks: u32) -> State {
         let Some(race) = self.race.as_mut() else {
-            return self.after_race();
+            self.after_race();
+            return self.race_stand_in();
         };
         let outcome = race.tick(&mut self.sound, &mut self.keys, &mut self.campaign.rand);
         race.present(self.shown.pixels_mut());
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
         if outcome != crate::race::Outcome::Racing {
-            self.race_session = race.session();
-            // The race's results come with M5.
+            self.campaign.flame_phase = race.flame_phase();
+            self.campaign.race_session = race.session();
+            // 0x4334F7: the books settled, then the news in the panel (0x434512).
+            self.outcome = race.outcome();
             self.race = None;
-            return self.after_race();
+            self.books = self.campaign.settle(&self.outcome);
+            let headlines = &self.assets.menu.texts.campaign.headlines;
+            self.panel.tell_headline(&mut self.campaign.rand, headlines);
+            self.after_race();
+            // 0x434670: every entry black before the results fade in.
+            self.palette.fade(0);
+            return self.open_results();
         }
         State::Race { ticks: ticks + 1 }
     }
@@ -300,7 +309,7 @@ impl Menu {
     /// the original brings them back after a race (0x434617), at the full volume the race's
     /// fades took away and the results would give back (M5), and the menus' background under
     /// the stand-in's shop with nothing of the preview or the race left on it.
-    fn after_race(&mut self) -> State {
+    fn after_race(&mut self) {
         self.sound.stop();
         self.sound.set_mask(FULL_MASK);
         self.sound.load_effects(&self.assets.menu.effects);
@@ -308,6 +317,5 @@ impl Menu {
             .play_music(&self.assets.menu_music, 0, self.config.music_volume());
         self.screen.copy_all(&self.graphics.background);
         self.shown = self.screen.clone();
-        self.race_stand_in()
     }
 }

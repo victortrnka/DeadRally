@@ -25,7 +25,7 @@ impl Rand {
 }
 
 pub(crate) const DRIVERS: usize = 20;
-/// The player's driver: `initDrivers` makes it 19.
+/// The player's place in a new game's drivers: `initDrivers` makes it 19.
 pub(crate) const PLAYER: usize = 19;
 pub(crate) const NAME_BYTES: usize = 12;
 /// The money a new driver starts with.
@@ -256,6 +256,9 @@ pub(crate) fn init_drivers(
 pub(crate) struct Campaign {
     pub(crate) rand: Rand,
     pub(crate) drivers: [Driver; DRIVERS],
+    /// The player's place in `drivers` (0x463CE8): [`PLAYER`] in a new game, from the file
+    /// in a loaded one; the results sort the drivers by their points and it moves with them.
+    pub(crate) player_index: usize,
     /// Whether weapons are on (0x4456E4); the original starts with them on.
     pub(crate) use_weapons: bool,
     /// A game is on: the Start Racing menu's first row leads to the shop.
@@ -295,6 +298,16 @@ pub(crate) struct Campaign {
     pub(crate) offer: Option<Offer>,
     /// The race's drivers in their places on the grid.
     pub(crate) racers: Vec<Racer>,
+    /// What the sponsors look at: the wins in a row (0x456BA8), a clean race (0x456BAC) and a
+    /// race the player alone came out of in one piece (0x456BB0).
+    pub(crate) win_streak: i32,
+    pub(crate) clean_race: bool,
+    pub(crate) all_wrecked: bool,
+    /// The rocket flames' picture (0x456AFC), which only a flame's turn sets: the next race's
+    /// flames go on from the last race's.
+    pub(crate) flame_phase: usize,
+    /// The race's switches and the effect power-up's waves, which no race sets back either.
+    pub(crate) race_session: crate::race::Session,
 }
 
 /// A driver in the race as the preview sets them up (0x432F46): the opponents' weapons are
@@ -321,6 +334,7 @@ impl Campaign {
         Campaign {
             rand: Rand::new(seed),
             drivers: [Driver::default(); DRIVERS],
+            player_index: PLAYER,
             use_weapons: true,
             started: false,
             last_circuits: LastCircuits::default(),
@@ -341,20 +355,59 @@ impl Campaign {
             hit_victim: 0,
             offer: None,
             racers: Vec::new(),
+            win_streak: 0,
+            clean_race: false,
+            all_wrecked: false,
+            flame_phase: 0,
+            race_session: crate::race::Session::default(),
         }
     }
 
     /// Whether the player has more points than every other driver (the final race against
     /// the Adversary is due).
     pub(crate) fn player_leads(&self) -> bool {
-        let best = self
-            .drivers
+        self.player().points > self.best_other_points()
+    }
+
+    /// The standings after a race (`sub_423C90`, then `sub_423E20`): the drivers sorted by their
+    /// points, most first, the player's place among them followed; each driver's rank their
+    /// place, shared with the driver before them on equal points.
+    pub(crate) fn rank_drivers(&mut self) {
+        let mut player = self.player_index;
+        quicksort(
+            &mut self.drivers,
+            0,
+            DRIVERS - 1,
+            &|driver: &Driver| driver.points,
+            &mut |i, j| {
+                if player == i {
+                    player = j;
+                } else if player == j {
+                    player = i;
+                }
+            },
+        );
+        self.drivers.reverse();
+        self.player_index = DRIVERS - 1 - player;
+        for i in 0..DRIVERS {
+            self.drivers[i].rank = if i > 0 && self.drivers[i].points == self.drivers[i - 1].points
+            {
+                self.drivers[i - 1].rank
+            } else {
+                i as i32 + 1
+            };
+        }
+    }
+
+    /// The most points of any driver but the player, 0 at least (the loops at 0x43351C and
+    /// 0x42B8B3).
+    pub(crate) fn best_other_points(&self) -> i32 {
+        self.drivers
             .iter()
             .enumerate()
-            .filter(|&(index, _)| index != PLAYER)
+            .filter(|&(index, _)| index != self.player_index)
             .map(|(_, driver)| driver.points)
-            .fold(0, i32::max);
-        self.player().points > best
+            .fold(0, i32::max)
     }
 
     /// The market restocked (0x4236D0, from `initDrivers` on): everything on sale but the
@@ -376,11 +429,54 @@ impl Campaign {
     }
 
     pub(crate) fn player(&self) -> &Driver {
-        &self.drivers[PLAYER]
+        &self.drivers[self.player_index]
     }
 
     pub(crate) fn player_mut(&mut self) -> &mut Driver {
-        &mut self.drivers[PLAYER]
+        &mut self.drivers[self.player_index]
+    }
+}
+
+/// The original's quicksort (`sub_423C90`, `sub_424510`): Hoare's partition round the key of
+/// the middle element of `items[lo..=hi]`, the left part sorted by recursion and the right by
+/// a loop; `swapped` hears of each exchange before it is made. Not stable: equal keys end in
+/// whatever order these exchanges leave them, which the results show.
+pub(crate) fn quicksort<T>(
+    items: &mut [T],
+    lo: usize,
+    hi: usize,
+    key: &impl Fn(&T) -> i32,
+    swapped: &mut impl FnMut(usize, usize),
+) {
+    let (mut lo, hi) = (lo as isize, hi as isize);
+    loop {
+        let pivot = key(&items[((lo + hi) / 2) as usize]);
+        let (mut i, mut j) = (lo, hi);
+        loop {
+            while key(&items[i as usize]) < pivot {
+                i += 1;
+            }
+            while pivot < key(&items[j as usize]) {
+                j -= 1;
+            }
+            if i > j {
+                break;
+            }
+            swapped(i as usize, j as usize);
+            items.swap(i as usize, j as usize);
+            i += 1;
+            j -= 1;
+            if i >= j {
+                break;
+            }
+        }
+        if lo < j {
+            quicksort(items, lo as usize, j as usize, key, swapped);
+        }
+        if i >= hi {
+            return;
+        }
+        lo = i;
     }
 }
 
@@ -392,6 +488,7 @@ pub(crate) struct SignUp {
     pub(crate) entrants: [[usize; 4]; 3],
     pub(crate) counts: [usize; 3],
     taken: [bool; DRIVERS],
+    player: usize,
 }
 
 /// The circuits last offered in each column (0x456780), −1 before the first sign-up; a
@@ -418,8 +515,13 @@ fn draw_circuit(rand: &mut Rand, order: &[u8], first: usize, count: i32) -> usiz
 impl SignUp {
     /// `calculateNextRaces`: the easy column from the first five circuits of `order`, the
     /// medium from the six from the third on, the hard from the four from the sixth on. The
-    /// player is signed up for none yet but counts as taken.
-    pub(crate) fn new(rand: &mut Rand, order: &[u8], last: &mut LastCircuits) -> SignUp {
+    /// player, driver `player`, is signed up for none yet but counts as taken.
+    pub(crate) fn new(
+        rand: &mut Rand,
+        order: &[u8],
+        last: &mut LastCircuits,
+        player: usize,
+    ) -> SignUp {
         let mut circuits = [0; 3];
         loop {
             circuits[0] = draw_circuit(rand, order, 0, 5);
@@ -443,12 +545,13 @@ impl SignUp {
         }
         last.0[2] = circuits[2] as i32;
         let mut taken = [false; DRIVERS];
-        taken[PLAYER] = true;
+        taken[player] = true;
         SignUp {
             circuits,
             entrants: [[0; 4]; 3],
             counts: [0; 3],
             taken,
+            player,
         }
     }
 
@@ -492,7 +595,7 @@ impl SignUp {
             return None;
         }
         let car = |driver: usize| drivers[driver].car;
-        let player_car = drivers[PLAYER].car;
+        let player_car = drivers[self.player].car;
         let driver = loop {
             let mut driver = 0;
             for _ in 0..100 {
@@ -661,9 +764,9 @@ mod tests {
         // same circuit in two neighbouring columns.
         let mut rand = Rand::new(3);
         let mut last = LastCircuits::default();
-        let mut previous = SignUp::new(&mut rand, &order(), &mut last);
+        let mut previous = SignUp::new(&mut rand, &order(), &mut last, PLAYER);
         for _ in 0..200 {
-            let next = SignUp::new(&mut rand, &order(), &mut last);
+            let next = SignUp::new(&mut rand, &order(), &mut last, PLAYER);
             for column in 0..3 {
                 assert_ne!(next.circuits[column], previous.circuits[column]);
             }
@@ -683,7 +786,7 @@ mod tests {
         let order = order();
         let base = |c: usize| if c >= 9 { c - 9 } else { c };
         for _ in 0..200 {
-            let sign_up = SignUp::new(&mut rand, &order, &mut last);
+            let sign_up = SignUp::new(&mut rand, &order, &mut last, PLAYER);
             let position = |c: usize| order.iter().position(|&o| usize::from(o) == base(c));
             assert!(position(sign_up.circuits[0]).unwrap() < 5);
             assert!((2..8).contains(&position(sign_up.circuits[1]).unwrap()));
@@ -698,7 +801,7 @@ mod tests {
         let mut drivers = [Driver::default(); DRIVERS];
         init_drivers(&mut drivers, &mut Rand::new(2), &cars(), &names());
         let mut rand = Rand::new(9);
-        let mut sign_up = SignUp::new(&mut rand, &order(), &mut LastCircuits::default());
+        let mut sign_up = SignUp::new(&mut rand, &order(), &mut LastCircuits::default(), PLAYER);
         while !sign_up.full() {
             sign_up.add_driver(1, &mut rand, &drivers);
         }
@@ -727,7 +830,7 @@ mod tests {
         let mut drivers = [Driver::default(); DRIVERS];
         init_drivers(&mut drivers, &mut Rand::new(2), &cars(), &names());
         let mut rand = Rand::new(9);
-        let mut sign_up = SignUp::new(&mut rand, &order(), &mut LastCircuits::default());
+        let mut sign_up = SignUp::new(&mut rand, &order(), &mut LastCircuits::default(), PLAYER);
         while !sign_up.full() {
             sign_up.add_driver(1, &mut rand, &drivers);
         }
@@ -763,5 +866,42 @@ mod tests {
         driver.set_name(b"XY");
         assert_eq!(&driver.name[..8], b"XY\0DEFGH");
         assert_eq!(driver.name(), b"XY");
+    }
+
+    /// The standings sort the drivers by their points with the original's quicksort: equal
+    /// points keep the order its exchanges leave (not the stable order), the player is
+    /// followed to their new place, and equal points share a rank.
+    #[test]
+    fn the_standings_sort_by_points_and_follow_the_player() {
+        let mut campaign = Campaign::new(1);
+        let points = [
+            5, 9, 5, 0, 12, 9, 3, 3, 1, 7, 5, 2, 8, 6, 4, 11, 10, 9, 0, 13,
+        ];
+        for (k, (driver, &p)) in campaign.drivers.iter_mut().zip(&points).enumerate() {
+            driver.points = p;
+            driver.face = k as i32;
+        }
+        campaign.player_index = 2;
+        campaign.rank_drivers();
+        let sorted: Vec<i32> = campaign.drivers.iter().map(|d| d.points).collect();
+        let mut expected = points.to_vec();
+        expected.sort_unstable_by(|a, b| b.cmp(a));
+        assert_eq!(sorted, expected);
+        assert_eq!(campaign.player().face, 2, "the player followed");
+        let faces: Vec<i32> = campaign.drivers.iter().map(|d| d.face).collect();
+        // The three drivers on 5 points (faces 0, 2 and 10) as the exchanges leave them.
+        let fives: Vec<i32> = faces
+            .iter()
+            .zip(&sorted)
+            .filter(|&(_, &p)| p == 5)
+            .map(|(&f, _)| f)
+            .collect();
+        assert_eq!(fives, [0, 10, 2], "not the stable order 0, 2, 10");
+        let ranks: Vec<i32> = campaign.drivers.iter().map(|d| d.rank).collect();
+        assert_eq!(
+            ranks[..8],
+            [1, 2, 3, 4, 5, 5, 5, 8],
+            "equal points, equal rank"
+        );
     }
 }

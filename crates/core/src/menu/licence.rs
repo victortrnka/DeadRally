@@ -145,6 +145,8 @@ impl Menu {
     /// weapons asked, as a single-player game does).
     pub(super) fn open_licence(&mut self) -> State {
         self.car_frame = 0;
+        // 0x42ABEE: a new game's player is driver 19 again, whatever game came before.
+        self.campaign.player_index = crate::campaign::PLAYER;
         self.campaign.player_mut().colour = 0;
         self.graphics
             .panel_frame(&mut self.screen, 0, 371, 639, 109);

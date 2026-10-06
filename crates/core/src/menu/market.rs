@@ -346,6 +346,8 @@ impl Menu {
             }
             keys::ENTER | 0x9C => return self.market_enter(),
             keys::ESCAPE => {
+                // 0x436DE3: left by Escape, the music's order and volume come back with it.
+                self.shop.market_escaped = true;
                 self.compose_palette();
                 return State::MarketLeave { step: 0 };
             }
@@ -476,14 +478,27 @@ impl Menu {
     /// selected, the volume down; then the shop drawn afresh under a black palette and its
     /// music's order back (`postLoadedOrLicense`, 0x4389A6).
     pub(super) fn market_leave(&mut self, step: u32) -> State {
-        if (50 - step) % 2 == 1 && self.shop.market == WAY_ON {
+        // 0x43710E: the flag and the volume only when left by Escape, not after a race.
+        let escaped = self.shop.market_escaped;
+        if escaped && (50 - step) % 2 == 1 && self.shop.market == WAY_ON {
             self.turn_flag();
         }
-        self.fade_volume(VOLUME_TOP - VOLUME_STEP * step);
+        if escaped {
+            self.fade_volume(VOLUME_TOP - VOLUME_STEP * step);
+        }
         self.palette.fade_market(100 - 2 * i64::from(step));
         if step + 1 < FADE_OUT_STEPS {
             return State::MarketLeave { step: step + 1 };
         }
+        self.shop_again()
+    }
+
+    /// The shop again after the market or a race's results (`postLoadedOrLicense` from
+    /// 0x4389A6): drawn afresh on the menu's background with the continue item selected and
+    /// the bottom panel under it, shown under a black palette; the music's order back when the
+    /// market was left by Escape (0x438B58); then faded in.
+    pub(super) fn shop_again(&mut self) -> State {
+        self.campaign.welcome = false;
         self.screen.copy_all(&self.graphics.background);
         self.shop.selected = CONTINUE;
         let mut screen = std::mem::take(&mut self.screen);
@@ -492,7 +507,9 @@ impl Menu {
         self.graphics.panel_text(&mut screen, &self.panel);
         self.screen = screen;
         self.shown = self.screen.clone();
-        self.sound.set_music_order(self.music_order);
+        if self.shop.market_escaped {
+            self.sound.set_music_order(self.music_order);
+        }
         self.compose_palette();
         State::ShopFadeIn { step: 0 }
     }
@@ -500,7 +517,9 @@ impl Menu {
     /// A wait of the shop's fade in after the market: the volume up, the flag turning every
     /// other wait when the player can race; then the continue item's border.
     pub(super) fn shop_fade_in(&mut self, step: u32) -> State {
-        self.fade_volume(VOLUME_STEP * step);
+        if self.shop.market_escaped {
+            self.fade_volume(VOLUME_STEP * step);
+        }
         if step % 2 == 1 && self.can_race() {
             self.turn_flag();
         }
@@ -520,6 +539,7 @@ impl Menu {
         );
         self.screen = screen;
         self.shown = self.screen.clone();
+        self.shop.market_escaped = false;
         State::Shop { second: false }
     }
 

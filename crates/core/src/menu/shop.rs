@@ -79,6 +79,12 @@ pub(crate) struct Shop {
     pub(super) message_passes: u32,
     /// The Underground Market's selection (0x461278).
     pub(super) market: usize,
+    /// Whether the continue item has been drawn selected since the game started (0x456B84,
+    /// `reloadContinueAnimation` 0x428FD0): the results then do not fade out.
+    pub(super) continue_seen: bool,
+    /// Whether the market was left by Escape (0x456B60): the shop then brings its music's
+    /// order and volume back.
+    pub(super) market_escaped: bool,
 }
 
 impl Default for Shop {
@@ -94,6 +100,8 @@ impl Default for Shop {
             continue_frame: 0,
             message_passes: 0,
             market: CONTINUE,
+            continue_seen: false,
+            market_escaped: false,
         }
     }
 }
@@ -108,6 +116,7 @@ impl Shop {
             repair_frame,
             message_passes: self.message_passes,
             market: self.market,
+            continue_seen: self.continue_seen,
             ..Shop::default()
         };
     }
@@ -137,6 +146,7 @@ impl Menu {
     /// `drawShopAnimationAndRightSide`: the title, the side panel, the continue item's
     /// border, then every item's box, each drawing its description over the last.
     pub(super) fn draw_shop(&mut self, canvas: &mut Canvas) {
+        self.shop.continue_seen |= self.shop.selected == CONTINUE;
         canvas.draw(&self.assets.menu.shop_title, at(0, 92), true);
         self.draw_side_panel(canvas);
         self.item_border(canvas, CONTINUE);
