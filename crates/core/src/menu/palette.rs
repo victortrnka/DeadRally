@@ -146,6 +146,15 @@ impl MenuPalette {
         self.shown.0[128..].copy_from_slice(&faded.0[128..]);
     }
 
+    /// The shown palette as `drawToBlackScreen` (0x404920) scales it: each 6-bit component
+    /// of `from` times `k / 40` (a double), truncated.
+    pub(crate) fn darken(&mut self, from: &Palette, k: i32) {
+        let factor = f64::from(k) * 0.025;
+        for (shown, from) in self.shown.0.iter_mut().zip(&from.0) {
+            *shown = from.map(|component| (f64::from(component) * factor) as u8);
+        }
+    }
+
     /// Another picture's palette at `percent` %, for the screens the menu leads to.
     pub(crate) fn show(&mut self, palette: &Palette, percent: i64) {
         self.shown = fade(palette, percent << 16);

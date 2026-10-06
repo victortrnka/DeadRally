@@ -204,6 +204,14 @@ const HITMAN_OFFER: [u32; 11] = [
 ];
 /// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
 const END_GAME: u32 = 0x44_4280;
+const LAPS: u32 = 0x44_4088;
+/// The race's pause box (0x417641): a blank line, the question whether to abort the race, and
+/// how to answer it; 32 characters each.
+const BOX_BLANK: u32 = 0x44_251C;
+const ABORT_RACE: u32 = 0x44_23FC;
+const YES_NO: u32 = 0x44_23D8;
+const BOX_LINE: usize = 32;
+const PRIZE: u32 = 0x44_4078;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
@@ -336,6 +344,13 @@ pub struct CampaignTexts {
     pub game_not_found: Vec<u8>,
     pub drug_offer: Vec<Vec<u8>>,
     pub hitman_offer: Vec<Vec<u8>>,
+    /// The race's preview (0x4321B0): the laps' words before their number, the prize's before
+    /// the race's price.
+    pub laps: Vec<u8>,
+    pub prize: Vec<u8>,
+    /// The race's pause box (0x417641): its nine lines, blank but for the fourth, asking
+    /// whether to abort the race, and the sixth, how to answer.
+    pub abort_race: Vec<Vec<u8>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -578,6 +593,15 @@ impl Texts {
                     .iter()
                     .map(|&address| text(address, 79))
                     .collect::<Result<_, _>>()?,
+                laps: text(LAPS, MAX_LINE)?,
+                prize: text(PRIZE, MAX_LINE)?,
+                abort_race: [
+                    BOX_BLANK, BOX_BLANK, BOX_BLANK, ABORT_RACE, BOX_BLANK, YES_NO,
+                ]
+                .into_iter()
+                .chain([BOX_BLANK; 3])
+                .map(|address| text(address, BOX_LINE))
+                .collect::<Result<_, _>>()?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
                     .map(|warning| {

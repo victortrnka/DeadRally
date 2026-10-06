@@ -12,6 +12,7 @@ mod hall_of_fame;
 mod licence;
 mod market;
 pub(crate) mod palette;
+mod preview;
 mod shop;
 mod sign_up;
 mod slots;
@@ -155,6 +156,19 @@ enum State {
     },
     Linger {
         waits: u32,
+    },
+    /// The wait after the race's preview has wiped in, the preview held while the race
+    /// loads, and its fade to black, `k` fortieths left.
+    PreviewWait,
+    PreviewHold {
+        waits: u32,
+    },
+    /// The race (M4b): its ticks so far.
+    Race {
+        ticks: u32,
+    },
+    ToBlack {
+        k: i32,
     },
     /// An offer after the sign-up, its 70 waits before the question (a voice after 50).
     OfferWait {
@@ -327,6 +341,10 @@ pub(crate) struct Menu {
     shop: shop::Shop,
     /// Ticks since the menu took over, the clock the sabotage seeds `rand()` from.
     ticks: u32,
+    /// The palette `drawToBlackScreen` fades from.
+    saved_palette: deadrally_gamedata::image::Palette,
+    /// The race under way.
+    race: Option<crate::race::Race>,
 }
 
 impl Menu {
@@ -394,6 +412,8 @@ impl Menu {
             written_slot: None,
             shop: shop::Shop::default(),
             ticks: 0,
+            saved_palette: deadrally_gamedata::image::Palette::BLACK,
+            race: None,
         }
     }
 
@@ -536,6 +556,10 @@ impl Menu {
             State::NoSignUpFade { step } => self.no_sign_up_fade(step),
             State::Linger { waits } => self.linger_tick(waits),
             State::OfferWait { waits } => self.offer_wait(waits),
+            State::PreviewWait => self.preview_wait(),
+            State::PreviewHold { waits } => self.preview_hold(waits),
+            State::ToBlack { k } => self.fading_out(k),
+            State::Race { ticks } => self.race_tick(ticks),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),

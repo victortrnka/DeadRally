@@ -10,11 +10,14 @@ use crate::canvas::{Canvas, at};
 use crate::keys;
 
 /// The wipe: 43 steps of 15 pixels, a band of 10 tile columns and 22 tile rows of 15 x 15,
-/// copied to the screen as a 150 x 330 window from row 75.
+/// copied to the screen as a 150 x 330 window from row 75; the race's preview's (0x42C670)
+/// 27 tile rows from row 73.
 const WIPE_STEPS: u32 = 43;
-const WIPE_START: usize = at(0, 75);
+const WIPE_TOP: usize = 75;
 const TILE: usize = 15;
 const WIPE_ROWS: usize = 22;
+const PREVIEW_TOP: usize = 73;
+const PREVIEW_ROWS: usize = 27;
 const WIPE_COLUMNS: usize = 10;
 /// The music's volume mask falls from here by this much a step while the menu wipes away.
 const WIPE_VOLUME: u32 = 65_532;
@@ -40,6 +43,19 @@ pub(super) enum Wipe {
     StartMenu,
     /// The shop, drawn over a copy of the screen.
     Shop,
+    /// The race's preview (`sub_42C670`), the music falling; one more wait after it.
+    Preview,
+}
+
+impl Wipe {
+    /// The band's top row and its rows of tiles.
+    fn band(self) -> (usize, usize) {
+        if self == Wipe::Preview {
+            (PREVIEW_TOP, PREVIEW_ROWS)
+        } else {
+            (WIPE_TOP, WIPE_ROWS)
+        }
+    }
 }
 
 fn upper(text: &[u8]) -> Vec<u8> {
@@ -85,16 +101,17 @@ impl Menu {
     /// its window shown, the music falling when the menu goes or comes back.
     pub(super) fn wipe_tick(&mut self, wipe: Wipe, step: u32) -> State {
         self.palette.after_wait();
-        let base = WIPE_START + TILE * step as usize;
-        for row in 0..WIPE_ROWS {
+        let (top, rows) = wipe.band();
+        let base = at(0, top) + TILE * step as usize;
+        for row in 0..rows {
             for column in 0..WIPE_COLUMNS {
                 let offset = base + TILE * (row * crate::canvas::WIDTH + column);
                 self.screen
                     .blit_mask(&self.assets.menu.wipe[column], &self.back, offset);
             }
         }
-        self.shown.copy_from(&self.screen, base, 150, 330);
-        if matches!(wipe, Wipe::Fame | Wipe::Menu) {
+        self.shown.copy_from(&self.screen, base, 150, TILE * rows);
+        if matches!(wipe, Wipe::Fame | Wipe::Menu | Wipe::Preview) {
             self.sound
                 .set_mask((WIPE_VOLUME - WIPE_VOLUME_STEP * step) >> 8);
         }
@@ -118,6 +135,7 @@ impl Menu {
             Wipe::Records => State::Records { index: 0 },
             Wipe::SignUp => self.sign_up_shown(),
             Wipe::Shop => self.shop_shown(),
+            Wipe::Preview => State::PreviewWait,
             Wipe::StartMenu => {
                 self.shown = self.screen.clone();
                 State::Submenu {

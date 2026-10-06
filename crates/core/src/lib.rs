@@ -17,8 +17,10 @@ pub mod host;
 mod input;
 mod keys;
 mod menu;
+mod race;
 mod startup;
 mod test_scene;
+mod trig;
 
 pub use audio::{render_effect, render_music};
 pub use frame::{Frame, expand_6bit};

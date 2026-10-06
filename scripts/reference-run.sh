@@ -4,7 +4,7 @@
 # tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
 #   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
-#                            [--sabotage-clock N] SCENARIO OUT_DIR
+#                            [--sabotage-clock N] [--no-ai] SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -22,6 +22,9 @@
 # With --sabotage-clock the sabotage after a sign-up seeds its random numbers with N instead of
 # the clock (spec M3c section 3); DeadRally's clock there is the seed plus 14 ms a tick.
 #
+# With --no-ai the opponents never drive in a race (spec M4, decision 2): the race loop's call
+# of calculateIAMovements is taken out, so they stay where DeadRally keeps them until M5.
+#
 # SCENARIO is a text file of lines "at <ms> key <name>" (an xdotool key name, e.g. space; also
 # "keydown" and "keyup" to hold a key, as the quick save's F2 must be) and
 # "at <ms> shot <label>", in time order; times count from the moment the window appears, and
@@ -34,7 +37,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -43,6 +46,7 @@ sound=false
 cfg=
 seed=
 sabotage_clock=
+no_ai=false
 saves=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -74,6 +78,10 @@ while [[ "${1:-}" == --* ]]; do
             [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || usage
             sabotage_clock=$2
             shift 2
+            ;;
+        --no-ai)
+            no_ai=true
+            shift
             ;;
         *) usage ;;
     esac
@@ -158,6 +166,21 @@ data[offset:offset + 5] = b"\xb8" + struct.pack("<I", clock & 0xFFFFFFFF)
 open(path, "wb").write(data)
 PATCH
     echo "sabotage clock: $sabotage_clock" >>"$log"
+fi
+if $no_ai; then
+    # startRace's loop calls calculateIAMovements (0x40AFC0) for each opponent at 0x4164D9;
+    # the call becomes five NOPs.
+    python3 - "$run/dr.exe" <<'PATCH'
+import sys
+path = sys.argv[1]
+data = bytearray(open(path, "rb").read())
+offset = 0x4164D9 - 0x400000
+if data[offset:offset + 5] != bytes.fromhex("e8e24affff"):
+    sys.exit("error: dr.exe has no calculateIAMovements call at 0x4164D9")
+data[offset:offset + 5] = b"\x90" * 5
+open(path, "wb").write(data)
+PATCH
+    echo "no AI" >>"$log"
 fi
 
 display_fd=$(mktemp)

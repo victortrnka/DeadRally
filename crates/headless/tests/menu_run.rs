@@ -623,6 +623,290 @@ const OFFER_SHOTS: [(u64, &str); 24] = [
     (3058, "k10-left"),
 ];
 
+/// The keys of `scripts/reference/preview.scenario` in the run of `docs/verification/m4a.md`:
+/// the test game through the Underground Market to the sign-up, a race chosen, and the race's
+/// preview wiping in.
+const PREVIEW_KEYS: [(u64, Key); 10] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2784, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const PREVIEW_SHOTS: [(u64, &str); 24] = [
+    (1691, "idle"),
+    (1783, "k01-return"),
+    (1847, "k02-down"),
+    (1926, "k03-return"),
+    (2011, "k04-return"),
+    (2140, "k05-space"),
+    (2393, "k06-return"),
+    (2436, "k07-return"),
+    (2586, "sign-up"),
+    (2629, "k08-return"),
+    (2761, "filled"),
+    (2790, "wipe-01"),
+    (2797, "wipe-02"),
+    (2804, "wipe-03"),
+    (2811, "wipe-04"),
+    (2818, "wipe-05"),
+    (2825, "wipe-06"),
+    (2828, "wipe-07"),
+    (2828, "wipe-08"),
+    (2828, "wipe-09"),
+    (2828, "wipe-10"),
+    (2828, "preview-01"),
+    (2828, "preview-02"),
+    (2828, "preview-03"),
+];
+
+/// The keys of `scripts/reference/race-start.scenario` in the run of `docs/verification/m4b.md`:
+/// the preview run on to the race.
+const RACE_START_KEYS: [(u64, Key); 10] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2783, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview held,
+/// its fade, the race's intro and its countdown.
+const RACE_START_SHOTS: [(u64, &str); 55] = [
+    (2864, "r01"),
+    (2871, "r02"),
+    (2878, "r03"),
+    (2885, "r04"),
+    (2892, "r05"),
+    (2899, "r06"),
+    (2906, "r07"),
+    (2913, "r08"),
+    (2920, "r09"),
+    (2927, "r10"),
+    (2934, "r11"),
+    (2941, "r12"),
+    (2948, "r13"),
+    (2955, "r14"),
+    (2962, "r15"),
+    (2969, "r16"),
+    (2976, "r17"),
+    (2983, "r18"),
+    (2990, "r19"),
+    (2998, "r20"),
+    (3005, "r21"),
+    (3011, "r22"),
+    (3019, "r23"),
+    (3026, "r24"),
+    (3033, "r25"),
+    (3041, "r26"),
+    (3048, "r27"),
+    (3054, "r28"),
+    (3061, "r29"),
+    (3068, "r30"),
+    (3076, "r31"),
+    (3083, "r32"),
+    (3090, "r33"),
+    (3098, "r34"),
+    (3105, "r35"),
+    (3112, "r36"),
+    (3119, "r37"),
+    (3126, "r38"),
+    (3133, "r39"),
+    (3140, "r40"),
+    (3147, "r41"),
+    (3155, "r42"),
+    (3162, "r43"),
+    (3169, "r44"),
+    (3176, "r45"),
+    (3183, "r46"),
+    (3189, "r47"),
+    (3196, "r48"),
+    (3205, "r49"),
+    (3212, "r50"),
+    (3219, "r51"),
+    (3226, "r52"),
+    (3233, "r53"),
+    (3240, "r54"),
+    (3248, "r55"),
+];
+
+/// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
+/// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
+/// read the keys held.
+const PAUSE_HELD: [Held; 2] = [(3395, Key::Escape, 7), (3610, Key::N, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the box flying in,
+/// landed, flying apart, and the race going on.
+const PAUSE_SHOTS: [(u64, &str); 50] = [
+    (3403, "e01"),
+    (3409, "e02"),
+    (3416, "e03"),
+    (3423, "e04"),
+    (3430, "e05"),
+    (3437, "e06"),
+    (3444, "e07"),
+    (3451, "e08"),
+    (3458, "e09"),
+    (3466, "e10"),
+    (3473, "e11"),
+    (3480, "e12"),
+    (3487, "e13"),
+    (3494, "e14"),
+    (3501, "e15"),
+    (3509, "e16"),
+    (3516, "e17"),
+    (3523, "e18"),
+    (3530, "e19"),
+    (3537, "e20"),
+    (3544, "e21"),
+    (3551, "e22"),
+    (3558, "e23"),
+    (3565, "e24"),
+    (3572, "e25"),
+    (3617, "n01"),
+    (3623, "n02"),
+    (3630, "n03"),
+    (3637, "n04"),
+    (3644, "n05"),
+    (3651, "n06"),
+    (3658, "n07"),
+    (3666, "n08"),
+    (3673, "n09"),
+    (3680, "n10"),
+    (3687, "n11"),
+    (3694, "n12"),
+    (3702, "n13"),
+    (3709, "n14"),
+    (3716, "n15"),
+    (3723, "n16"),
+    (3730, "n17"),
+    (3737, "n18"),
+    (3744, "n19"),
+    (3751, "n20"),
+    (3758, "n21"),
+    (3765, "n22"),
+    (3772, "n23"),
+    (3779, "n24"),
+    (3786, "n25"),
+];
+
+/// The keys held in `scripts/reference/abort.scenario`'s run: Escape, then Y.
+const ABORT_HELD: [Held; 2] = [(3397, Key::Escape, 7), (3576, Key::Y, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the box landed, and
+/// flying apart before the race ends.
+const ABORT_SHOTS: [(u64, &str); 9] = [
+    (3555, "box"),
+    (3584, "a01"),
+    (3589, "a02"),
+    (3597, "a03"),
+    (3604, "a04"),
+    (3611, "a05"),
+    (3618, "a06"),
+    (3625, "a07"),
+    (3632, "a08"),
+];
+
+/// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
+/// the preview run with the medium race chosen (Right at the sign-up), circuit 17.
+const REVERSED_KEYS: [(u64, Key); 11] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2597, Key::Right),
+    (2608, Key::Enter),
+    (2783, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview held,
+/// its fade, the reversed track's intro and countdown.
+const REVERSED_SHOTS: [(u64, &str); 67] = [
+    (2862, "r01"),
+    (2869, "r02"),
+    (2876, "r03"),
+    (2883, "r04"),
+    (2890, "r05"),
+    (2897, "r06"),
+    (2904, "r07"),
+    (2911, "r08"),
+    (2918, "r09"),
+    (2925, "r10"),
+    (2932, "r11"),
+    (2939, "r12"),
+    (2946, "r13"),
+    (2953, "r14"),
+    (2960, "r15"),
+    (2967, "r16"),
+    (2974, "r17"),
+    (2981, "r18"),
+    (2988, "r19"),
+    (2995, "r20"),
+    (3003, "r21"),
+    (3010, "r22"),
+    (3016, "r23"),
+    (3023, "r24"),
+    (3030, "r25"),
+    (3037, "r26"),
+    (3044, "r27"),
+    (3052, "r28"),
+    (3059, "r29"),
+    (3066, "r30"),
+    (3073, "r31"),
+    (3080, "r32"),
+    (3087, "r33"),
+    (3094, "r34"),
+    (3102, "r35"),
+    (3109, "r36"),
+    (3116, "r37"),
+    (3123, "r38"),
+    (3130, "r39"),
+    (3137, "r40"),
+    (3144, "r41"),
+    (3151, "r42"),
+    (3159, "r43"),
+    (3166, "r44"),
+    (3173, "r45"),
+    (3180, "r46"),
+    (3187, "r47"),
+    (3194, "r48"),
+    (3202, "r49"),
+    (3209, "r50"),
+    (3216, "r51"),
+    (3223, "r52"),
+    (3230, "r53"),
+    (3237, "r54"),
+    (3244, "r55"),
+    (3252, "r56"),
+    (3259, "r57"),
+    (3266, "r58"),
+    (3273, "r59"),
+    (3280, "r60"),
+    (3287, "r61"),
+    (3294, "r62"),
+    (3301, "r63"),
+    (3309, "r64"),
+    (3316, "r65"),
+    (3323, "r66"),
+    (3330, "r67"),
+];
+
 /// The keys of `scripts/reference/sabotage.scenario` in the run of `docs/verification/m3c.md`
 /// (its sabotage's clock fixed at 31375): the test game, the sabotage bought in the Underground
 /// Market, the sign-up and the sabotage's popup.
@@ -908,6 +1192,100 @@ fn the_sabotage_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("sabotage-run.sha256", &lines, "the sabotage run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_preview_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4a.md): the grid's drivers, the circuit, its laps and prize, the wipe.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&PREVIEW_KEYS, &[]),
+        &PREVIEW_SHOTS,
+        2_900,
+        slots,
+    );
+    check_manifest("preview-run.sha256", &lines, "the preview run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_start_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the preview held and faded, the race's tilted zoom, the
+    // player's car's flash, the colours' return, the lights' countdown, the pedestrians.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &[]),
+        &RACE_START_SHOTS,
+        3_260,
+        slots,
+    );
+    check_manifest("race-start-run.sha256", &lines, "the race-start run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pause_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the box's tiles from their random starts, the box landed,
+    // N, the tiles thrown apart and falling, the race going on.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PAUSE_HELD),
+        &PAUSE_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("pause-run.sha256", &lines, "the pause run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_abort_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the box landed, Y, the tiles flying apart. The run goes on
+    // into the stand-in's shop, so its sound pins the menus' music coming back after the race.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &ABORT_HELD),
+        &ABORT_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("abort-run.sha256", &lines, "the abort run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_reversed_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the ninth track turned half round, its own palette, the
+    // cars facing back, the scene lit as before turning, the countdown.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&REVERSED_KEYS, &[]),
+        &REVERSED_SHOTS,
+        3_340,
+        slots,
+    );
+    check_manifest("reversed-run.sha256", &lines, "the reversed run");
 }
 
 #[test]

@@ -31,6 +31,10 @@ impl Canvas {
         &self.pixels
     }
 
+    pub(crate) fn pixels_mut(&mut self) -> &mut [u8] {
+        &mut self.pixels
+    }
+
     /// Copies the whole of `picture`, which must be 640x480.
     pub(crate) fn copy_all(&mut self, picture: &Image) {
         self.pixels.copy_from_slice(&picture.pixels);

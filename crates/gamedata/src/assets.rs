@@ -45,6 +45,7 @@ pub struct Assets {
     /// `MEN-MUS.CMF`: the music that starts when the intro ends and goes on into the menus.
     pub menu_music: Module,
     pub menu: MenuAssets,
+    pub race: crate::race::RaceArchives,
 }
 
 /// What the main menu draws and plays.
@@ -71,6 +72,8 @@ pub struct MenuAssets {
     pub palette: Palette,
     /// `COPPER.PAL`: one colour per player colour, whose ramps the menu palette gets.
     pub copper: Palette,
+    /// `CARCOL.PAL`: the other drivers' car colours in a race.
+    pub car_colours: Palette,
     /// `BGCOP.PAL`: 512 colours for the background copper rows.
     pub background_copper: Vec<[u8; 3]>,
     /// `CREDIT1.BPK` and `CREDIT2.BPK` with their palettes.
@@ -145,6 +148,11 @@ pub struct MenuAssets {
     /// `EVENT_2`.
     pub drug_dealer: Image,
     pub hitman: Image,
+    /// The race's preview (spec M4 §3): the banner `PREP4`, the grid's frame `PREPW1` and the
+    /// circuits' pictures `TSHAPE01`..`TSHAPE19`, by circuit (the last the Adversary's).
+    pub preview_banner: Image,
+    pub preview_grid: Image,
+    pub track_shapes: Vec<Image>,
 }
 
 #[derive(Debug)]
@@ -247,6 +255,14 @@ impl Assets {
                 .map_err(AssetError::Sound)?,
             menu_music: sound::load_music(&musics, "MEN-MUS.CMF").map_err(AssetError::Sound)?,
             menu: menu_assets(&menu, &musics, &path("END.BMP"), &path("DR.EXE"))?,
+            race: crate::race::RaceArchives {
+                tracks: (0..10)
+                    .map(|n| Archive::open(&path(&format!("TR{n}.BPA"))))
+                    .collect::<Result<_, _>>()?,
+                engine: Archive::open(&path("ENGINE.BPA"))?,
+                ib_files: Archive::open(&path("IBFILES.BPA"))?,
+                musics,
+            },
         })
     }
 }
@@ -313,6 +329,30 @@ fn market_prices(exe: &Exe) -> Result<Vec<[i32; 4]>, crate::machine::MachineErro
         })
         .collect()
 }
+
+/// The circuits' pictures in the race's preview, circuit 0 to 17 and the Adversary's
+/// (`previewRaceScreen` 0x4321B0, the names at 0x456798).
+const TRACK_SHAPES: [&str; 19] = [
+    "TSHAPE01.BPK",
+    "TSHAPE02.BPK",
+    "TSHAPE03.BPK",
+    "TSHAPE04.BPK",
+    "TSHAPE05.BPK",
+    "TSHAPE06.BPK",
+    "TSHAPE07.BPK",
+    "TSHAPE08.BPK",
+    "TSHAPE09.BPK",
+    "TSHAPE10.BPK",
+    "TSHAPE11.BPK",
+    "TSHAPE12.BPK",
+    "TSHAPE13.BPK",
+    "TSHAPE14.BPK",
+    "TSHAPE15.BPK",
+    "TSHAPE16.BPK",
+    "TSHAPE17.BPK",
+    "TSHAPE18.BPK",
+    "TSHAPE19.BPK",
+];
 
 /// The cars turning in the menus, car 0 to 5 (dRally `___24548h.c`).
 const CAR_TURNING: [&str; 6] = [
@@ -389,6 +429,7 @@ fn menu_assets(
         small_c: frames(menu, "F-SMA3C.BPK")?,
         palette: palette(menu, "MENU.PAL")?,
         copper: palette(menu, "COPPER.PAL")?,
+        car_colours: palette(menu, "CARCOL.PAL")?,
         background_copper: background_copper.as_chunks::<3>().0.to_vec(),
         credits: vec![
             picture(menu, "CREDIT1.BPK", "CREDIT1.PAL")?,
@@ -453,6 +494,12 @@ fn menu_assets(
         market_prices: market_prices(&exe).map_err(AssetError::Machine)?,
         drug_dealer: frames(menu, "DRUGDEAL.BPK")?.remove(0),
         hitman: frames(menu, "EVENT_2.BPK")?.remove(0),
+        preview_banner: frames(menu, "PREP4.BPK")?.remove(0),
+        preview_grid: frames(menu, "PREPW1.BPK")?.remove(0),
+        track_shapes: TRACK_SHAPES
+            .iter()
+            .map(|name| Ok(frames(menu, name)?.remove(0)))
+            .collect::<Result<_, AssetError>>()?,
     })
 }
 

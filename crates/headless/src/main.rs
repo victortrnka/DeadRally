@@ -37,7 +37,7 @@ const USAGE: &str = "usage:
   deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... --out FILE.png
   deadrally-headless compare A.png B.png
   deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--ticks N] SHOT.png...
-  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--seconds S] --out FILE.wav
+  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
   deadrally-headless compare-audio ORIGINAL.wav OURS.wav [--min-overlap S]";
@@ -106,6 +106,7 @@ enum Command {
         source: AudioSource,
         keys: Vec<Press>,
         seed: u32,
+        saves: Vec<(usize, PathBuf)>,
         seconds: Option<u64>,
         out: PathBuf,
     },
@@ -168,10 +169,18 @@ fn main() -> ExitCode {
             source,
             keys,
             seed,
+            saves,
             seconds,
             out,
-        } => render_audio(data.as_deref(), &source, &keys, seed, seconds, &out)
-            .map(|()| ExitCode::SUCCESS),
+        } => render_audio(
+            data.as_deref(),
+            &source,
+            &keys,
+            (seed, &saves, None),
+            seconds,
+            &out,
+        )
+        .map(|()| ExitCode::SUCCESS),
         Command::CompareAudio {
             original,
             ours,
@@ -213,6 +222,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
         "render-audio" => &[
             "--data",
             "--seed",
+            "--save",
             "--music",
             "--effect",
             "--number",
@@ -332,11 +342,15 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             if source != AudioSource::Startup && !keys.is_empty() {
                 return Err("--key-at only applies to --startup".into());
             }
+            if source != AudioSource::Startup && !saves.is_empty() {
+                return Err("--save only applies to --startup".into());
+            }
             Ok(Command::RenderAudio {
                 data,
                 source,
                 keys,
                 seed,
+                saves,
                 seconds,
                 out: out.ok_or("render-audio needs --out FILE.wav")?,
             })
@@ -721,7 +735,7 @@ fn render_audio(
     data: Option<&Path>,
     source: &AudioSource,
     keys: &[Press],
-    seed: u32,
+    start: Start,
     seconds: Option<u64>,
     out: &Path,
 ) -> Result<(), String> {
@@ -740,18 +754,16 @@ fn render_audio(
     };
     let samples = match source {
         AudioSource::Startup => {
-            let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
-            let intro_ticks = assets
-                .intro
-                .delays
-                .iter()
-                .map(|&delay| u64::from(delay))
-                .sum::<u64>();
-            let ticks = seconds.map_or(intro_ticks + STARTUP_AFTER_INTRO_TICKS, |seconds| {
-                seconds * 1_000_000_000 / TICK_NANOS
-            });
-            let config = assets.menu.default_config.clone();
-            let mut game = Game::with_seed(assets, config, seed);
+            let ticks = match seconds {
+                Some(seconds) => seconds * 1_000_000_000 / TICK_NANOS,
+                None => {
+                    let assets =
+                        Assets::load(&located.validation).map_err(|error| error.to_string())?;
+                    let intro_ticks = assets.intro.delays.iter().map(|&delay| u64::from(delay));
+                    intro_ticks.sum::<u64>() + STARTUP_AFTER_INTRO_TICKS
+                }
+            };
+            let mut game = started(&located, start)?;
             let mut audio = Vec::new();
             for done in 0..ticks {
                 press_due(&mut game, keys, done);

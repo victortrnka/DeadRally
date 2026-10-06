@@ -98,6 +98,7 @@ fn assets() -> Assets {
         },
         menu_music: music(false),
         menu: common::menu_assets(),
+        race: common::race_archives(),
     }
 }
 
@@ -1275,7 +1276,8 @@ fn the_sabotage_damages_one_rival_by_25_to_49_percent() {
     let mut game = new_game_in_shop();
     to_a_race(&mut game, true, &[Key::Left, Key::Enter, Key::Right]);
     step(&mut game, Key::Enter);
-    run(&mut game, 60);
+    // The race's preview wipes in, stays while the race loads, fades out; then the shop.
+    run(&mut game, 330);
     assert_eq!(
         pixel(&game, (300, 95)),
         common::SHOP,
@@ -1315,7 +1317,7 @@ fn an_offer_after_a_sign_up_waits_for_its_answer_and_escape_does_not_give_one() 
     run(&mut game, 20);
     assert!(offered(&game), "Escape does not answer");
     step(&mut game, Key::Enter);
-    run(&mut game, 60);
+    run(&mut game, 330);
     assert_eq!(
         pixel(&game, (300, 95)),
         common::SHOP,
@@ -1420,4 +1422,79 @@ fn player_after_shopping_from(file: Vec<u8>, keys: &[Key]) -> Vec<u8> {
         step(&mut game, key);
     }
     saved_player(game)
+}
+
+#[test]
+fn the_race_s_preview_wipes_in_after_the_sign_up() {
+    // previewRaceScreen (0x4321B0): before the race the player sees the grid's four drivers
+    // and the circuit, its banner across the bottom; they wipe in over the sign-up.
+    let mut game = new_game_in_shop();
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 20);
+    assert_eq!(
+        pixel(&game, (5, 450)),
+        common::PREVIEW,
+        "the banner's left on its way"
+    );
+    assert_ne!(
+        pixel(&game, (600, 450)),
+        common::PREVIEW,
+        "its right still to come"
+    );
+    run(&mut game, 30);
+    assert_eq!(pixel(&game, (600, 450)), common::PREVIEW, "the banner");
+    assert_eq!(pixel(&game, (400, 200)), common::PREVIEW + 2, "the circuit");
+}
+
+#[test]
+fn the_shop_after_a_race_is_the_menus_own_again() {
+    // After a race (here the stand-in for one whose data does not load) the shop opens on the
+    // menus' screen with none of the preview left on it, and its sounds are heard again: the
+    // race's fade to black had silenced them, and the original brings the menus' music and
+    // sounds back as the race ends (0x434617).
+    let mut game = new_game_in_shop();
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 44 + 143 + 41 + 60);
+    assert_ne!(
+        pixel(&game, (5, 450)),
+        common::PREVIEW,
+        "the preview's banner gone"
+    );
+    assert_ne!(
+        pixel(&game, (400, 200)),
+        common::PREVIEW + 2,
+        "its circuit gone"
+    );
+    press(&mut game, Key::Left);
+    let mut audio = Vec::new();
+    for _ in 0..10 {
+        game.tick();
+        game.take_audio(&mut audio);
+    }
+    assert!(
+        audio.iter().any(|&sample| sample != 0),
+        "the shop's step heard"
+    );
+}
+
+#[test]
+fn an_opponent_s_face_past_the_pictures_does_not_stop_the_preview() {
+    // A save's check covers the player's record only: an edited one may give the opponents
+    // faces past the pictures. The preview leaves such a face out instead of stopping the game.
+    let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(5_000));
+    for driver in 0..19 {
+        let at = driver * 108 + 64;
+        file.drivers[at..at + 4].copy_from_slice(&1_000i32.to_le_bytes());
+    }
+    let mut game = in_shop(file.encode(3));
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 50);
+    assert_eq!(
+        pixel(&game, (600, 450)),
+        common::PREVIEW,
+        "the preview shown"
+    );
 }

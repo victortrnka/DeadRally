@@ -1,0 +1,18 @@
+# The race's sound (spec M4b): the start of race-start.scenario, then the race standing for
+# two minutes with the opponents still (run with --no-ai): the track's music, the engine, the
+# lights' sounds.
+at 2000 key space
+at 24000 shot idle
+at 24500 key Return
+at 25600 key Down
+at 26500 key Return
+at 27600 key Return
+at 28800 key space
+at 30600 key Return
+at 34150 key Return
+at 36550 shot sign-up
+at 36850 key Return
+at 39000 shot filled
+at 39300 key space
+at 45000 shot race
+at 170000 shot end

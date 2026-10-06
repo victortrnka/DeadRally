@@ -51,6 +51,8 @@ pub const SHOP: u8 = 53;
 /// The drug dealer's and the hitman's pictures in their offers.
 pub const DRUG_DEALER: u8 = SHOP + 30;
 pub const HITMAN: u8 = SHOP + 31;
+/// The race's preview: its banner, the grid's frame, the circuit's picture.
+pub const PREVIEW: u8 = 110;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -172,6 +174,9 @@ fn texts() -> Texts {
             game_not_found: b"?".to_vec(),
             drug_offer: vec![b"d".to_vec(); 11],
             hitman_offer: vec![b"h".to_vec(); 11],
+            laps: b"L".to_vec(),
+            prize: b"P".to_vec(),
+            abort_race: vec![b"A".to_vec(); 9],
         },
         shop: shop_texts(),
     }
@@ -302,7 +307,28 @@ pub fn menu_assets() -> MenuAssets {
         loan_shark: solid(96, 96, SHOP + 17),
         weapons: (0..12).map(|k| solid(96, 96, SHOP + 18 + k)).collect(),
         market_prices: vec![[150, 200, 275, 250]; 6],
+        car_colours: Palette::BLACK,
         drug_dealer: solid(104, 128, DRUG_DEALER),
         hitman: solid(104, 128, HITMAN),
+        preview_banner: solid(640, 54, PREVIEW),
+        preview_grid: solid(225, 274, PREVIEW + 1),
+        track_shapes: (0..19).map(|_| solid(360, 274, PREVIEW + 2)).collect(),
+    }
+}
+
+/// No tracks, cars or boards: the races' archives empty.
+pub fn race_archives() -> deadrally_gamedata::race::RaceArchives {
+    let empty = |name: &str| {
+        deadrally_gamedata::bpa::Archive::from_bytes(
+            name.into(),
+            vec![0; deadrally_gamedata::bpa::DATA_START],
+        )
+        .expect("an empty archive")
+    };
+    deadrally_gamedata::race::RaceArchives {
+        tracks: (0..10).map(|n| empty(&format!("TR{n}.BPA"))).collect(),
+        engine: empty("ENGINE.BPA"),
+        ib_files: empty("IBFILES.BPA"),
+        musics: empty("MUSICS.BPA"),
     }
 }

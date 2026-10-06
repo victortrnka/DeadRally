@@ -340,3 +340,26 @@ fn decoded_pictures_match_the_committed_manifest() {
         gone.join("\n")
     );
 }
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn every_track_loads_with_its_scene_and_shadows() {
+    // A race on any of the ten tracks needs its picture, mask, lights, shadows and 3D scene;
+    // one that fails to load would leave the player at the stand-in race.
+    for number in 0..10 {
+        let archive = archive(&format!("TR{number}.BPA"));
+        let track = deadrally_gamedata::race::Track::load(&archive, number)
+            .unwrap_or_else(|error| panic!("TR{number}: {error}"));
+        let mut colours = std::collections::BTreeMap::new();
+        for triangle in track.scene.objects.iter().flat_map(|o| &o.triangles) {
+            *colours.entry(triangle.colour).or_insert(0) += 1;
+        }
+        println!(
+            "TR{number}: {} objects, {} textures, {} shadows, colours {colours:?}",
+            track.scene.objects.len(),
+            track.scene.textures.len(),
+            track.shadows.triangles.len()
+        );
+        assert!(!track.scene.objects.is_empty(), "TR{number} has no scene");
+    }
+}
