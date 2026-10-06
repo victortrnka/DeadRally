@@ -1166,6 +1166,43 @@ const WRECK_SHOTS: [(u64, &str); 33] = [
     (3916, "w31"),
 ];
 
+/// The keys held in `scripts/reference/spikes.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game with spikes): Left from before the start
+/// for 100 ticks, turning the standing car round, then Up into the car behind.
+const SPIKES_HELD: [Held; 2] = [(3360, Key::Left, 100), (3481, Key::Up, 86)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the spiked car
+/// turned, driving into the car behind and tearing into it.
+const SPIKES_SHOTS: [(u64, &str); 27] = [
+    (3324, "race"),
+    (3467, "turned"),
+    (3473, "s00"),
+    (3480, "s01"),
+    (3488, "s02"),
+    (3495, "s03"),
+    (3502, "s04"),
+    (3509, "s05"),
+    (3516, "s06"),
+    (3523, "s07"),
+    (3530, "s08"),
+    (3538, "s09"),
+    (3545, "s10"),
+    (3552, "s11"),
+    (3559, "s12"),
+    (3568, "s13"),
+    (3573, "s14"),
+    (3580, "s15"),
+    (3588, "s16"),
+    (3595, "s17"),
+    (3602, "s18"),
+    (3609, "s19"),
+    (3616, "s20"),
+    (3623, "s21"),
+    (3630, "s22"),
+    (3638, "s23"),
+    (3646, "s24"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1805,6 +1842,25 @@ fn the_wreck_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("wreck-run.sha256", &lines, "the wreck run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_spikes_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): the
+    // spiked wheels' sprites or what they tear off the other car show here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 1, 0]));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &SPIKES_HELD),
+        &SPIKES_SHOTS,
+        3_650,
+        slots,
+    );
+    check_manifest("spikes-run.sha256", &lines, "the spikes run");
 }
 
 #[test]
