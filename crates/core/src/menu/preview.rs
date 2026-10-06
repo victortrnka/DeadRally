@@ -254,6 +254,7 @@ impl Menu {
             race_over_lines: self.assets.menu.texts.campaign.race_over.clone(),
             help: self.assets.menu.texts.help.clone(),
             pads: std::array::from_fn(|control| self.config.pad(control)),
+            still: self.campaign.still_opponents,
             controls,
             pickup_money: self.pickup_money(race),
             lap_record: self

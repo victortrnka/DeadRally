@@ -64,6 +64,15 @@ impl Game {
         }
     }
 
+    /// Keeps the opponents still in the races, as `scripts/reference-run.sh --no-ai` keeps
+    /// the original's, for runs checked against it; for a game that has not reached its menu
+    /// yet.
+    pub fn keep_opponents_still(&mut self) {
+        if let Scene::Startup(startup) = &mut self.scene {
+            startup.still_opponents = true;
+        }
+    }
+
     /// A game the player saved since the last call: its slot and the file to write, which
     /// the host keeps out of the game folder.
     pub fn take_saved_game(&mut self) -> Option<(usize, Vec<u8>)> {

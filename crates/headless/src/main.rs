@@ -37,7 +37,7 @@ const USAGE: &str = "usage:
   deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... --out FILE.png
   deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]...
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--ticks N] SHOT.png...
+  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--ticks N] SHOT.png...
   deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
@@ -87,6 +87,7 @@ enum Command {
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
+        still: bool,
         out: PathBuf,
     },
     Compare {
@@ -100,6 +101,7 @@ enum Command {
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
+        still: bool,
     },
     Find {
         data: Option<PathBuf>,
@@ -107,6 +109,7 @@ enum Command {
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
+        still: bool,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -160,9 +163,16 @@ fn main() -> ExitCode {
             seed,
             saves,
             clock,
+            still,
             out,
-        } => render(data.as_deref(), tick, &keys, (seed, &saves, clock), &out)
-            .map(|()| ExitCode::SUCCESS),
+        } => render(
+            data.as_deref(),
+            tick,
+            &keys,
+            (seed, &saves, clock, still),
+            &out,
+        )
+        .map(|()| ExitCode::SUCCESS),
         Command::Compare { a, b } => compare(&a, &b),
         Command::Trace {
             data,
@@ -171,16 +181,25 @@ fn main() -> ExitCode {
             seed,
             saves,
             clock,
-        } => trace(data.as_deref(), tick, &keys, (seed, &saves, clock)).map(|()| ExitCode::SUCCESS),
+            still,
+        } => trace(data.as_deref(), tick, &keys, (seed, &saves, clock, still))
+            .map(|()| ExitCode::SUCCESS),
         Command::Find {
             data,
             keys,
             seed,
             saves,
             clock,
+            still,
             ticks,
             shots,
-        } => find(data.as_deref(), &keys, (seed, &saves, clock), ticks, &shots),
+        } => find(
+            data.as_deref(),
+            &keys,
+            (seed, &saves, clock, still),
+            ticks,
+            &shots,
+        ),
         Command::RenderAudio {
             data,
             source,
@@ -193,7 +212,7 @@ fn main() -> ExitCode {
             data.as_deref(),
             &source,
             &keys,
-            (seed, &saves, None),
+            (seed, &saves, None, false),
             seconds,
             &out,
         )
@@ -266,11 +285,14 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut seed = 0;
     let mut saves = Vec::new();
     let mut clock = None;
+    let mut still = false;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
         if command == "render-audio" && name == "--startup" {
             startup = true;
+        } else if matches!(command, "render" | "trace" | "find") && name == "--no-ai" {
+            still = true;
         } else if options.contains(&name) {
             let value = args.next().ok_or(format!("{name} needs a value"))?;
             let number = || {
@@ -339,6 +361,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             seed,
             saves,
             clock,
+            still,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "trace" => Ok(Command::Trace {
@@ -348,6 +371,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             seed,
             saves,
             clock,
+            still,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
             Ok([a, b]) => Ok(Command::Compare { a, b }),
@@ -398,6 +422,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 seed,
                 saves,
                 clock,
+                still,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -591,17 +616,21 @@ fn play(game: &mut Game, ticks: u64, keys: &[Press], mut each: impl FnMut(u64, &
 }
 
 /// Writes the frame after `tick` ticks as the original's window would show it.
-/// How a run starts: `rand()`'s seed, the saved games given, the sabotage's clock if fixed.
-type Start<'a> = (u32, &'a [(usize, PathBuf)], Option<u32>);
+/// How a run starts: `rand()`'s seed, the saved games given, the sabotage's clock if fixed,
+/// and whether the opponents stay still (`--no-ai`).
+type Start<'a> = (u32, &'a [(usize, PathBuf)], Option<u32>, bool);
 
 /// A game started as `start` says.
-fn started(located: &Located, (seed, saves, clock): Start) -> Result<Game, String> {
+fn started(located: &Located, (seed, saves, clock, still): Start) -> Result<Game, String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, seed);
     game.set_saved_games(read_saves(saves)?);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
+    }
+    if still {
+        game.keep_opponents_still();
     }
     Ok(game)
 }
@@ -1034,6 +1063,7 @@ mod tests {
                 seed: 0,
                 saves: vec![],
                 clock: None,
+                still: false,
                 out: PathBuf::from("a.png")
             })
         );
@@ -1052,6 +1082,7 @@ mod tests {
                 seed: 0,
                 saves: vec![],
                 clock: None,
+                still: false,
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })

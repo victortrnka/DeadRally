@@ -283,6 +283,9 @@ pub(crate) struct Campaign {
     pub(crate) clock: u32,
     /// The clock fixed instead, as the reference runner fixes the original's.
     pub(crate) fixed_clock: Option<u32>,
+    /// The opponents kept still in the races, as the reference runner's `--no-ai` keeps the
+    /// original's.
+    pub(crate) still_opponents: bool,
     /// The deals taken after a sign-up: the drug run's level (0x456BB4), and the hitman's
     /// (0x456BB8) with his victim (0x456BBC); 0 for none. Races settle them (M5).
     pub(crate) drug_deal: i32,
@@ -332,6 +335,7 @@ impl Campaign {
             stock: [1; 4],
             clock: seed,
             fixed_clock: None,
+            still_opponents: false,
             drug_deal: 0,
             hit: 0,
             hit_victim: 0,

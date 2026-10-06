@@ -99,6 +99,14 @@ impl Mines {
         }
     }
 
+    /// Where the mines dropped lie, blown or not.
+    pub(super) fn places(&self) -> Vec<(i32, i32)> {
+        self.slots[..self.count]
+            .iter()
+            .map(|mine| (mine.x, mine.y))
+            .collect()
+    }
+
     /// `sub_40F6A0` for the car in place `slot` holding `keys`.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn step(

@@ -2,6 +2,7 @@
 //! a buffer of rows 512 bytes apart ([`buffer`]), which the window shows doubled from row 40;
 //! the track's view is 256 wide right of the HUD's 64.
 
+mod ai;
 mod buffer;
 mod cars;
 mod collisions;
@@ -176,6 +177,8 @@ pub(crate) struct Race {
     help_texts: HelpTexts,
     pads: [u32; 7],
     help_asked: bool,
+    /// The opponents kept still.
+    still: bool,
     /// The scancodes of the eight controls in `dr.cfg`.
     controls: [u32; 8],
     /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
@@ -242,6 +245,8 @@ pub(crate) struct Setup {
     pub(crate) help: HelpTexts,
     pub(crate) controls: [u32; 8],
     pub(crate) pads: [u32; 7],
+    /// The opponents kept still (the reference runner's `--no-ai`).
+    pub(crate) still: bool,
     pub(crate) pickup_money: i32,
     pub(crate) lap_record: [i32; 3],
 }
@@ -402,6 +407,7 @@ impl Race {
             help,
             controls,
             pads,
+            still,
             pickup_money,
             lap_record,
         } = setup;
@@ -530,6 +536,7 @@ impl Race {
             },
             help_texts: help,
             pads,
+            still,
             help_asked: false,
             controls,
             samples: [0; 16],
@@ -690,6 +697,24 @@ impl Race {
     /// The cars' step of a tick once the race is on (0x4164B6): the opponents' driving comes
     /// with M5, so they hold no keys.
     fn drive(&mut self, tick: usize, sound: &mut Sound, rand: &mut Rand) {
+        // 0x4164C1: the opponents decide their keys.
+        if !self.still {
+            let mines = self.mines.places();
+            let guide = ai::Guide {
+                guide: &self.track.guide.pixels,
+                zones: &self.track.zones.pixels,
+                width: self.track.zones.width as i32,
+                speed: &self.track.zone_speed,
+                steering: &self.track.zone_steering,
+                offset: &self.track.zone_offset,
+                track: (self.track.info.width as i32, self.track.info.height as i32),
+                mines: &mines,
+                sprites: &self.sprites,
+            };
+            for slot in (0..self.cars.len()).filter(|&slot| slot != self.player) {
+                ai::steer(&mut self.cars, slot, tick, &guide, rand);
+            }
+        }
         for car in &mut self.cars {
             car.wall = 0;
         }
@@ -1192,7 +1217,7 @@ impl Race {
             line += &format!(
                 " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
                  g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
-                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{}",
+                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{} at{} bo{} av{} mw{} ho{} ef{}",
                 car.zone,
                 car.direction,
                 car.sprite,
@@ -1223,6 +1248,12 @@ impl Race {
                 i32::from(car.horn),
                 h.mines,
                 car.fire,
+                car.ai.turning,
+                car.ai.back_off,
+                car.ai.avoid,
+                car.ai.mine_wait,
+                i32::from(car.ai.horn),
+                car.effect,
             );
         }
         line
@@ -1427,6 +1458,12 @@ impl Race {
             &gauge,
             self.laps,
         );
+        // 0x41747B: the effect power-ups' counts run down by the ticks between frames.
+        for car in &mut self.cars {
+            if car.effect > 0 {
+                car.effect -= self.clock.between;
+            }
+        }
     }
 
     /// Where the player's car is on the screen (0x40D929): where the view's lead puts it,

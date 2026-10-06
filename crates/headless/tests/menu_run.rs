@@ -1503,6 +1503,138 @@ const HELP_SHOTS: [(u64, &str); 224] = [
     (5007, "h222"),
 ];
 
+/// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
+/// run of `docs/verification/m5.md` (no keys held: the player stands while the opponents race
+/// three laps round it).
+const OPPONENTS_SHOTS: [(u64, &str); 126] = [
+    (3360, "o000"),
+    (3395, "o001"),
+    (3431, "o002"),
+    (3467, "o003"),
+    (3502, "o004"),
+    (3538, "o005"),
+    (3574, "o006"),
+    (3605, "o007"),
+    (3642, "o008"),
+    (3681, "o009"),
+    (3716, "o010"),
+    (3752, "o011"),
+    (3780, "o012"),
+    (3815, "o013"),
+    (3850, "o014"),
+    (3885, "o015"),
+    (3920, "o016"),
+    (3965, "o017"),
+    (3999, "o018"),
+    (4037, "o019"),
+    (4073, "o020"),
+    (4109, "o021"),
+    (4140, "o022"),
+    (4167, "o023"),
+    (4200, "o024"),
+    (4235, "o025"),
+    (4270, "o026"),
+    (4305, "o027"),
+    (4340, "o028"),
+    (4387, "o029"),
+    (4410, "o030"),
+    (4445, "o031"),
+    (4480, "o032"),
+    (4515, "o033"),
+    (4550, "o034"),
+    (4585, "o035"),
+    (4645, "o036"),
+    (4655, "o037"),
+    (4690, "o038"),
+    (4725, "o039"),
+    (4760, "o040"),
+    (4795, "o041"),
+    (4830, "o042"),
+    (4865, "o043"),
+    (4900, "o044"),
+    (4935, "o045"),
+    (4970, "o046"),
+    (5005, "o047"),
+    (5040, "o048"),
+    (5075, "o049"),
+    (5110, "o050"),
+    (5145, "o051"),
+    (5180, "o052"),
+    (5246, "o053"),
+    (5250, "o054"),
+    (5323, "o055"),
+    (5358, "o056"),
+    (5395, "o057"),
+    (5423, "o058"),
+    (5425, "o059"),
+    (5493, "o060"),
+    (5495, "o061"),
+    (5533, "o062"),
+    (5592, "o063"),
+    (5603, "o064"),
+    (5632, "o065"),
+    (5712, "o066"),
+    (5740, "o067"),
+    (5740, "o068"),
+    (5824, "o069"),
+    (5860, "o070"),
+    (5895, "o071"),
+    (5931, "o072"),
+    (5967, "o073"),
+    (6001, "o074"),
+    (6038, "o075"),
+    (6074, "o076"),
+    (6110, "o077"),
+    (6145, "o078"),
+    (6181, "o079"),
+    (6217, "o080"),
+    (6252, "o081"),
+    (6256, "o082"),
+    (6265, "o083"),
+    (6360, "o084"),
+    (6395, "o085"),
+    (6431, "o086"),
+    (6467, "o087"),
+    (6485, "o088"),
+    (6485, "o089"),
+    (6510, "o090"),
+    (6545, "o091"),
+    (6580, "o092"),
+    (6615, "o093"),
+    (6650, "o094"),
+    (6685, "o095"),
+    (6720, "o096"),
+    (6755, "o097"),
+    (6790, "o098"),
+    (6825, "o099"),
+    (6860, "o100"),
+    (6895, "o101"),
+    (6930, "o102"),
+    (6965, "o103"),
+    (7000, "o104"),
+    (7035, "o105"),
+    (7070, "o106"),
+    (7105, "o107"),
+    (7140, "o108"),
+    (7175, "o109"),
+    (7210, "o110"),
+    (7245, "o111"),
+    (7280, "o112"),
+    (7315, "o113"),
+    (7350, "o114"),
+    (7385, "o115"),
+    (7457, "o116"),
+    (7457, "o117"),
+    (7490, "o118"),
+    (7527, "o119"),
+    (7560, "o120"),
+    (7597, "o121"),
+    (7626, "o122"),
+    (7667, "o123"),
+    (7696, "o124"),
+    (7737, "o125"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1800,13 +1932,26 @@ fn manifest_with(
 type Held = (u64, Key, u64);
 
 /// [`manifest_with`] for a run seeded with `seed` (its sabotage's clock fixed at `clock`),
-/// with `held` keys besides the ones pressed and let go at once.
+/// with `held` keys besides the ones pressed and let go at once, the opponents kept still
+/// as the original's runs with `--no-ai` keep them.
 fn manifest_seeded(
+    start: (u32, Option<u32>),
+    keys: (&[(u64, Key)], &[Held]),
+    shots: &[(u64, &str)],
+    ticks: u64,
+    slots: Vec<Option<Vec<u8>>>,
+) -> String {
+    manifest_run(start, keys, shots, ticks, slots, true)
+}
+
+/// [`manifest_seeded`] with the opponents driving unless `still`.
+fn manifest_run(
     (seed, clock): (u32, Option<u32>),
     (keys, held): (&[(u64, Key)], &[Held]),
     shots: &[(u64, &str)],
     ticks: u64,
     slots: Vec<Option<Vec<u8>>>,
+    still: bool,
 ) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
@@ -1814,6 +1959,9 @@ fn manifest_seeded(
     game.set_saved_games(slots);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
+    }
+    if still {
+        game.keep_opponents_still();
     }
     let mut saved = Vec::new();
     let mut lines = String::new();
@@ -2188,6 +2336,26 @@ fn the_help_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("help-run.sha256", &lines, "the help run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_opponents_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m5.md): the
+    // opponents' steering, speed, laps and places, and every draw of `rand()` they make.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_run(
+        (SEED, None),
+        (&RACE_START_KEYS, &[]),
+        &OPPONENTS_SHOTS,
+        7_740,
+        slots,
+        false,
+    );
+    check_manifest("opponents-run.sha256", &lines, "the opponents run");
 }
 
 #[test]

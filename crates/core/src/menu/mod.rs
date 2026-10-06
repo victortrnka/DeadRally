@@ -357,7 +357,12 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        (seed, slot_files, sabotage_clock): (u32, Vec<Option<Vec<u8>>>, Option<u32>),
+        (seed, slot_files, sabotage_clock, still_opponents): (
+            u32,
+            Vec<Option<Vec<u8>>>,
+            Option<u32>,
+            bool,
+        ),
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -400,6 +405,7 @@ impl Menu {
             assets,
             campaign: Campaign {
                 fixed_clock: sabotage_clock,
+                still_opponents,
                 ..Campaign::new(seed)
             },
             nickname: licence::Nickname::default(),
