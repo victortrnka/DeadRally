@@ -19,7 +19,7 @@ pub(crate) const FRAMES: usize = 96;
 const SPRITES: usize = FRAME * FRAMES;
 /// The palette entries a car's colour has in its sprites, moved 10 along a driver.
 const COLOUR: std::ops::RangeInclusive<u8> = 15..=24;
-/// The rows the sprites and the lights draw in.
+/// The rows the sprites draw in.
 const ROWS: i64 = 200;
 
 /// `sub_403050`: every driver's sprites one after another (0x5034FC), their colour's entries
@@ -61,79 +61,6 @@ pub(crate) fn draw_sprite(buffer: &mut Buffer, sprites: &[u8], (x, y): (i32, i32
     }
 }
 
-/// `sub_43D530`: the triangle between `points` lit, every pixel turned through `table`: row by
-/// row from the top, its edges followed in f32 steps, each row from the left edge + 0.4 to the
-/// right edge + 0.6 rounded down, rows 1 to 199 only.
-pub(crate) fn light_triangle(buffer: &mut Buffer, points: [(i32, i32); 3], table: &[u8; 256]) {
-    let x = points.map(|(x, _)| x);
-    let y = points.map(|(_, y)| y);
-    let top = if y[0] < y[1] {
-        if y[0] < y[2] { 0 } else { 2 }
-    } else if y[1] >= y[2] {
-        2
-    } else {
-        1
-    };
-    let bottom = if y[0] > y[1] {
-        if y[0] > y[2] { 0 } else { 2 }
-    } else if y[1] <= y[2] {
-        2
-    } else {
-        1
-    };
-    if y[top] == y[bottom] {
-        return;
-    }
-    let middle = 3 - top - bottom;
-    let slope =
-        |from: usize, to: usize| (f64::from(x[to] - x[from]) / f64::from(y[to] - y[from])) as f32;
-    let step = |edge: f32, by: f32| (f64::from(edge) + f64::from(by)) as f32;
-    let top_bottom = slope(top, bottom);
-    let mut row = y[top];
-    // `a` follows the edge through the middle point, `b` the edge from the top to the bottom.
-    let (mut a, mut b);
-    if y[middle] == y[top] {
-        a = x[middle] as f32;
-        b = x[top] as f32;
-    } else {
-        let top_middle = slope(top, middle);
-        a = x[top] as f32;
-        b = a;
-        while row < y[middle] {
-            light_row(buffer, row, a, b, table);
-            a = step(a, top_middle);
-            b = step(b, top_bottom);
-            row += 1;
-        }
-        if y[middle] == y[bottom] {
-            return;
-        }
-    }
-    let middle_bottom = slope(middle, bottom);
-    while row < y[bottom] {
-        light_row(buffer, row, a, b, table);
-        a = step(a, middle_bottom);
-        b = step(b, top_bottom);
-        row += 1;
-    }
-}
-
-/// A row of the triangle between its edges `a` and `b`, as far as 512 pixels from the left.
-fn light_row(buffer: &mut Buffer, row: i32, a: f32, b: f32, table: &[u8; 256]) {
-    if row <= 0 || i64::from(row) >= ROWS {
-        return;
-    }
-    let (left, right) = if a > b { (b, a) } else { (a, b) };
-    let left = ((f64::from(left) + f64::from(0.4f32)).floor() as i32).max(0);
-    let right = ((f64::from(right) + f64::from(0.6f32)).floor() as i32).min(512);
-    for column in left..right {
-        buffer.turn(
-            i64::from(row) * STRIDE as i64 + i64::from(column) + LEFT as i64,
-            table,
-        );
-    }
-}
-
 /// The three triangles of a car's headlights at (`x`, `y`), the car turned `angle` degrees:
 /// the middle one from 170 to 190 degrees behind its sprite's up, reaching 40 across and
 /// 33.3 down, and one each side to 162 and 198 degrees, reaching 36 and 30 there.
@@ -155,10 +82,10 @@ pub(crate) fn headlights(buffer: &mut Buffer, (x, y): (i32, i32), angle: f32, ta
     };
     let from_170 = at((a - 10.0) + 180.0);
     let to_190 = at(a + 190.0);
-    light_triangle(buffer, [(x, y), far(to_190), far(from_170)], table);
-    light_triangle(buffer, [(x, y), near(at(a + 198.0)), far(to_190)], table);
+    super::raster::light_triangle(buffer, [(x, y), far(to_190), far(from_170)], table);
+    super::raster::light_triangle(buffer, [(x, y), near(at(a + 198.0)), far(to_190)], table);
     let from_162 = at((a - 18.0) + 180.0);
-    light_triangle(buffer, [(x, y), far(from_170), near(from_162)], table);
+    super::raster::light_triangle(buffer, [(x, y), far(from_170), near(from_162)], table);
 }
 
 #[cfg(test)]
@@ -172,37 +99,6 @@ mod tests {
         let mut sprites = vec![14, 15, 24, 25, 0];
         recolour(&mut sprites, 2);
         assert_eq!(sprites, [14, 35, 44, 25, 0]);
-    }
-
-    fn lit_rows(points: [(i32, i32); 3]) -> Vec<(i32, Vec<i32>)> {
-        let mut buffer = Buffer::default();
-        let mut table = [0; 256];
-        table[0] = 1;
-        light_triangle(&mut buffer, points, &table);
-        (0..200)
-            .map(|y| {
-                let lit = (0..320).filter(|&x| buffer.pixel(x, y as usize) == 1);
-                (y, lit.map(|x| x as i32).collect::<Vec<_>>())
-            })
-            .filter(|(_, lit)| !lit.is_empty())
-            .collect()
-    }
-
-    /// A headlight's rows run from its left edge + 0.4 to its right edge + 0.6, rounded down:
-    /// a cone from (10, 5) widening 0.45 a row each side is empty at its tip, and a row on its
-    /// edges at 9.55 and 10.45 light 9 and 10.
-    #[test]
-    fn a_light_s_rows_round_its_edges_as_the_original_does() {
-        let rows = lit_rows([(10, 5), (19, 25), (1, 25)]);
-        assert_eq!(rows[0], (6, vec![9, 10]));
-        assert_eq!(rows.last().unwrap().0, 24);
-    }
-
-    /// The original never lights the race's first row.
-    #[test]
-    fn the_first_row_is_never_lit() {
-        let rows = lit_rows([(10, -5), (20, 5), (0, 5)]);
-        assert_eq!(rows[0].0, 1);
     }
 
     /// A car half off the top of the view shows its lower rows, and its sprite's 0 bytes let

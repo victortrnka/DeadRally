@@ -79,6 +79,13 @@ impl Buffer {
         }
     }
 
+    /// A byte put at `offset`.
+    pub(crate) fn put(&mut self, offset: i64, byte: u8) {
+        if let Some(slot) = self.slot(offset) {
+            *slot = byte;
+        }
+    }
+
     /// `sub_43D530`'s inner loop: the byte at `offset` turned through `table`.
     pub(crate) fn turn(&mut self, offset: i64, table: &[u8; 256]) {
         if let Some(slot) = self.slot(offset) {

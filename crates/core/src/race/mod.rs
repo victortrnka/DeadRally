@@ -6,6 +6,8 @@ mod buffer;
 mod cars;
 mod hud;
 mod intro;
+mod raster;
+mod scene;
 
 use deadrally_gamedata::image::Palette;
 use deadrally_gamedata::race::{RaceArchives, RaceError, Track};
@@ -76,6 +78,15 @@ fn car_ramp(palette: &mut Palette, first: usize, [r, g, b]: [u8; 3]) {
     }
 }
 
+/// Whether `drawShadows` draws a shadow with these corners in the view: one corner across
+/// the view and one (maybe another) down it; a shadow whose corners all lie outside is left
+/// out even where it would cover the view.
+fn shadow_in_view(points: [(i32, i32); 3]) -> bool {
+    let near = |value: i32, half: i32| (value - half).abs() < half;
+    points.iter().any(|&(x, _)| near(x, HALF_WIDTH))
+        && points.iter().any(|&(_, y)| near(y, HALF_HEIGHT))
+}
+
 /// A car in the race.
 #[derive(Clone, Debug, PartialEq)]
 struct Car {
@@ -106,6 +117,12 @@ pub(crate) struct Race {
     hud: hud::HudImages,
     /// Every car's sprites (0x5034FC).
     sprites: Vec<u8>,
+    /// What shadows turn each colour into (`ENGINE.BPA`'s `VARJO.TAB`, 0x466F00).
+    shade: [u8; 256],
+    /// The scene's lights and pictures, worked out once.
+    scene: scene::Setup,
+    /// Which track: the first leaves its scene's far objects in.
+    number: usize,
     buffer: Buffer,
     /// The race's palette (0x4A9BA0): the track's with the cars' ramps.
     palette: Palette,
@@ -136,6 +153,7 @@ impl Race {
     ) -> Result<Race, RaceError> {
         let number = circuit % 9 + 1;
         let track = Track::load(&archives.tracks[number], number)?;
+        let scene = scene::Setup::new(&track.scene);
         let cars = drivers
             .iter()
             .enumerate()
@@ -157,6 +175,9 @@ impl Race {
         let hud = hud::HudImages::load(&archives.ib_files, player, drivers[player].car, weapons)?;
         let looks: Vec<(usize, bool)> = drivers.iter().map(|d| (d.car, d.spikes)).collect();
         let sprites = cars::sprites(&archives.engine, &looks)?;
+        let mut shade = [0; 256];
+        let table = archives.engine.read("VARJO.TAB")?;
+        shade[..table.len().min(256)].copy_from_slice(&table[..table.len().min(256)]);
         let mut palette = track.palette.clone();
         for (driver, &first) in drivers.iter().zip(&RAMPS) {
             car_ramp(&mut palette, first, driver.colour);
@@ -170,6 +191,9 @@ impl Race {
             laps,
             hud,
             sprites,
+            shade,
+            scene,
+            number,
             buffer: Buffer::default(),
             palette,
             // `setCircuitPalette` (0x4049F0) blacks every entry out before the loop starts.
@@ -277,6 +301,19 @@ impl Race {
             self.buffer.copy(at, &image[from..end]);
         }
         self.draw_cars();
+        self.draw_shadows();
+        let (x, y) = self.camera();
+        let camera = (x as i32, y as i32);
+        let cull = self.number != 0;
+        let left = HUD_WIDTH as i32;
+        scene::draw(
+            &mut self.buffer,
+            &self.track.scene,
+            &self.scene,
+            camera,
+            cull,
+            left,
+        );
         let player = &self.cars[self.player];
         let gauge = hud::Player {
             speed: player.speed,
@@ -369,6 +406,24 @@ impl Race {
         }
     }
 
+    /// `drawShadows` (0x40D7B0): the track's shadow triangles near the view, every colour
+    /// under them turned through `VARJO.TAB`, which darkens only the cars' colours: the track's
+    /// own picture has its shadows drawn in.
+    fn draw_shadows(&mut self) {
+        let (camera_x, camera_y) = self.camera();
+        let shadows = &self.track.shadows;
+        for corners in &shadows.triangles {
+            let points = corners.map(|corner| {
+                let (x, y) = shadows.points[corner];
+                (x - camera_x as i32, y - camera_y as i32)
+            });
+            if shadow_in_view(points) {
+                let on_screen = points.map(|(x, y)| (x + HUD_WIDTH as i32, y));
+                raster::light_triangle(&mut self.buffer, on_screen, &self.shade);
+            }
+        }
+    }
+
     /// The screen doubled into the 640x480 window from row 40.
     pub(crate) fn present(&self, window: &mut [u8]) {
         window.fill(0);
@@ -382,5 +437,19 @@ impl Race {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The original checks a shadow's corners, not its area: one stretched across the whole
+    /// view with its corners outside is never drawn, and cars under it stay lit.
+    #[test]
+    fn a_shadow_with_every_corner_off_the_view_is_left_out() {
+        assert!(!shadow_in_view([(-10, -10), (300, -10), (-10, 250)]));
+        assert!(shadow_in_view([(5, -10), (300, 300), (-10, 199)]));
+        assert!(!shadow_in_view([(5, -10), (300, 300), (-10, 200)]));
     }
 }
