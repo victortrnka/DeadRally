@@ -1048,3 +1048,61 @@ fn a_damaged_saved_game_is_refused_like_an_empty_slot() {
         );
     }
 }
+
+/// [`saved_game`] with the player holding `money` dollars.
+fn saved_game_with_money(money: i32) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&saved_game());
+    let at = 19 * 108 + 48;
+    game.drivers[at..at + 4].copy_from_slice(&money.to_le_bytes());
+    let price = 19 * 108 + 60;
+    game.drivers[price..price + 4].copy_from_slice(&500i32.to_le_bytes());
+    game.encode(3)
+}
+
+/// The player's record in the game saved into slot 1 after `keys` in the shop of
+/// [`saved_game_with_money`].
+fn player_after_shopping(money: i32, keys: &[Key]) -> Vec<u8> {
+    let mut game = Game::new(assets(), common::config());
+    game.set_saved_games(vec![Some(saved_game_with_money(money))]);
+    run(&mut game, MENU_SHOWN);
+    to_the_slots(&mut game);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Space);
+    run(&mut game, 60);
+    for &key in keys {
+        step(&mut game, key);
+    }
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (_, file) = game.take_saved_game().expect("a game was saved");
+    deadrally_gamedata::save_game::SaveGame::decode(&file).drivers[19 * 108..20 * 108].to_vec()
+}
+
+fn field(record: &[u8], offset: usize) -> i32 {
+    i32::from_le_bytes(record[offset..offset + 4].try_into().unwrap())
+}
+
+#[test]
+fn an_engine_upgrade_is_paid_for_and_adds_to_the_cars_worth() {
+    // The money goes, the engine level rises, and the car's worth grows by the price, which
+    // the dealer's refund is a quarter of (enterShop 0x43805F).
+    let left = [Key::Left; 4];
+    let record = player_after_shopping(10_000, &[&left[..], &[Key::Enter]].concat());
+    assert_eq!(field(&record, 16), 1, "engine level 1");
+    assert_eq!(field(&record, 48), 10_000 - 100, "money");
+    assert_eq!(field(&record, 60), 500 + 100, "the car's worth");
+}
+
+#[test]
+fn without_the_money_nothing_is_bought() {
+    // Short of the price, the shop says so and keeps everything as it was.
+    let left = [Key::Left; 4];
+    let record = player_after_shopping(50, &[&left[..], &[Key::Enter]].concat());
+    assert_eq!((field(&record, 16), field(&record, 48)), (0, 50));
+}

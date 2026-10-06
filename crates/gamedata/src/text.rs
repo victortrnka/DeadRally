@@ -143,6 +143,27 @@ const REPAIR_TEN: u32 = 0x44_33D4;
 const CONTINUE_INFO: u32 = 0x45_4968;
 const CONTINUE_INFO_WEAPONS: u32 = 0x45_4A58;
 const UPGRADE_LEVELS: u32 = 4;
+/// What the shop says after an upgrade is bought (`reloadEngineAnimation` 0x4212F0 and the two
+/// after it), by the level bought from; when the money is short (`hasInsuficientMoneyToBuy`
+/// 0x421E50: a line before and after the amount, and the two around it); and when a wrecked
+/// car would race without weapons (`enterShop`, 0x4384E2).
+const ENGINE_BOUGHT: u32 = 0x45_0DB8;
+const TIRE_BOUGHT: u32 = 0x45_1538;
+const ARMOUR_BOUGHT: u32 = 0x45_1CB8;
+const SHORT_BEFORE: u32 = 0x44_3428;
+const SHORT_AFTER: u32 = 0x44_341C;
+const SHORT_ABOVE: u32 = 0x44_33FC;
+const SHORT_BELOW: u32 = 0x44_33D8;
+const WRECKED: [u32; 5] = [0x44_4164, 0x44_4160, 0x44_413C, 0x44_4118, 0x44_418C];
+/// The car dealer (`enterShop`, 0x4374A5): the offer's pieces (refund before and after the
+/// amount, its second line, the money returned when the refund passes the price, "buy a",
+/// the question mark, "would cost", "purchase it"), the paint's three lines, and what the
+/// car's record says once it is bought (+0x1F0, six lines).
+const OFFER: [u32; 8] = [
+    0x44_4260, 0x44_4258, 0x44_4238, 0x44_4224, 0x44_421C, 0x44_4218, 0x44_4208, 0x44_41F8,
+];
+const PAINT: [u32; 3] = [0x44_41D8, 0x44_41BC, 0x44_41AC];
+const CAR_BOUGHT: u32 = 0x1F0;
 /// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
 const END_GAME: u32 = 0x44_4280;
 
@@ -294,6 +315,16 @@ pub struct ShopTexts {
     pub repair_ten: Vec<u8>,
     /// `continues[weapons]`.
     pub continues: [ShopInfo; 2],
+    /// `bought[kind][level]`: engine, tires, armour, by the level bought from.
+    pub bought: Vec<Vec<ShopInfo>>,
+    /// The short-of-money lines: before and after the amount, above and below it.
+    pub short: [Vec<u8>; 4],
+    pub wrecked: ShopInfo,
+    /// The offer's pieces in [`OFFER`]'s order.
+    pub offer: Vec<Vec<u8>>,
+    pub paint: Vec<Vec<u8>>,
+    /// `car_bought[car]`.
+    pub car_bought: Vec<ShopInfo>,
 }
 
 /// A font's cell size and the pen advance of each glyph, character 32 first.
@@ -526,6 +557,35 @@ impl Texts {
                         .collect::<Result<_, _>>()?,
                     repair_ten: shown(REPAIR_TEN, MAX_LINE)?,
                     continues: [info(CONTINUE_INFO)?, info(CONTINUE_INFO_WEAPONS)?],
+                    bought: [ENGINE_BOUGHT, TIRE_BOUGHT, ARMOUR_BOUGHT]
+                        .iter()
+                        .map(|&base| {
+                            (0..UPGRADE_LEVELS)
+                                .map(|level| info(base + 240 * level))
+                                .collect::<Result<_, _>>()
+                        })
+                        .collect::<Result<_, TextError>>()?,
+                    short: [
+                        shown(SHORT_BEFORE, MAX_LINE)?,
+                        shown(SHORT_AFTER, MAX_LINE)?,
+                        shown(SHORT_ABOVE, MAX_LINE)?,
+                        shown(SHORT_BELOW, MAX_LINE)?,
+                    ],
+                    wrecked: WRECKED
+                        .iter()
+                        .map(|&address| text(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    offer: OFFER
+                        .iter()
+                        .map(|&address| shown(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    paint: PAINT
+                        .iter()
+                        .map(|&address| shown(address, MAX_LINE))
+                        .collect::<Result<_, _>>()?,
+                    car_bought: (0..CARS as u32)
+                        .map(|k| info(car(k) + CAR_BOUGHT))
+                        .collect::<Result<_, _>>()?,
                 }
             },
             big: metrics(BIG_METRICS, 96, BIG_SIZE)?,
@@ -664,12 +724,21 @@ mod tests {
         }
         put(CONTINUE, b"go");
         put(END_GAME, b"end?");
+        for (k, &address) in OFFER.iter().chain(&PAINT).enumerate() {
+            put(address, format!("o{k}").as_bytes());
+        }
         put(EMPTY_SLOT, b"empty");
         put(QUICKSAVE_SLOT, b"quick");
         put(GAME_LOADED, b"loaded");
         put(GAME_SAVED, b"saved");
         put(SAVE_PROMPT, b"name?");
         put(REPAIR_TEN, b"10");
+        for (k, &address) in [SHORT_BEFORE, SHORT_AFTER, SHORT_ABOVE, SHORT_BELOW]
+            .iter()
+            .enumerate()
+        {
+            put(address, format!("s{k}").as_bytes());
+        }
         put(NO_SIGN_UP, b"none");
         for warning in 0..2u32 {
             for line in 1..5u32 {

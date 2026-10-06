@@ -381,6 +381,106 @@ const SAVED_GAMES_SHOTS: [(u64, &str); 31] = [
     (3640, "after"),
 ];
 
+/// The keys of `scripts/reference/shop-purchases.scenario` in the run of
+/// `docs/verification/m3c.md`: the test game loaded, every upgrade, the repairs, a car too
+/// dear, and a cheaper one declined, bought and painted.
+const PURCHASES_KEYS: [(u64, Key); 44] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2035, Key::Space),
+    (2163, Key::Left),
+    (2221, Key::Left),
+    (2277, Key::Left),
+    (2335, Key::Left),
+    (2392, Key::Enter),
+    (2449, Key::Right),
+    (2506, Key::Enter),
+    (2563, Key::Right),
+    (2620, Key::Enter),
+    (2678, Key::Enter),
+    (2735, Key::Right),
+    (2792, Key::Enter),
+    (2849, Key::Enter),
+    (2906, Key::Enter),
+    (2963, Key::Enter),
+    (3020, Key::Enter),
+    (3742, Key::Left),
+    (3806, Key::Left),
+    (3870, Key::Left),
+    (3935, Key::Up),
+    (3999, Key::Right),
+    (4063, Key::Right),
+    (4128, Key::Right),
+    (4192, Key::Right),
+    (4256, Key::Enter),
+    (4320, Key::Left),
+    (4385, Key::Left),
+    (4449, Key::Enter),
+    (4513, Key::Right),
+    (4577, Key::Enter),
+    (4642, Key::Enter),
+    (4706, Key::Enter),
+    (4770, Key::Right),
+    (4835, Key::Right),
+    (4899, Key::Right),
+    (4963, Key::Right),
+    (5027, Key::Right),
+    (5092, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const PURCHASES_SHOTS: [(u64, &str); 46] = [
+    (1691, "idle"),
+    (1785, "k01-return"),
+    (1849, "k02-down"),
+    (1927, "k03-return"),
+    (1956, "k04-return"),
+    (2141, "k05-space"),
+    (2198, "k06-left"),
+    (2255, "k07-left"),
+    (2313, "k08-left"),
+    (2370, "k09-left"),
+    (2393, "k10-return"),
+    (2484, "k11-right"),
+    (2523, "k12-return"),
+    (2598, "k13-right"),
+    (2655, "k14-return"),
+    (2679, "k15-return"),
+    (2770, "k16-right"),
+    (2827, "k17-return"),
+    (2884, "k18-return"),
+    (2941, "k19-return"),
+    (2998, "k20-return"),
+    (3055, "k21-return"),
+    (3720, "messages-gone"),
+    (3784, "k22-left"),
+    (3814, "k23-left"),
+    (3871, "k24-left"),
+    (3977, "k25-up"),
+    (4041, "k26-right"),
+    (4106, "k27-right"),
+    (4170, "k28-right"),
+    (4234, "k29-right"),
+    (4298, "k30-return"),
+    (4363, "k31-left"),
+    (4427, "k32-left"),
+    (4491, "k33-return"),
+    (4556, "k34-right"),
+    (4620, "k35-return"),
+    (4684, "k36-return"),
+    (4748, "k37-return"),
+    (4813, "k38-right"),
+    (4877, "k39-right"),
+    (4941, "k40-right"),
+    (5006, "k41-right"),
+    (5070, "k42-right"),
+    (5134, "k43-return"),
+    (5263, "car-bought-later"),
+];
+
 /// The seed the reference runs were made with (`scripts/reference-run.sh --seed 1`).
 const SEED: u32 = 1;
 
@@ -507,6 +607,22 @@ fn the_saved_games_run_matches_the_committed_manifest() {
         "the run saves into slot 1"
     );
     check_manifest("saved-games-run.sha256", &lines, "the saved games run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_shop_purchases_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m3c.md): prices, refunds, messages and the money after each.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_with(&PURCHASES_KEYS, &PURCHASES_SHOTS, 5_300, slots);
+    check_manifest(
+        "shop-purchases-run.sha256",
+        &lines,
+        "the shop purchases run",
+    );
 }
 
 /// The saved game `scripts/reference/saved-games.scenario` starts from (the reference run

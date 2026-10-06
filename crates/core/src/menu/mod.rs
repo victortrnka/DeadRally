@@ -33,7 +33,7 @@ use crate::{AUDIO_FRAMES_PER_TICK, Frame};
 /// volume and pitch 0x28000.
 const SOUND_CHANNEL: usize = 1;
 const SOUND_PITCH: u32 = 0x2_8000;
-const MOVE_SOUND: u8 = 25;
+pub(super) const MOVE_SOUND: u8 = 25;
 const BACK_SOUND: u8 = 22;
 const CHOOSE_SOUND: u8 = 28;
 
@@ -165,6 +165,16 @@ enum State {
     CarTurn {
         right: bool,
         waits: u32,
+    },
+    /// The car dealer's offer (two waits a pass) and the paint loop (two waits a pass, the
+    /// key read before them).
+    CarOffer {
+        second: bool,
+        yes: bool,
+    },
+    CarPaint {
+        second: bool,
+        key: u8,
     },
     /// `showEndScreen`: the menu to black, `END.BMP` in, held, out with the music.
     EndToBlack {
@@ -487,6 +497,8 @@ impl Menu {
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
+            State::CarOffer { second, yes } => self.car_offer_tick(second, yes),
+            State::CarPaint { second, key } => self.car_paint_tick(second, key),
             State::EndToBlack { step } => {
                 self.palette.fade(100 - 4 * i64::from(step));
                 if step + 1 < FADE_OUT_STEPS {

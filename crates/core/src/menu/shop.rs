@@ -39,8 +39,20 @@ const INFO: (usize, usize, usize, usize) = (144, 114, 384, 119);
 const INFO_TEXT: (usize, usize) = (170, 124);
 /// The repair box's damage, right-aligned in the medium font.
 const REPAIR_TEXT: (usize, usize) = (410, 255);
-/// Effect 26 sounds as the selection moves.
+/// Effect 26 sounds as the selection moves; 28 a purchase, 31 a repair, 24 the way on, and
+/// on channel 2 effect 23 when the money is short.
 const STEP_SOUND: u8 = 26;
+const BUY_SOUND: u8 = 28;
+const REPAIR_SOUND: u8 = 31;
+const ON_SOUND: u8 = 24;
+const SHORT_CHANNEL: usize = 2;
+const SHORT_SOUND: u8 = 23;
+const SHORT_PITCH: u32 = 0x2_5500;
+/// After a purchase or a short-of-money message the description comes back 310 passes later
+/// (`framesToWaitAfterBuy` 0x456B70).
+const MESSAGE_PASSES: u32 = 310;
+/// The voice when a car is bought (channel 5, effect 4).
+const CAR_VOICE: u8 = 4;
 /// The turning loops: engine 24 frames, tires 12, armour 16 back and forth, repair 24 (not
 /// 23 as DreeRally has it: 0x43963A), continue 23, the car 64.
 const ENGINE_FRAMES: usize = 24;
@@ -62,6 +74,8 @@ pub(crate) struct Shop {
     armour_back: bool,
     repair_frame: usize,
     continue_frame: usize,
+    /// Passes until the selected item's description comes back.
+    message_passes: u32,
 }
 
 impl Default for Shop {
@@ -75,6 +89,7 @@ impl Default for Shop {
             armour_back: false,
             repair_frame: 0,
             continue_frame: 0,
+            message_passes: 0,
         }
     }
 }
@@ -87,6 +102,7 @@ impl Shop {
         *self = Shop {
             selected: self.selected,
             repair_frame,
+            message_passes: self.message_passes,
             ..Shop::default()
         };
     }
@@ -276,7 +292,12 @@ impl Menu {
         if !second {
             return State::Shop { second: true };
         }
+        self.shop.message_passes = self.shop.message_passes.saturating_sub(1);
         self.turn_selected();
+        if self.shop.message_passes == 1 && self.shop.selected <= ARMOUR {
+            self.redraw_item(self.shop.selected);
+            self.shown = self.screen.clone();
+        }
         match self.keys.take() {
             keys::UP | keys::PAD_UP => {
                 if self.shop.selected == ENGINE {
@@ -313,16 +334,436 @@ impl Menu {
                     item => self.select(item + 1),
                 }
             }
-            keys::ENTER | 0x9C => {
-                // Buying comes with M3c; the continue item leads on to the sign-up.
-                if self.shop.selected == CONTINUE {
-                    return self.open_sign_up();
-                }
-            }
+            keys::ENTER | 0x9C => return self.enter_item(),
             keys::ESCAPE => return self.leave_shop(),
             _ => {}
         }
         State::Shop { second: false }
+    }
+
+    /// `enterShop` (0x4373B0) on the selected item.
+    fn enter_item(&mut self) -> State {
+        match self.shop.selected {
+            ENGINE | TIRES | ARMOUR => self.buy_upgrade(self.shop.selected - ENGINE),
+            REPAIR => self.buy_repair(),
+            CONTINUE => return self.go_on(),
+            _ => return self.offer_car(),
+        }
+        State::Shop { second: false }
+    }
+
+    /// What the dealer gives for the player's car (`enterShop`, 0x4373B0): a quarter of its
+    /// worth rounded up, less the damage's repair, never below 0, rounded down to tens.
+    fn refund(&self) -> i32 {
+        let player = self.campaign.player();
+        let spec = self.assets.menu.texts.campaign.cars[player.car as usize];
+        let quarter = (i64::from(player.car_price) + 3) / 4;
+        let damage = i64::from(spec.repair_price / 10) * i64::from(player.damage);
+        let damage = if self.campaign.use_weapons {
+            damage / 2
+        } else {
+            damage
+        };
+        let refund = (quarter - damage).max(0);
+        // `itoa`, its last digit made '0', `atoi`.
+        (refund - refund % 10) as i32
+    }
+
+    /// Enter on the car box: the offer in the popup, "yes" and "no" under it.
+    fn offer_car(&mut self) -> State {
+        let refund = self.refund();
+        let car = self.shop.car;
+        let price = self.assets.menu.texts.campaign.cars[car].price;
+        let due = price - refund;
+        if self.short_of(due) {
+            return State::Shop { second: false };
+        }
+        self.sound(BUY_SOUND);
+        let texts = &self.assets.menu.texts;
+        let offer = &texts.shop.offer;
+        let name = texts.hall_of_fame.cars[car].clone();
+        let join = |parts: &[&[u8]]| parts.concat();
+        let refund_text = refund.to_string().into_bytes();
+        let due_text = due.unsigned_abs().to_string().into_bytes();
+        let lines = if due >= 0 {
+            [
+                join(&[&offer[0], &refund_text, &offer[1]]),
+                offer[2].clone(),
+                join(&[&name, &offer[6], b"$", &due_text]),
+                offer[7].clone(),
+            ]
+        } else {
+            [
+                join(&[&offer[0], &refund_text, &offer[1]]),
+                offer[2].clone(),
+                join(&[&offer[3], b"$", &due_text]),
+                join(&[&offer[4], &name, &offer[5]]),
+            ]
+        };
+        let (x, y, w, h) = INFO;
+        self.graphics
+            .popup(&mut self.screen, x, y, w, h, Focus::Focused);
+        for (line, text) in lines.iter().enumerate() {
+            self.graphics.small[2].draw(
+                &mut self.screen,
+                text,
+                at(INFO_TEXT.0, INFO_TEXT.1 + 16 * line),
+            );
+        }
+        self.draw_offer_answers(true);
+        self.shown = self.screen.clone();
+        State::CarOffer {
+            second: false,
+            yes: true,
+        }
+    }
+
+    /// The offer's "yes" and "no", the selected one in big A.
+    fn draw_offer_answers(&mut self, yes: bool) {
+        let texts = &self.assets.menu.texts;
+        let (yes_font, no_font) = if yes {
+            (&self.graphics.big_a, &self.graphics.big_b)
+        } else {
+            (&self.graphics.big_b, &self.graphics.big_a)
+        };
+        yes_font.draw(&mut self.screen, &texts.yes, at(240, 185));
+        no_font.draw(&mut self.screen, &texts.no, at(410, 185));
+    }
+
+    /// The car box's car turning a frame, shown.
+    fn turn_car_box(&mut self) {
+        let image = self.assets.menu.car_turning[self.shop.car][self.car_frame].clone();
+        self.screen.draw(&image, at(CAR_TURN.0, CAR_TURN.1), false);
+        self.shown
+            .copy_from(&self.screen, at(CAR_TURN.0, CAR_TURN.1), 96, 64);
+        self.car_frame = (self.car_frame + 1) % CAR_FRAMES;
+    }
+
+    /// A wait of the offer; after the second the car turns, the cursor beside the selected
+    /// answer turns, then the key.
+    pub(super) fn car_offer_tick(&mut self, second: bool, yes: bool) -> State {
+        self.palette.after_wait();
+        if !second {
+            return State::CarOffer { second: true, yes };
+        }
+        self.turn_car_box();
+        let cursor_at = at(if yes { 217 } else { 387 }, 192);
+        self.screen.fill(cursor_at, 20, 20, super::draw::POPUP_FILL);
+        let cursor = self.graphics.cursor(self.cursor).clone();
+        self.screen.draw(&cursor, cursor_at, true);
+        self.shown.copy_from(&self.screen, at(165, 192), 335, 28);
+        self.cursor = (self.cursor + 1) % super::draw::CURSOR_FRAMES;
+        let key = match self.keys.take() {
+            keys::Y => keys::LEFT,
+            keys::N => keys::RIGHT,
+            key => key,
+        };
+        match key {
+            keys::LEFT | keys::PAD_LEFT | keys::RIGHT | keys::PAD_RIGHT => {
+                let left = matches!(key, keys::LEFT | keys::PAD_LEFT);
+                if left != yes {
+                    self.sound(super::MOVE_SOUND);
+                }
+                self.screen
+                    .fill(at(168, 192), 335, 25, super::draw::POPUP_FILL);
+                self.draw_offer_answers(left);
+                State::CarOffer {
+                    second: false,
+                    yes: left,
+                }
+            }
+            keys::ENTER | 0x9C => {
+                self.sound(BUY_SOUND);
+                if yes {
+                    self.buy_car()
+                } else {
+                    self.offer_declined()
+                }
+            }
+            keys::ESCAPE => self.offer_declined(),
+            _ => State::CarOffer { second: false, yes },
+        }
+    }
+
+    fn offer_declined(&mut self) -> State {
+        self.redraw_item(CAR);
+        self.shown = self.screen.clone();
+        State::Shop { second: false }
+    }
+
+    /// "Yes": the car traded in (its upgrades and damage gone, the refund paid out), every box
+    /// redrawn, then the paint.
+    fn buy_car(&mut self) -> State {
+        self.sound.trigger_at(
+            super::licence::VOICE_CHANNEL,
+            CAR_VOICE,
+            self.config.effects_volume(),
+            super::licence::VOICE_PITCH,
+        );
+        let refund = self.refund();
+        let car = self.shop.car;
+        let price = self.assets.menu.texts.campaign.cars[car].price;
+        let player = self.campaign.player_mut();
+        player.car = car as i32;
+        player.money += refund - price;
+        player.car_price = price;
+        player.damage = 0;
+        player.engine = 0;
+        player.tires = 0;
+        player.armour = 0;
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_side_panel(&mut screen);
+        for item in [ENGINE, ARMOUR, TIRES, REPAIR, CAR] {
+            self.draw_item(&mut screen, item);
+        }
+        let (x, y, w, h) = INFO;
+        self.graphics.popup(&mut screen, x, y, w, h, Focus::Focused);
+        screen.draw(&self.assets.menu.colour_slider, at(188, 195), true);
+        let paint = self.assets.menu.texts.shop.paint.clone();
+        for (line, text) in paint.iter().enumerate() {
+            self.graphics.small[2].draw(
+                &mut screen,
+                text,
+                at(INFO_TEXT.0, INFO_TEXT.1 + 16 * line),
+            );
+        }
+        self.screen = screen;
+        self.shown = self.screen.clone();
+        self.paint_pass()
+    }
+
+    /// The paint loop's start: a key read and acted on, the slider and knob drawn.
+    fn paint_pass(&mut self) -> State {
+        let key = self.keys.take();
+        let colour = &mut self.campaign.player_mut().colour;
+        match key {
+            keys::LEFT | keys::PAD_LEFT if *colour > 0 => *colour -= 2,
+            keys::RIGHT | keys::PAD_RIGHT if *colour < 253 => *colour += 2,
+            _ => {}
+        }
+        let colour = self.campaign.player().colour;
+        self.palette.set_player_ramp(self.player_copper());
+        self.screen
+            .fill(at(182, 191), 294, 24, super::draw::POPUP_FILL);
+        let menu = &self.assets.menu;
+        self.screen.draw(&menu.colour_slider, at(188, 195), true);
+        self.screen
+            .draw(&menu.colour_knob, at(202 + colour as usize, 191), true);
+        State::CarPaint { second: false, key }
+    }
+
+    /// A wait of the paint loop; after the second the knob is shown, the car turns, and
+    /// Enter ends the paint.
+    pub(super) fn car_paint_tick(&mut self, second: bool, key: u8) -> State {
+        self.palette.after_wait();
+        if !second {
+            return State::CarPaint { second: true, key };
+        }
+        let colour = self.campaign.player().colour as usize;
+        self.shown
+            .copy_from(&self.screen, at(200 + colour, 191), 14, 24);
+        self.turn_car_box();
+        if matches!(key, keys::ENTER | 0x9C) {
+            return self.car_bought();
+        }
+        self.paint_pass()
+    }
+
+    /// `showCarBought` (0x4210C0): the car box on the next car, the popup saying what was
+    /// bought; the description comes back later.
+    fn car_bought(&mut self) -> State {
+        let bought = self.campaign.player().car as usize;
+        self.shop.car = (bought + 1).min(5);
+        let menu = &self.assets.menu;
+        let car = self.shop.car;
+        self.screen
+            .draw(&menu.car_box, at(CAR_BOX.0, CAR_BOX.1), false);
+        self.screen
+            .draw(&menu.car_names[car], at(CAR_BOX.0, CAR_BOX.1), false);
+        self.screen.draw(
+            &menu.car_turning[car][self.car_frame],
+            at(CAR_TURN.0, CAR_TURN.1),
+            false,
+        );
+        let price = dollars(menu.texts.campaign.cars[car].price);
+        draw_price(&mut self.screen, menu, &price, CAR_BOX.0, CAR_PRICE_Y);
+        let info = menu.texts.shop.car_bought[bought].clone();
+        let mut screen = std::mem::take(&mut self.screen);
+        self.info_popup(&mut screen, &info);
+        let arrows = &self.assets.menu.car_arrows;
+        screen.draw(&arrows[0], at(ARROWS[0].0, ARROWS[0].1), true);
+        screen.draw(&arrows[1], at(ARROWS[1].0, ARROWS[1].1), true);
+        self.screen = screen;
+        self.shop.message_passes = MESSAGE_PASSES;
+        self.shown = self.screen.clone();
+        State::Shop { second: false }
+    }
+
+    /// An engine, tire or armour upgrade: the money checked, paid and added to the car's
+    /// worth, the next level shown with what was bought, the level raised.
+    fn buy_upgrade(&mut self, kind: usize) {
+        let player = *self.campaign.player();
+        let spec = self.assets.menu.texts.campaign.cars[player.car as usize];
+        let level = [player.engine, player.tires, player.armour][kind];
+        if level >= spec.upgrades[kind] {
+            self.redraw_item(kind + ENGINE);
+            self.shown = self.screen.clone();
+            return;
+        }
+        let cost = spec.upgrade_prices[kind][level as usize];
+        if self.short_of(cost) {
+            return;
+        }
+        self.sound(BUY_SOUND);
+        let player = self.campaign.player_mut();
+        player.money -= cost;
+        player.car_price += cost;
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_bought(&mut screen, kind, level as usize);
+        let player = self.campaign.player_mut();
+        match kind {
+            0 => player.engine += 1,
+            1 => player.tires += 1,
+            _ => player.armour += 1,
+        }
+        self.shop.message_passes = MESSAGE_PASSES;
+        self.draw_side_panel(&mut screen);
+        self.screen = screen;
+        self.shown = self.screen.clone();
+    }
+
+    /// The box after buying from `level`: the next level turning with its price, or the
+    /// "no more" picture; the popup says what was bought.
+    fn draw_bought(&mut self, canvas: &mut Canvas, kind: usize, level: usize) {
+        let menu = &self.assets.menu;
+        let player = *self.campaign.player();
+        let spec = menu.texts.campaign.cars[player.car as usize];
+        let count = spec.upgrades[kind].max(1) as usize;
+        let x = ITEM_X[kind];
+        canvas.draw(&menu.item_boxes[kind], at(x, ITEM_BOX_Y), false);
+        if level + 1 >= count {
+            canvas.draw(&menu.maxed[4 * kind + count - 1], at(x, ITEM_Y), false);
+        } else {
+            let (frames, frame) = match kind {
+                0 => (&menu.engines[level + 1], self.shop.engine_frame),
+                1 => (&menu.tires[level + 1], self.shop.tire_frame),
+                _ => (&menu.armours[level + 1], self.shop.armour_frame),
+            };
+            canvas.draw(&frames[frame], at(x, ITEM_Y), false);
+            let price = dollars(spec.upgrade_prices[kind][level + 1]);
+            draw_price(canvas, menu, &price, x, ITEM_PRICE_Y);
+        }
+        let info = menu.texts.shop.bought[kind][level].clone();
+        self.info_popup(canvas, &info);
+    }
+
+    fn info_popup(&self, canvas: &mut Canvas, info: &[Vec<u8>]) {
+        let (x, y, w, h) = INFO;
+        self.graphics.popup(canvas, x, y, w, h, Focus::Focused);
+        for (line, text) in info.iter().enumerate() {
+            self.graphics
+                .write_text(canvas, text, at(INFO_TEXT.0, INFO_TEXT.1 + 16 * line));
+        }
+    }
+
+    /// `hasInsuficientMoneyToBuy` (0x421E50): with less money than `cost`, the popup's lines
+    /// under its title say how much is missing, and the description comes back later.
+    fn short_of(&mut self, cost: i32) -> bool {
+        let money = self.campaign.player().money;
+        if money >= cost {
+            return false;
+        }
+        self.screen.fill(
+            at(INFO_TEXT.0, INFO_TEXT.1 + 16),
+            347,
+            80,
+            super::draw::POPUP_FILL,
+        );
+        let short = &self.assets.menu.texts.shop.short;
+        let mut line = short[0].clone();
+        line.extend(
+            i64::from(cost)
+                .saturating_sub(i64::from(money))
+                .to_string()
+                .bytes(),
+        );
+        line.extend(&short[1]);
+        let (above, below) = (short[2].clone(), short[3].clone());
+        let x = INFO_TEXT.0;
+        self.graphics
+            .write_text(&mut self.screen, &above, at(x, INFO_TEXT.1 + 32));
+        self.graphics
+            .write_text(&mut self.screen, &line, at(x, INFO_TEXT.1 + 48));
+        self.graphics
+            .write_text(&mut self.screen, &below, at(x, INFO_TEXT.1 + 64));
+        self.shown = self.screen.clone();
+        self.sound.trigger_at(
+            SHORT_CHANNEL,
+            SHORT_SOUND,
+            self.config.effects_volume(),
+            SHORT_PITCH,
+        );
+        self.shop.message_passes = MESSAGE_PASSES;
+        true
+    }
+
+    /// A repair: ten points of damage (what is left under ten) for the price the box shows.
+    fn buy_repair(&mut self) {
+        let player = *self.campaign.player();
+        let full = self.assets.menu.texts.campaign.cars[player.car as usize].repair_price;
+        let weapons = self.campaign.use_weapons;
+        let cost = if player.damage < 10 {
+            let step = full / 10;
+            let cost = player.damage * step;
+            if weapons { cost / 2 } else { cost }
+        } else if weapons {
+            full / 2
+        } else {
+            full
+        };
+        if player.damage <= 0 || self.short_of(cost) {
+            return;
+        }
+        self.sound(REPAIR_SOUND);
+        let player = self.campaign.player_mut();
+        player.damage = if player.damage < 10 {
+            0
+        } else {
+            player.damage - 10
+        };
+        player.money -= cost;
+        player.car_price += cost;
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_side_panel(&mut screen);
+        self.draw_item(&mut screen, REPAIR);
+        self.screen = screen;
+        self.shown = self.screen.clone();
+    }
+
+    /// The continue item: a wreck cannot race without weapons; with weapons the
+    /// Underground Market comes first, without them the sign-up.
+    fn go_on(&mut self) -> State {
+        let player = *self.campaign.player();
+        if player.damage == 100 && !self.campaign.use_weapons {
+            let lines = self.assets.menu.texts.shop.wrecked.clone();
+            let mut screen = std::mem::take(&mut self.screen);
+            self.info_popup(&mut screen, &lines);
+            self.screen = screen;
+            self.shown = self.screen.clone();
+            self.sound.trigger_at(
+                SHORT_CHANNEL,
+                SHORT_SOUND,
+                self.config.effects_volume(),
+                SHORT_PITCH,
+            );
+            return State::Shop { second: false };
+        }
+        if !self.campaign.use_weapons {
+            self.sound(ON_SOUND);
+        }
+        // The Underground Market and the final race against the Adversary come later; the
+        // sign-up stands in for both.
+        self.open_sign_up()
     }
 
     /// The selection moves to `item`: its box and description drawn, the border moved.

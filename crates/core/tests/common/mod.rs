@@ -184,6 +184,12 @@ pub fn shop_texts() -> ShopTexts {
         repairs: (0..12).map(|_| info()).collect(),
         repair_ten: b"10".to_vec(),
         continues: [info(), info()],
+        bought: (0..3).map(|_| (0..4).map(|_| info()).collect()).collect(),
+        short: [b"<".to_vec(), b">".to_vec(), b"^".to_vec(), b"v".to_vec()],
+        wrecked: vec![b"w".to_vec(); 5],
+        offer: (0..8).map(|k| vec![b'a' + k]).collect(),
+        paint: vec![b"p".to_vec(); 3],
+        car_bought: (0..6).map(|_| info()).collect(),
     }
 }
 
