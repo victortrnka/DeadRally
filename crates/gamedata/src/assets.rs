@@ -116,6 +116,8 @@ pub struct MenuAssets {
     pub colour_slider: Image,
     pub colour_knob: Image,
     pub price_digits: Vec<Image>,
+    /// The race's results' pictures.
+    pub results: ResultsPictures,
     /// The sign-up (spec M3a §3): its title `ENTERTX2`, the side panel
     /// `STATBAS7` with the cars `SCENECAR` and the upgrade lamps `STATPOP4`, and the line under
     /// the player's entry `SIGNLINE`.
@@ -273,6 +275,22 @@ impl Assets {
             },
         })
     }
+}
+
+/// The race's results (spec M5): the ranking `RANK1C`, the results' panel `RESUPOK1`, the
+/// place's box `PLACING`, the races' titles `RACE-EAS`, `-MED`, `-HAR` and points `PTS-EASY`,
+/// `-MED`, `-HARD`, the standings' row pieces for the player `P-RANK`, `P-NAME`, `P-PIST` and
+/// the others `RANKINF1`–`3`, and the cars `CARRES` (a picture for each car in each place).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResultsPictures {
+    pub ranking: Image,
+    pub panel: Image,
+    pub placing: Image,
+    pub races: Vec<Image>,
+    pub points: Vec<Image>,
+    pub player_row: Vec<Image>,
+    pub other_row: Vec<Image>,
+    pub cars: Vec<Image>,
 }
 
 /// All frames of a catalogued `MENU.BPA` image.
@@ -453,6 +471,28 @@ fn menu_assets(
         wipe: frames(menu, "15X150.BPK")?,
         border_corners: frames(menu, "CHOO2.BPK")?,
         licence: frames(menu, "LICENCE3.BPK")?.remove(0),
+        results: ResultsPictures {
+            ranking: frames(menu, "RANK1C.BPK")?.remove(0),
+            panel: frames(menu, "RESUPOK1.BPK")?.remove(0),
+            placing: frames(menu, "PLACING.BPK")?.remove(0),
+            races: ["RACE-EAS.BPK", "RACE-MED.BPK", "RACE-HAR.BPK"]
+                .into_iter()
+                .map(|name| frames(menu, name).map(|mut f| f.remove(0)))
+                .collect::<Result<_, _>>()?,
+            points: ["PTS-EASY.BPK", "PTS-MED.BPK", "PTS-HARD.BPK"]
+                .into_iter()
+                .map(|name| frames(menu, name).map(|mut f| f.remove(0)))
+                .collect::<Result<_, _>>()?,
+            player_row: ["P-RANK.BPK", "P-NAME.BPK", "P-PIST.BPK"]
+                .into_iter()
+                .map(|name| frames(menu, name).map(|mut f| f.remove(0)))
+                .collect::<Result<_, _>>()?,
+            other_row: ["RANKINF1.BPK", "RANKINF2.BPK", "RANKINF3.BPK"]
+                .into_iter()
+                .map(|name| frames(menu, name).map(|mut f| f.remove(0)))
+                .collect::<Result<_, _>>()?,
+            cars: frames(menu, "CARRES.BPK")?,
+        },
         face_frame: frames(menu, "FACESEL1.BPK")?.remove(0),
         faces: FACES
             .iter()

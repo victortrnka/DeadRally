@@ -13,6 +13,7 @@ mod licence;
 mod market;
 pub(crate) mod palette;
 mod preview;
+mod results;
 mod shop;
 mod sign_up;
 mod slots;
@@ -167,6 +168,20 @@ enum State {
     Race {
         ticks: u32,
     },
+    /// The race's results (M5): the first page fading in, the waits for a key after each
+    /// race's page (`page` 1 to 3) and after the shop has loaded (4), the wait while it loads,
+    /// and the way out, faded or not.
+    ResultsFadeIn {
+        step: u32,
+    },
+    ResultsWait {
+        page: u8,
+    },
+    ResultsLoading,
+    ResultsOut {
+        step: u32,
+        fade: bool,
+    },
     ToBlack {
         k: i32,
     },
@@ -314,6 +329,11 @@ pub(crate) struct Menu {
     /// Start, Configure, Define Keyboard, Define Gamepad and the slots, by [`Submenu::table`].
     submenus: [MenuTable; 5],
     panel: Panel,
+    /// How the player's last race ended, what the results show of it, and the count of the
+    /// results' blinking line (0x456BE4).
+    outcome: crate::books::Outcome,
+    books: crate::books::Books,
+    press_blink: u32,
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
     save: bool,
@@ -396,6 +416,9 @@ impl Menu {
                 SLOTS_MENU,
             ],
             panel,
+            outcome: crate::books::Outcome::default(),
+            books: crate::books::Books::default(),
+            press_blink: 0,
             config,
             save,
             back: Canvas::default(),
@@ -571,6 +594,10 @@ impl Menu {
             State::PreviewHold { waits } => self.preview_hold(waits),
             State::ToBlack { k } => self.fading_out(k),
             State::Race { ticks } => self.race_tick(ticks),
+            State::ResultsFadeIn { step } => self.results_fade_in(step),
+            State::ResultsWait { page } => self.results_wait(page),
+            State::ResultsLoading => self.results_loaded(),
+            State::ResultsOut { step, fade } => self.results_out(step, fade),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
@@ -985,6 +1012,7 @@ impl Menu {
     fn init_drivers(&mut self) {
         let texts = &self.assets.menu.texts.campaign;
         let campaign = &mut self.campaign;
+        campaign.player_index = crate::campaign::PLAYER;
         crate::campaign::init_drivers(
             &mut campaign.drivers,
             &mut campaign.rand,

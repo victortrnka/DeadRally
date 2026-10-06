@@ -1207,6 +1207,29 @@ impl Race {
         }
     }
 
+    /// How the race ended (`sub_402240` at its end): each car's place, its damage in percent
+    /// (100 less the bar's 1024ths rounded up) and the money power-ups it picked up; whether
+    /// the player was lapped and took the bonus power-up; the laps, the race's time and the
+    /// best lap.
+    pub(crate) fn outcome(&self) -> crate::books::Outcome {
+        crate::books::Outcome {
+            finishes: self
+                .cars
+                .iter()
+                .map(|car| crate::books::Finish {
+                    place: car.place,
+                    damage: ftol(100.0 - (f64::from(car.handling.damage) * 0.0009765625).ceil()),
+                    money: car.handling.money,
+                })
+                .collect(),
+            lapped: self.laps_state.lapped,
+            bonus: self.bonus,
+            laps: self.laps,
+            race_time: laps::time(self.laps_state.race_clock),
+            best_lap: self.laps_state.best,
+        }
+    }
+
     /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
     /// the frame, then for each car its numbers in the original's layout, floats as their
     /// bits.

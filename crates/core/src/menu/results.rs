@@ -1,0 +1,491 @@
+//! The race's results (spec M5): `postRaceMain` (0x42B290, from 0x42B709) after a race the
+//! player was in. The standings and the easy race's places and points fade in; a key shows
+//! the medium race's, another the hard race's (Escape adds their points without showing
+//! them); then the standings sorted afresh with the player's statistics, the wait while the
+//! shop loads, a key, and the way back.
+
+use crate::campaign::quicksort;
+use crate::canvas::{Canvas, at};
+use crate::keys;
+
+use super::{Menu, State, shop};
+
+/// The ranking's frame and the results' panel (0x42B728, 0x42B74C).
+const RANKING: (usize, usize) = (300, 84);
+const PANEL: (usize, usize) = (354, 84);
+/// `writeDriverList` (0x425980): a row every 19 lines from line 87, its pieces at 29, 61 and
+/// 163; the rank right-aligned to 62 on line 90, the name at 66 and the points right-aligned
+/// to 200 on line 89.
+const ROW_TOP: usize = 87;
+const ROW_STEP: usize = 19;
+const ROW_PIECES: [usize; 3] = [29, 61, 163];
+const RANK_RIGHT: (usize, usize) = (62, 90);
+const NAME: (usize, usize) = (66, 89);
+const POINTS_RIGHT: (usize, usize) = (200, 89);
+/// A race's title picture and text (0x429401, 0x42941C), and the points' marker and text by
+/// a driver's row (0x429481, 0x42959F).
+const TITLE_TEXT: (usize, usize) = (400, 86);
+const MARKER_X: usize = 217;
+const POINTS_TEXT_X: usize = 230;
+const POINTS_TEXT_DY: usize = 2;
+/// The points of a race's first three places, by race.
+const POINTS: [[i32; 3]; 3] = [[3, 2, 1], [5, 3, 1], [10, 7, 4]];
+/// `sub_424420` and `drawRightPositions` (0x425BD0): four places 85 lines apart from line 114;
+/// the place's box at 389, its number at 401 (the first) or 396, 7 lines down; the rank
+/// right-aligned to 420 52 lines down, the name at 495 57 lines down, the face at 422 3 lines
+/// down and the car at 490.
+const PLACES: usize = 4;
+const PLACE_TOP: usize = 114;
+const PLACE_STEP: usize = 85;
+const BOX_X: usize = 389;
+const NUMBER_X: [usize; 2] = [401, 396];
+const NUMBER_DY: usize = 7;
+const PLACE_RANK: (usize, usize) = (420, 52);
+const PLACE_NAME: (usize, usize) = (495, 57);
+const FACE: (usize, usize) = (422, 3);
+const CAR_X: usize = 490;
+/// The palette entries each place's car is drawn with (0x425D91 on).
+const PLACE_RAMPS: [usize; PLACES] = [0x40, 0x50, 0xE0, 0xF0];
+/// "Press any key to continue..." and its blink (0x4260D0): small A at (366, 452), small B
+/// from the 30th call, small A again at the 60th; the panel's rows under it put back first
+/// (`sub_426080`), and the line's strip shown.
+const PRESS: (usize, usize) = (366, 452);
+const PRESS_STRIP: (usize, usize, usize, usize) = (354, 452, 270, 16);
+const PRESS_PANEL_ROWS: std::ops::Range<usize> = 369..386;
+const BLINK_B: u32 = 30;
+const BLINK_A: u32 = 60;
+/// The fade in's 50 steps of 2 % and the way out's 51 waits (100 % down to 0).
+const FADE_IN_STEPS: u32 = 50;
+const OUT_STEPS: u32 = 51;
+/// The sound when the shop has loaded (0x42B9A2).
+const LOADED_SOUND: u8 = 0x1C;
+/// A wrecked driver's damage.
+const WRECKED: i32 = 100;
+/// `drawStadistics`: its title, each row's label at 360 and value at 526, 23 lines apart
+/// from line 115 with a gap before the race's heading on line 247.
+const STATISTICS_TITLE: (usize, usize) = (416, 86);
+const STATISTICS_LABEL_X: usize = 360;
+const STATISTICS_VALUE_X: usize = 526;
+const STATISTICS_ROWS_Y: [usize; 13] = [
+    115, 138, 161, 184, 207, 270, 293, 316, 339, 362, 385, 408, 431,
+];
+const RACE_HEADING_Y: usize = 247;
+
+/// A time as the statistics write it: minutes, seconds and hundredths, each of one digit
+/// with a 0 before it, as "00:05.65".
+fn clock([minutes, seconds, hundredths]: [i32; 3]) -> String {
+    format!("{minutes:02}:{seconds:02}.{hundredths:02}")
+}
+
+/// A time in hundredths, as the records are compared.
+fn clock_total([minutes, seconds, hundredths]: [i32; 3]) -> i32 {
+    (minutes * 60 + seconds) * 100 + hundredths
+}
+
+impl Menu {
+    /// `postRaceMain(0)`: the standings and the easy race's page drawn under a black palette,
+    /// then faded in.
+    pub(super) fn open_results(&mut self) -> State {
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_results_frame(&mut screen);
+        self.draw_standings(&mut screen);
+        self.screen = screen;
+        self.race_page(0, false);
+        State::ResultsFadeIn { step: 0 }
+    }
+
+    /// A step of the fade in, each after a wait: the composed palette at 2 % a step, up to
+    /// 98 %.
+    pub(super) fn results_fade_in(&mut self, step: u32) -> State {
+        self.palette.fade(2 * i64::from(step));
+        if step + 1 < FADE_IN_STEPS {
+            return State::ResultsFadeIn { step: step + 1 };
+        }
+        // 0x42B800.
+        self.shop.market_escaped = false;
+        State::ResultsWait { page: 1 }
+    }
+
+    /// A wait for a key after page `page` (the races' 1 to 3, 4 after the shop has loaded):
+    /// the menu's pulse and the line blinking. Escape after the first two races' pages adds
+    /// the rest's points without showing them.
+    pub(super) fn results_wait(&mut self, page: u8) -> State {
+        self.palette.after_wait();
+        self.blink_press();
+        let key = self.keys.take();
+        if key == 0 {
+            return State::ResultsWait { page };
+        }
+        let skip = key == keys::ESCAPE;
+        match page {
+            1 | 2 => {
+                let race = usize::from(page);
+                self.race_page(race, skip);
+                if !skip {
+                    return State::ResultsWait { page: page + 1 };
+                }
+                if race == 1 {
+                    self.race_page(2, true);
+                }
+                self.results_statistics()
+            }
+            3 => self.results_statistics(),
+            _ => {
+                // 0x42BA03: with weapons on, the welcome shown and the shop's way on seen,
+                // the screen stays as it is; otherwise it fades out.
+                self.compose_palette();
+                let fade = !(self.campaign.use_weapons
+                    && !self.campaign.welcome
+                    && self.shop.continue_seen);
+                State::ResultsOut { step: 0, fade }
+            }
+        }
+    }
+
+    /// After the races' pages: the standings sorted afresh (`sub_423C90`, `sub_423E20`) with
+    /// the player's statistics, "Please wait while loading..." while the shop loads.
+    fn results_statistics(&mut self) -> State {
+        self.campaign.rank_drivers();
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_statistics(&mut screen);
+        self.draw_standings(&mut screen);
+        self.clear_press(&mut screen);
+        let wait = self.assets.menu.texts.campaign.please_wait.clone();
+        self.graphics.small[0].draw(&mut screen, &wait, at(PRESS.0, PRESS.1));
+        self.screen = screen;
+        self.shown = self.screen.clone();
+        // 0x42B97A: `sub_41EE40` loads the shop's pictures and starts its loops afresh: the
+        // car box on the player's next car, the continue item selected, the pulse at 100 %.
+        self.shop.reset();
+        self.shop.selected = shop::CONTINUE;
+        self.shop.car = (self.campaign.player().car + 1).clamp(1, 5) as usize;
+        self.car_frame = 0;
+        self.palette.reset_pulse();
+        State::ResultsLoading
+    }
+
+    /// The shop loaded: the sound, and "Press any key to continue..." in place of the wait's
+    /// line.
+    pub(super) fn results_loaded(&mut self) -> State {
+        let mut screen = std::mem::take(&mut self.screen);
+        self.clear_press(&mut screen);
+        self.screen = screen;
+        self.sound(LOADED_SOUND);
+        self.draw_press(0);
+        self.shown = self.screen.clone();
+        State::ResultsWait { page: 4 }
+    }
+
+    /// A wait of the way out: the composed palette from 100 % down 2 % a wait but for entries
+    /// 96 to 127, or nothing changing; then the key the wait took is let go of and the shop
+    /// comes back, or the Underground Market the race was reached through fades out first
+    /// (0x4370C7).
+    pub(super) fn results_out(&mut self, step: u32, fade: bool) -> State {
+        if fade {
+            // 0x42BAA0: entries 96 to 127 keep what they show.
+            self.palette.fade_market(100 - 2 * i64::from(step));
+        }
+        if step + 1 < OUT_STEPS {
+            return State::ResultsOut {
+                step: step + 1,
+                fade,
+            };
+        }
+        self.keys.take();
+        if fade {
+            return self.shop_again();
+        }
+        self.compose_palette();
+        State::MarketLeave { step: 0 }
+    }
+
+    /// The menu's background with the ranking's frame and the results' panel.
+    fn draw_results_frame(&self, canvas: &mut Canvas) {
+        let results = &self.assets.menu.results;
+        canvas.copy_all(&self.graphics.background);
+        canvas.draw(&results.ranking, at(RANKING.0, RANKING.1), true);
+        canvas.draw(&results.panel, at(PANEL.0, PANEL.1), true);
+    }
+
+    /// `writeDriverList(20)`: every driver's row in the drivers' order, the player's in its
+    /// own pieces.
+    fn draw_standings(&self, canvas: &mut Canvas) {
+        let results = &self.assets.menu.results;
+        let medium = &self.graphics.medium;
+        for (index, driver) in self.campaign.drivers.iter().enumerate() {
+            let dy = ROW_STEP * index;
+            let pieces = if index == self.campaign.player_index {
+                &results.player_row
+            } else {
+                &results.other_row
+            };
+            for (piece, &x) in pieces.iter().zip(&ROW_PIECES) {
+                canvas.draw(piece, at(x, ROW_TOP + dy), true);
+            }
+            let rank = format!("{}.", driver.rank).into_bytes();
+            let pen = RANK_RIGHT.0.saturating_sub(medium.width(&rank));
+            medium.draw(canvas, &rank, at(pen, RANK_RIGHT.1 + dy));
+            let name = driver.name().to_ascii_uppercase();
+            medium.draw(canvas, &name, at(NAME.0, NAME.1 + dy));
+            let points = driver.points.to_string().into_bytes();
+            let pen = POINTS_RIGHT.0.saturating_sub(medium.width(&points));
+            medium.draw(canvas, &points, at(pen, POINTS_RIGHT.1 + dy));
+        }
+    }
+
+    /// A race's page (`easyRaceResults` 0x429280 and the medium's and hard's after it): its
+    /// places, the first three's points added to their drivers (none for a wreck, nor for
+    /// the player lapped), shown unless `skip`.
+    fn race_page(&mut self, race: usize, skip: bool) {
+        let places = self.race_places(race);
+        let mut screen = std::mem::take(&mut self.screen);
+        if !skip {
+            self.place_boxes(&mut screen);
+            let results = &self.assets.menu.results;
+            screen.draw(&results.races[race], at(PANEL.0, PANEL.1), true);
+            let title = &self.assets.menu.texts.campaign.results_titles[race];
+            self.graphics.small[0].draw(&mut screen, title, at(TITLE_TEXT.0, TITLE_TEXT.1));
+            self.right_positions(&mut screen, &places);
+        }
+        let lapped = self.outcome.lapped;
+        let player = self.campaign.player_index;
+        for (place, &driver) in places.iter().take(3).enumerate() {
+            let wrecked = self.campaign.drivers[driver].damage == WRECKED;
+            let shut_out = driver == player && lapped;
+            if !skip && !wrecked {
+                if shut_out {
+                    // 0x42945C: the player lapped ends the page's points there.
+                    break;
+                }
+                let marker = &self.assets.menu.results.points[race];
+                screen.draw(marker, at(MARKER_X, ROW_TOP + ROW_STEP * driver), true);
+            }
+            if wrecked || shut_out {
+                continue;
+            }
+            self.campaign.drivers[driver].points += POINTS[race][place];
+            let text = &self.assets.menu.texts.campaign.results_points[race][place];
+            let y = ROW_TOP + POINTS_TEXT_DY + ROW_STEP * driver;
+            self.graphics
+                .medium
+                .draw(&mut screen, text, at(POINTS_TEXT_X, y));
+        }
+        self.screen = screen;
+        if skip {
+            return;
+        }
+        if race == 0 {
+            self.draw_press(0);
+        } else {
+            // 0x429915: the composed palette at 100 %.
+            self.palette.fade(100);
+        }
+        self.shown = self.screen.clone();
+    }
+
+    /// The drivers of race `race` by their places: the player's race as it finished; the
+    /// others by their cars, the best first (`sub_424510` sorts the entries by car, lowest
+    /// first, in the sign-up itself, and the page reads them backwards).
+    fn race_places(&mut self, race: usize) -> [usize; PLACES] {
+        let player_race = self.campaign.entered_race.unwrap_or(0);
+        let drivers = self.campaign.drivers;
+        let sign_up = self.campaign.sign_up.as_mut().expect("a sign-up is on");
+        let entrants = &mut sign_up.entrants[race];
+        if race == player_race {
+            let mut places = *entrants;
+            for (car, &driver) in entrants.iter().enumerate() {
+                let place = self.outcome.finishes.get(car).map_or(0, |f| f.place);
+                if (1..=PLACES as i32).contains(&place) {
+                    places[place as usize - 1] = driver;
+                }
+            }
+            return places;
+        }
+        quicksort(
+            entrants,
+            0,
+            PLACES - 1,
+            &|&driver: &usize| drivers[driver].car,
+            &mut |_, _| {},
+        );
+        let mut places = *entrants;
+        places.reverse();
+        places
+    }
+
+    /// `sub_424420`: the four places' boxes and numbers.
+    fn place_boxes(&self, canvas: &mut Canvas) {
+        let placing = &self.assets.menu.results.placing;
+        for place in 0..PLACES {
+            let y = PLACE_TOP + PLACE_STEP * place;
+            canvas.draw(placing, at(BOX_X, y), true);
+            let number = (place + 1).to_string().into_bytes();
+            let x = NUMBER_X[usize::from(place > 0)];
+            self.graphics
+                .big_a
+                .draw(canvas, &number, at(x, y + NUMBER_DY));
+        }
+    }
+
+    /// `drawRightPositions(4, places)`: each place's rank, name, face and car; then the palette
+    /// composed with each place's car in its driver's colour (the player's from `COPPER.PAL`,
+    /// the others' from the cars' colours).
+    fn right_positions(&mut self, canvas: &mut Canvas, places: &[usize; PLACES]) {
+        let menu = &self.assets.menu;
+        let medium = &self.graphics.medium;
+        for (place, &driver) in places.iter().enumerate() {
+            let record = &self.campaign.drivers[driver];
+            let y = PLACE_TOP + PLACE_STEP * place;
+            let rank = format!("{}.", record.rank).into_bytes();
+            let pen = PLACE_RANK.0.saturating_sub(medium.width(&rank));
+            medium.draw(canvas, &rank, at(pen, y + PLACE_RANK.1));
+            let name = record.name().to_ascii_uppercase();
+            medium.draw(canvas, &name, at(PLACE_NAME.0, y + PLACE_NAME.1));
+            // A face or car past the pictures (only from an edited save) is left out.
+            if let Some(face) = usize::try_from(record.face)
+                .ok()
+                .and_then(|f| menu.faces.get(f))
+            {
+                canvas.draw(face, at(FACE.0, y + FACE.1), false);
+            }
+            if let Some(car) = usize::try_from(record.car)
+                .ok()
+                .and_then(|car| menu.results.cars.get(car * PLACES + place))
+            {
+                canvas.draw(car, at(CAR_X, y), false);
+            }
+        }
+        let colours = places.map(|driver| {
+            let colour = self.campaign.drivers[driver].colour.clamp(0, 255) as usize;
+            if driver == self.campaign.player_index {
+                menu.copper.0[colour]
+            } else {
+                menu.car_colours.0[colour]
+            }
+        });
+        self.compose_palette();
+        for (&first, &colour) in PLACE_RAMPS.iter().zip(&colours) {
+            self.palette.set_place_ramp(first, colour);
+        }
+    }
+
+    /// `drawStadistics` (0x4245D0): the player's statistics in small A beside the standings,
+    /// and after a race (the player's place known) the race's; a best lap better than the
+    /// circuit's record for the player's car, or the first, becomes the record in `dr.cfg`.
+    fn draw_statistics(&mut self, canvas: &mut Canvas) {
+        self.draw_results_frame(canvas);
+        let texts = &self.assets.menu.texts.campaign;
+        let font = &self.graphics.small[0];
+        font.draw(
+            canvas,
+            &texts.statistics,
+            at(STATISTICS_TITLE.0, STATISTICS_TITLE.1),
+        );
+        let player = *self.campaign.player();
+        let separator = &texts.label_separator;
+        let plain = |value: String| [&separator[..], value.as_bytes()].concat();
+        let money = |value: i32| plain(format!("${value}"));
+        let mut rows = vec![
+            plain(format!("{}.", player.rank)),
+            plain(player.wins.to_string()),
+            plain(player.races.to_string()),
+            money(player.total_income),
+            money(player.money),
+        ];
+        let place = self.books.place;
+        if place > 0 {
+            let race = self.campaign.entered_race.unwrap_or(0);
+            let circuit = self
+                .campaign
+                .sign_up
+                .as_ref()
+                .map_or(0, |sign_up| sign_up.circuits[race]);
+            let car = player.car.clamp(0, 5) as usize;
+            let best = self.outcome.best_lap;
+            let (_, record) = self.config.record(circuit, car);
+            let record_total = clock_total(record.map(|part| part as i32));
+            let best_total = clock_total(best);
+            let best_set = best.iter().sum::<i32>() != 0;
+            // 0x425241, 0x425318: a better lap, or a first one, is the new record.
+            if (best_total < record_total && best_set)
+                || (record.iter().sum::<u32>() == 0 && best_total > 0)
+            {
+                self.config
+                    .set_record(circuit, car, player.name(), best.map(|part| part as u32));
+            }
+            let record = self.config.record(circuit, car).1.map(|part| part as i32);
+            let books = self.books;
+            rows.extend([
+                plain(format!("{place}.")),
+                money(books.prize),
+                money(books.picked_up),
+                money(books.prize + books.picked_up),
+                plain(self.outcome.laps.to_string()),
+                plain(clock(self.outcome.race_time)),
+                plain(clock(best)),
+                plain(clock(record)),
+            ]);
+            let texts = &self.assets.menu.texts;
+            let kind = &texts.campaign.race_kinds[race.min(3)];
+            let heading = if race == 3 {
+                kind.clone()
+            } else {
+                [&texts.hall_of_fame.circuits[circuit][..], kind].concat()
+            };
+            let font = &self.graphics.small[0];
+            font.draw(canvas, &heading, at(STATISTICS_LABEL_X, RACE_HEADING_Y));
+            // 0x425956: the place is told once.
+            self.books.place = 0;
+        }
+        let texts = &self.assets.menu.texts.campaign;
+        let font = &self.graphics.small[0];
+        for (row, value) in rows.iter().enumerate() {
+            let y = STATISTICS_ROWS_Y[row];
+            font.draw(
+                canvas,
+                &texts.statistics_rows[row],
+                at(STATISTICS_LABEL_X, y),
+            );
+            font.draw(canvas, value, at(STATISTICS_VALUE_X, y));
+        }
+    }
+
+    /// `sub_426080`: the panel's rows under the line put back.
+    fn clear_press(&self, canvas: &mut Canvas) {
+        let panel = &self.assets.menu.results.panel;
+        let width = panel.width as usize;
+        for row in PRESS_PANEL_ROWS {
+            let from = &panel.pixels[row * width..(row + 1) * width];
+            let to = at(PANEL.0, PANEL.1 + row);
+            canvas.pixels_mut()[to..to + width].copy_from_slice(from);
+        }
+    }
+
+    /// "Press any key to continue..." in small A (`font` 0) or small B (1) on the screen.
+    fn draw_press(&mut self, font: usize) {
+        let text = self.assets.menu.texts.campaign.press_to_go_on.clone();
+        let mut screen = std::mem::take(&mut self.screen);
+        self.graphics.small[font].draw(&mut screen, &text, at(PRESS.0, PRESS.1));
+        self.screen = screen;
+    }
+
+    /// `sub_4260D0`: the line in small B at the 30th call, in small A at the 60th, its strip
+    /// shown each time; the count goes on from screen to screen.
+    fn blink_press(&mut self) {
+        self.press_blink += 1;
+        let font = match self.press_blink {
+            BLINK_B => 1,
+            BLINK_A => 0,
+            _ => return,
+        };
+        let mut screen = std::mem::take(&mut self.screen);
+        self.clear_press(&mut screen);
+        self.screen = screen;
+        self.draw_press(font);
+        let (x, y, w, h) = PRESS_STRIP;
+        self.shown.copy_from(&self.screen, at(x, y), w, h);
+        if self.press_blink == BLINK_A {
+            self.press_blink = 0;
+        }
+    }
+}

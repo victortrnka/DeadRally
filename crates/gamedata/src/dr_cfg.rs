@@ -247,6 +247,19 @@ impl DrCfg {
         (self.name(at, NAME_BYTES), time)
     }
 
+    /// A new record `car` of circuit `circuit`: `name` upper-cased (`strcpy` then `_strupr`, so
+    /// the rest of the field keeps what it held after the NUL) and the time.
+    pub fn set_record(&mut self, circuit: usize, car: usize, name: &[u8], time: [u32; 3]) {
+        let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
+        let length = name.len().min(NAME_BYTES - 1);
+        let field = &mut self.payload[at..at + NAME_BYTES];
+        field[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
+        field[length] = 0;
+        for (i, part) in time.into_iter().enumerate() {
+            self.put(at + NAME_BYTES + 4 * i, part);
+        }
+    }
+
     /// Entry `rank` (0–9) of the best ten: the name, races and difficulty.
     pub fn hall_of_fame(&self, rank: usize) -> (&[u8], i32, u32) {
         let at = HALL_OF_FAME + ENTRY_BYTES * rank;
@@ -379,6 +392,16 @@ mod tests {
         let unreadable = home.path().join("dr.cfg");
         std::fs::create_dir(&unreadable).unwrap();
         assert!(load(Some(&unreadable), home.path(), &dummy()).is_err());
+    }
+
+    #[test]
+    fn a_new_record_keeps_the_name_upper_cased_and_the_time() {
+        // The statistics after a race write a lap record into dr.cfg's table; the next race
+        // shows it in the HUD and the next statistics as the best lap ever.
+        let mut cfg = DrCfg::parse(&[0; 8]).unwrap();
+        cfg.set_record(3, 2, b"Tester", [1, 2, 3]);
+        assert_eq!(cfg.record(3, 2), (&b"TESTER"[..], [1, 2, 3]));
+        assert_eq!(cfg.record(3, 1).1, [0, 0, 0]);
     }
 
     #[test]

@@ -1503,6 +1503,130 @@ const HELP_SHOTS: [(u64, &str); 224] = [
     (5007, "h222"),
 ];
 
+/// The keys of `scripts/reference/results.scenario`'s run of `docs/verification/m5.md`: the
+/// race start's (the space ending the sign-up's linger four waits later in this run, as the
+/// menu's pulse after the race shows), the mine, Down backing over it and Enter on the race's
+/// end as in the wreck run, then Enter after the medium race's page, after the hard race's and
+/// after the statistics.
+const RESULTS_KEYS: [(u64, Key); 13] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2787, Key::Space),
+    (4470, Key::Enter),
+    (4827, Key::Enter),
+    (5216, Key::Enter),
+];
+const RESULTS_HELD: [Held; 3] = [
+    (3643, Key::LeftAlt, 7),
+    (3700, Key::Down, 50),
+    (4184, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run, one every 200 ms
+/// from the race's end on: the box, the view tilting away, the results fading in, the three
+/// races' pages, the statistics and the way out (s035 and s064, caught as the screen changed,
+/// left out; docs/verification/m5.md).
+const RESULTS_SHOTS: [(u64, &str); 91] = [
+    (3901, "s000"),
+    (3901, "s001"),
+    (3901, "s002"),
+    (3901, "s003"),
+    (3901, "s004"),
+    (3901, "s005"),
+    (3901, "s006"),
+    (3901, "s007"),
+    (3901, "s008"),
+    (3901, "s009"),
+    (3901, "s010"),
+    (3901, "s011"),
+    (3901, "s012"),
+    (3901, "s013"),
+    (3901, "s014"),
+    (3901, "s015"),
+    (4197, "s016"),
+    (4211, "s017"),
+    (4225, "s018"),
+    (4240, "s019"),
+    (4254, "s020"),
+    (4268, "s021"),
+    (4282, "s022"),
+    (4292, "s023"),
+    (4306, "s024"),
+    (4320, "s025"),
+    (4335, "s026"),
+    (4349, "s027"),
+    (4359, "s028"),
+    (4377, "s029"),
+    (4392, "s030"),
+    (4350, "s031"),
+    (4352, "s032"),
+    (4389, "s033"),
+    (4375, "s034"),
+    (4478, "s036"),
+    (4492, "s037"),
+    (4506, "s038"),
+    (4474, "s039"),
+    (4527, "s040"),
+    (4549, "s041"),
+    (4563, "s042"),
+    (4553, "s043"),
+    (4592, "s044"),
+    (4592, "s045"),
+    (4552, "s046"),
+    (4563, "s047"),
+    (4547, "s048"),
+    (4595, "s049"),
+    (4554, "s050"),
+    (4692, "s051"),
+    (4706, "s052"),
+    (4716, "s053"),
+    (4735, "s054"),
+    (4687, "s055"),
+    (4763, "s056"),
+    (4761, "s057"),
+    (4758, "s058"),
+    (4800, "s059"),
+    (4785, "s060"),
+    (4829, "s061"),
+    (4842, "s062"),
+    (4862, "s063"),
+    (4833, "s065"),
+    (4909, "s066"),
+    (4923, "s067"),
+    (4926, "s068"),
+    (4946, "s069"),
+    (4898, "s070"),
+    (4913, "s071"),
+    (4927, "s072"),
+    (4907, "s073"),
+    (4909, "s074"),
+    (4928, "s075"),
+    (5050, "s076"),
+    (5066, "s077"),
+    (5081, "s078"),
+    (5061, "s079"),
+    (5041, "s080"),
+    (5047, "s081"),
+    (5066, "s082"),
+    (5084, "s083"),
+    (5038, "s084"),
+    (5216, "s085"),
+    (5217, "s086"),
+    (5217, "s087"),
+    (5217, "s088"),
+    (5272, "s089"),
+    (5286, "s090"),
+    (5300, "s091"),
+    (5315, "s092"),
+];
+
 /// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
 /// run of `docs/verification/m5.md` (no keys held: the player stands while the opponents race
 /// three laps round it).
@@ -2356,6 +2480,28 @@ fn the_opponents_run_matches_the_committed_manifest() {
         false,
     );
     check_manifest("opponents-run.sha256", &lines, "the opponents run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_results_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // the race to a wreck with the opponents driving, the results fading in with the medium
+    // race's page at once (the race's last Enter), the hard race's, every first three's
+    // points, the standings sorted afresh with the player's statistics, and the way back out
+    // through the Underground Market's fade.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 99, [1, 0, 0]));
+    let lines = manifest_run(
+        (SEED, None),
+        (&RESULTS_KEYS, &RESULTS_HELD),
+        &RESULTS_SHOTS,
+        5_330,
+        slots,
+        false,
+    );
+    check_manifest("results-run.sha256", &lines, "the results run");
 }
 
 #[test]

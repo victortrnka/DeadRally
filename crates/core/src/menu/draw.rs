@@ -7,6 +7,7 @@ use deadrally_gamedata::assets::MenuAssets;
 use deadrally_gamedata::image::Image;
 use deadrally_gamedata::text::Texts;
 
+use crate::campaign::Rand;
 use crate::canvas::{Canvas, at};
 use crate::font::Font;
 
@@ -341,11 +342,20 @@ pub(crate) struct PanelLine {
     pub(crate) font: u8,
 }
 
-/// The bottom message panel: 22 lines, new ones pushed in at the bottom.
+/// The bottom message panel: 22 lines, new ones pushed in at the bottom; and which of the
+/// headlines after a race it told since it last told them all (0x45F000, 0x45FB84).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Panel {
     lines: Vec<PanelLine>,
+    told: [bool; HEADLINES],
+    told_count: u8,
 }
+
+/// The headlines after a race, four lines each, and where they go in the panel.
+const HEADLINES: usize = 19;
+const HEADLINE_FIRST: usize = 17;
+/// The lines the panel moves up for a headline.
+const HEADLINE_SCROLL: usize = 6;
 
 impl Panel {
     /// The panel as `mainMenu` fills it at start-up: the four start-up lines in small B, an
@@ -353,6 +363,8 @@ impl Panel {
     pub(crate) fn startup(texts: &Texts) -> Panel {
         let mut panel = Panel {
             lines: vec![PanelLine::default(); 22],
+            told: [false; HEADLINES],
+            told_count: 0,
         };
         let [first, second, third, last] = [0, 1, 2, 3].map(|i| texts.panel[i].clone());
         for text in [first, second, third, Vec::new(), last] {
@@ -364,6 +376,37 @@ impl Panel {
     fn push(&mut self, text: Vec<u8>, font: u8) {
         self.lines.remove(0);
         self.lines.push(PanelLine { text, font });
+    }
+
+    /// The news after a race (0x4279C0): the panel moved up six lines, all but the last line
+    /// moving and the last staying (so it shows below as well), then a headline not told yet,
+    /// drawn by `rand()` until one is, in small B on lines 17 to 20; after the nineteenth all
+    /// count as untold again.
+    pub(crate) fn tell_headline(&mut self, rand: &mut Rand, headlines: &[Vec<Vec<u8>>]) {
+        let last = self.lines.len() - 1;
+        for _ in 0..HEADLINE_SCROLL {
+            for line in 0..last {
+                self.lines[line] = self.lines[line + 1].clone();
+            }
+        }
+        let headline = loop {
+            let k = (rand.next() % HEADLINES as i32) as usize;
+            if !self.told[k] {
+                break k;
+            }
+        };
+        self.told[headline] = true;
+        for (line, text) in headlines[headline].iter().enumerate() {
+            self.lines[HEADLINE_FIRST + line] = PanelLine {
+                text: text.clone(),
+                font: 1,
+            };
+        }
+        self.told_count += 1;
+        if usize::from(self.told_count) >= HEADLINES {
+            self.told = [false; HEADLINES];
+            self.told_count = 0;
+        }
     }
 }
 
@@ -497,6 +540,15 @@ pub(crate) mod tests {
                 prize: b"P".to_vec(),
                 abort_race: vec![b"A".to_vec(); 9],
                 race_over: vec![b"A".to_vec(); 9],
+                results_titles: vec![b"R".to_vec(); 3],
+                results_points: vec![vec![b"+".to_vec(); 3]; 3],
+                please_wait: b"W".to_vec(),
+                press_to_go_on: b"K".to_vec(),
+                statistics: b"S".to_vec(),
+                statistics_rows: vec![b"r".to_vec(); 13],
+                race_kinds: vec![b"k".to_vec(); 4],
+                label_separator: b": ".to_vec(),
+                headlines: vec![vec![b"N".to_vec(); 4]; 19],
             },
             shop: shop_texts(),
             help: deadrally_gamedata::text::HelpTexts {
@@ -662,5 +714,48 @@ pub(crate) mod tests {
             graphics().background.pixels[at(12, 445)],
             "line 20 is empty (the glyphs above reach row 438)"
         );
+    }
+
+    /// After a race the panel tells a headline it has not told since it told them all: six
+    /// lines up, the last line left as it was, the headline's four lines in small B on lines
+    /// 17 to 20. Another order shows half of the old news under the new.
+    #[test]
+    fn a_race_tells_a_new_headline_in_the_panel() {
+        let mut panel = Panel {
+            lines: (0..22)
+                .map(|k| PanelLine {
+                    text: vec![k as u8],
+                    font: 0,
+                })
+                .collect(),
+            told: [false; HEADLINES],
+            told_count: 0,
+        };
+        let headlines: Vec<Vec<Vec<u8>>> = (0..HEADLINES as u8)
+            .map(|k| (0..4).map(|line| vec![100 + k, line]).collect())
+            .collect();
+        let mut rand = Rand::new(1);
+        panel.tell_headline(&mut rand, &headlines);
+        let texts: Vec<Vec<u8>> = panel.lines.iter().map(|l| l.text.clone()).collect();
+        for (line, text) in texts[..16].iter().enumerate() {
+            assert_eq!(text[..], [line as u8 + 6]);
+        }
+        assert_eq!(texts[16], [21]);
+        assert_eq!(texts[21], [21]);
+        let told = texts[17][0] - 100;
+        assert_eq!(
+            texts[17..21],
+            (0..4).map(|l| vec![100 + told, l]).collect::<Vec<_>>()[..]
+        );
+        assert!(panel.lines[17..21].iter().all(|l| l.font == 1));
+        // Every headline once before any again; then they start over.
+        let mut seen = vec![told];
+        for _ in 1..HEADLINES {
+            panel.tell_headline(&mut rand, &headlines);
+            seen.push(panel.lines[17].text[0] - 100);
+        }
+        seen.sort_unstable();
+        assert_eq!(seen, (0..HEADLINES as u8).collect::<Vec<_>>());
+        assert_eq!(panel.told, [false; HEADLINES]);
     }
 }
