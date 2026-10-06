@@ -222,6 +222,45 @@ impl Medals {
     }
 }
 
+/// The calls on the player's car that the HUD and the small board make after its damage
+/// (0x414E28 and 0x414028): effect 1 once a race when the damage bar is first under a fifth
+/// (0x5000, flag 0x456ADC) and once when first under a tenth (0x2800, 0x456AE0), and
+/// effect 32 once when the tough driver (the name at 0x441250) is wrecked (0x456AE8); the
+/// race's set-up clears the flags (`initRaceValues` 0x409B77).
+pub(crate) const DAMAGE_CALL: u8 = 1;
+pub(crate) const TOUGH_WRECKED: u8 = 32;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DamageCalls {
+    fifth: bool,
+    tenth: bool,
+    wrecked: bool,
+}
+
+impl DamageCalls {
+    /// The calls for the player's `damage_bar` this frame, in their order; `tough` when the
+    /// player is the tough driver.
+    pub(crate) fn check(&mut self, damage_bar: i32, tough: bool) -> Vec<u8> {
+        let mut calls = Vec::new();
+        let mut once = |flag: &mut bool, effect: u8| {
+            if !*flag {
+                calls.push(effect);
+            }
+            *flag = true;
+        };
+        if damage_bar < 0x5000 {
+            once(&mut self.fifth, DAMAGE_CALL);
+        }
+        if damage_bar < 0x2800 {
+            once(&mut self.tenth, DAMAGE_CALL);
+        }
+        if damage_bar == 0 && tough {
+            once(&mut self.wrecked, TOUGH_WRECKED);
+        }
+        calls
+    }
+}
+
 /// `drawLeftRaceBar_414220` at `left` (`leftMenuInRaceWidth` 0x456AA0, 64 once slid in).
 pub(crate) fn draw(
     buffer: &mut Buffer,
@@ -675,5 +714,43 @@ mod tests {
         // Two ticks between frames roll twice as far.
         let mut medals = Medals::new(&[1, 2]);
         assert_eq!(medals.roll(&[2, 1], 2), [1, 6]);
+    }
+
+    /// The HUD warns the player once a race as the car's damage bar falls under a fifth and
+    /// again under a tenth, and the tough driver wrecked has a call of his own. A warning
+    /// sounding every frame under the line, or not at all, is what the player would hear go
+    /// wrong; a car starting the race nearly wrecked hears both warnings at once.
+    #[test]
+    fn the_damage_calls_sound_once_a_race_each() {
+        let mut calls = DamageCalls::default();
+        assert!(
+            calls.check(0x5000, false).is_empty(),
+            "a fifth left is not under it"
+        );
+        assert_eq!(calls.check(0x4FFF, false), [DAMAGE_CALL]);
+        assert!(calls.check(0x3000, false).is_empty(), "once a race");
+        assert!(
+            calls.check(0x2800, false).is_empty(),
+            "a tenth left is not under it"
+        );
+        assert_eq!(calls.check(0x27FF, false), [DAMAGE_CALL]);
+        assert!(calls.check(0x1000, false).is_empty(), "once a race");
+        assert!(
+            calls.check(0, false).is_empty(),
+            "only the tough driver's wreck has a call"
+        );
+        let mut calls = DamageCalls::default();
+        assert_eq!(
+            calls.check(0, true),
+            [DAMAGE_CALL, DAMAGE_CALL, TOUGH_WRECKED]
+        );
+        assert!(calls.check(0, true).is_empty(), "once a race");
+        let mut calls = DamageCalls::default();
+        assert_eq!(calls.check(1, true), [DAMAGE_CALL, DAMAGE_CALL]);
+        assert_eq!(
+            calls.check(0, true),
+            [TOUGH_WRECKED],
+            "the tough driver's call comes with the wreck itself"
+        );
     }
 }

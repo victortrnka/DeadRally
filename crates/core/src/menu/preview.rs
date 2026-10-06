@@ -306,14 +306,18 @@ impl Menu {
                 .1
                 .map(|part| part as i32),
             session: self.campaign.race_session,
-            flame_phase: self.campaign.flame_phase,
         };
         let race =
             crate::race::Race::new(&self.assets.race, setup, drivers, &mut self.campaign.rand);
         match race {
             Ok(mut race) => {
                 let volumes = (self.config.music_volume(), self.config.effects_volume());
-                race.begin(&mut self.sound, volumes, &mut self.campaign.rand);
+                race.begin(
+                    &mut self.sound,
+                    volumes,
+                    &mut self.keys,
+                    &mut self.campaign.rand,
+                );
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }
@@ -339,7 +343,6 @@ impl Menu {
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
         if outcome != crate::race::Outcome::Racing {
-            self.campaign.flame_phase = race.flame_phase();
             self.campaign.race_session = race.session();
             self.outcome = race.outcome();
             self.race = None;

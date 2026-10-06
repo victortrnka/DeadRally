@@ -224,8 +224,12 @@ pub(crate) struct Race {
     /// The laps' clocks, times and calls, and the wrecks in the order they were wrecked.
     laps_state: laps::Laps,
     wrecks: Vec<usize>,
-    /// The car of the driver whose armour counts 2.2 times, who has a call when winning.
+    /// The car of the driver whose armour counts 2.2 times, who has a call when winning;
+    /// whether it is the player's, who has a call when wrecked.
     tough: Option<usize>,
+    player_tough: bool,
+    /// The HUD's calls on the player's damage made this race.
+    damage_calls: hud::DamageCalls,
     /// What a money power-up is worth (0x4A7AB0), and whether the player took the bonus
     /// power-up (0x4A7AAC).
     pickup_money: i32,
@@ -245,9 +249,8 @@ pub(crate) struct Race {
     fire: Vec<u8>,
     /// The HUD's medals of the places.
     medals: hud::Medals,
-    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`) and the one shown (0x456AFC).
+    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`); the one shown is the session's.
     rocket_flames: [Vec<u8>; 2],
-    flame_phase: usize,
     /// The effect power-up's waves.
     waves: waver::Waves,
     /// What the original keeps from race to race.
@@ -257,7 +260,8 @@ pub(crate) struct Race {
 /// What the original keeps in its globals from race to race, never set back: the switches
 /// the race's keys turn (TAB the status bar 0x445028 and its press 0x46F200, F2 the music
 /// 0x445020, F3 the effects 0x445024, F4 the scene's pictures 0x44502C, F5 the shadows
-/// 0x445030), all on at the game's start; and the effect power-up's waves' phase (0x456AF4).
+/// 0x445030), all on at the game's start; the effect power-up's waves' phase (0x456AF4); and
+/// the rocket flames' picture (0x456AFC), which only a flame's turn writes (0x40F651).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Session {
     status_bar: bool,
@@ -267,6 +271,7 @@ pub(crate) struct Session {
     pictures: bool,
     shadows: bool,
     waves: i32,
+    flame_phase: usize,
 }
 
 impl Session {
@@ -307,6 +312,7 @@ impl Default for Session {
             pictures: true,
             shadows: true,
             waves: 0,
+            flame_phase: 0,
         }
     }
 }
@@ -339,8 +345,6 @@ pub(crate) struct Setup {
     pub(crate) lap_record: [i32; 3],
     /// What the last race left in the original's globals.
     pub(crate) session: Session,
-    /// The rocket flames' picture the last race left (0x456AFC is never set back).
-    pub(crate) flame_phase: usize,
 }
 
 /// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
@@ -440,15 +444,19 @@ enum Stage {
         first: bool,
         ending: bool,
     },
-    /// The help (F1), and the music's order it interrupted.
+    /// The help (F1), the music's order it interrupted, and whether it came in the loop's
+    /// first pass, before the intro.
     Help {
         help: Box<help::Help>,
         order: usize,
+        first: bool,
     },
-    /// The game paused (P): the box, and the music's order it interrupted.
+    /// The game paused (P): the box, the music's order it interrupted, and whether it came in
+    /// the loop's first pass.
     Paused {
         pause: Box<pause::Pause>,
         order: usize,
+        first: bool,
     },
     /// The race ended, abandoned or over: the loop's last frame shown, the view tilting away
     /// from the next tick.
@@ -549,7 +557,6 @@ impl Race {
             pickup_money,
             lap_record,
             session,
-            flame_phase,
         } = setup;
         let mut track = Track::load(&archives.tracks[number], number)?;
         // The scene's lights and pictures are worked out before the track is turned round
@@ -628,12 +635,14 @@ impl Race {
                 hud::decoded(&archives.engine, "SPLAT4.BPK")?,
             ],
         );
-        let tough = drivers.iter().position(|driver| {
+        let is_tough = |driver: &Driver| {
             let tough = &archives.handling.tough;
             let mut name = driver.name.clone();
             name.push(0);
             name.get(..tough.len()) == Some(tough.as_slice())
-        });
+        };
+        let tough = drivers.iter().position(is_tough);
+        let player_tough = is_tough(&drivers[player]);
         let mut palette = track.palette.clone();
         car_ramps(&mut palette, &drivers, spare_ramps);
         let mut race = Race {
@@ -718,9 +727,10 @@ impl Race {
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
                 hud::decoded(&archives.engine, "ROCKET2.BPK")?,
             ],
-            flame_phase,
             wrecks: Vec::new(),
             tough,
+            player_tough,
+            damage_calls: hud::DamageCalls::default(),
             waves: waver::Waves::default(),
             session,
         };
@@ -735,11 +745,12 @@ impl Race {
 
     /// The race's sound set up (0x416215: the menu's stopped, the track's music started at
     /// the configured volumes but silent until the intro raises it, the player's engine), then
-    /// the race loop's first frame, up to its wait.
+    /// the race loop's first pass, its keys checked as every pass's are, up to its wait.
     pub(crate) fn begin(
         &mut self,
         sound: &mut Sound,
         (music_volume, effects_volume): (u32, u32),
+        keys: &mut Keys,
         rand: &mut Rand,
     ) {
         sound.stop();
@@ -758,7 +769,7 @@ impl Race {
         let car = self.drivers[self.player].car as u8;
         sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
         self.frame(sound, rand);
-        self.draw(sound);
+        self.keys_and_draw(sound, keys, rand);
     }
 
     /// A pass of the race loop up to its wait (0x416390): the player's keys of the ticks
@@ -1182,7 +1193,7 @@ impl Race {
                     return Outcome::Racing;
                 }
             }
-            Stage::Help { help, order } => {
+            Stage::Help { help, order, first } => {
                 let waiting = help.waiting();
                 let pressed = waiting && (0..=255).any(|code| keys.held(code));
                 let going = help.wait(pressed);
@@ -1196,18 +1207,22 @@ impl Race {
                 }
                 // 0x416CC2: the music back where it was, at full volume, and the engine; then
                 // the pass the help came in is drawn.
-                let order = *order;
+                let (order, first) = (*order, *first);
                 keys.release_all();
                 sound.set_music_order(order);
                 sound.set_mask(FULL_MASK);
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                self.stage = Stage::Loop { first: false };
+                self.stage = Stage::Loop { first };
                 self.keys_then_draw(sound, keys, rand);
                 return Outcome::Racing;
             }
-            Stage::Paused { pause, order } => {
-                let order = *order;
+            Stage::Paused {
+                pause,
+                order,
+                first,
+            } => {
+                let (order, first) = (*order, *first);
                 let mut asked = Vec::new();
                 let step = pause.wait(|code| keys.held(code), rand, &mut asked);
                 self.screen.copy_from_slice(pause.screen());
@@ -1228,7 +1243,7 @@ impl Race {
                 sound.set_mask(FULL_MASK);
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                self.stage = Stage::Loop { first: false };
+                self.stage = Stage::Loop { first };
                 self.draw_pass(sound, keys, rand);
                 return Outcome::Racing;
             }
@@ -1255,14 +1270,24 @@ impl Race {
         }
         self.stage = Stage::Loop { first: false };
         self.frame(sound, rand);
-        // 0x416B21: F1 opens the help before the pass is drawn.
+        self.keys_and_draw(sound, keys, rand);
+        Outcome::Racing
+    }
+
+    /// A pass after its logic (0x416B21): F1 opens the help before the pass is drawn, else
+    /// the race's other keys, then the drawing.
+    fn keys_and_draw(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
         if keys.held(HELP_KEY) || self.help_asked {
             self.help_asked = false;
             self.start_help(sound);
-            return Outcome::Racing;
+            return;
         }
         self.keys_then_draw(sound, keys, rand);
-        Outcome::Racing
+    }
+
+    /// Whether the pass under way is the loop's first, before the intro.
+    fn first_pass(&self) -> bool {
+        matches!(self.stage, Stage::Loop { first: true })
     }
 
     /// The race's other keys before the pass is drawn (0x416D13): TAB turns the status bar
@@ -1315,6 +1340,7 @@ impl Race {
         self.stage = Stage::Help {
             help: Box::new(help),
             order,
+            first: self.first_pass(),
         };
     }
 
@@ -1410,8 +1436,13 @@ impl Race {
         }
         sound.set_mask(HELP_MASK);
         let lines = self.paused_lines.clone();
+        let first = self.first_pass();
         let (pause, asked) = self.open_box(&lines, keys, rand);
-        self.stage = Stage::Paused { pause, order };
+        self.stage = Stage::Paused {
+            pause,
+            order,
+            first,
+        };
         Self::pause_sounds(sound, &asked);
     }
 
@@ -1489,7 +1520,7 @@ impl Race {
         let mut line = format!(
             "{} fp{} bt{} pw{}",
             self.clock.frame,
-            self.flame_phase,
+            self.session.flame_phase,
             self.clock.between,
             self.power_ups.wait()
         );
@@ -1539,11 +1570,6 @@ impl Race {
             );
         }
         line
-    }
-
-    /// The rocket flames' picture, for the next race to go on from.
-    pub(crate) fn flame_phase(&self) -> usize {
-        self.flame_phase
     }
 
     /// The palette as shown.
@@ -1705,7 +1731,7 @@ impl Race {
                 &mut self.buffer,
                 car,
                 &self.rocket_flames,
-                &mut self.flame_phase,
+                &mut self.session.flame_phase,
                 now,
             );
         }
@@ -1765,12 +1791,12 @@ impl Race {
             // 0x414110: the status bar away, the last lap's time counted down a first time,
             // and only the small board.
             self.laps_state.count_down(self.clock.between);
-            self.draw_small_board();
+            self.draw_small_board(sound);
             return;
         }
         // 0x41430A: the status bar sliding, the small board under it.
         if left < HUD_WIDTH as i32 {
-            self.draw_small_board();
+            self.draw_small_board(sound);
         }
         let gauge = self.gauge();
         let boards = self.boards();
@@ -1782,8 +1808,18 @@ impl Race {
             &gauge,
             self.laps,
         );
+        self.damage_calls(sound);
         if !self.weapons {
             self.laps_state.count_down(self.clock.between);
+        }
+    }
+
+    /// The calls on the player's damage after the HUD's or the small board's damage
+    /// (0x414E28, 0x414028), on the race's calls' channel.
+    fn damage_calls(&mut self, sound: &mut Sound) {
+        let damage = self.cars[self.player].handling.damage;
+        for effect in self.damage_calls.check(damage, self.player_tough) {
+            sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
         }
     }
 
@@ -1801,11 +1837,13 @@ impl Race {
         }
     }
 
-    /// The small board (0x413C90), the last lap's time counted down as it shows it.
-    fn draw_small_board(&mut self) {
+    /// The small board (0x413C90), the last lap's time counted down as it shows it, and the
+    /// calls on the player's damage.
+    fn draw_small_board(&mut self, sound: &mut Sound) {
         let gauge = self.gauge();
         let damage = self.cars[self.player].handling.damage;
         hud::draw_small(&mut self.buffer, &self.hud, &gauge, damage);
+        self.damage_calls(sound);
         if !self.weapons {
             self.laps_state.count_down(self.clock.between);
         }
