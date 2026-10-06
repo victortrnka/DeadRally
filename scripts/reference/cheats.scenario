@@ -1,0 +1,37 @@
+# The shop's cheat words (spec M5): the test game loaded into the shop as in
+# results.scenario, then DRAW, DROOL, DRIVE and DROP typed, a key every 300 ms; a shot
+# after each word (the side panel's money, points and rank).
+at 2000 key space
+at 24000 shot idle
+at 24500 key Return
+at 25300 shot k01-return
+at 25600 key Down
+at 26200 shot k02-down
+at 26500 key Return
+at 27300 shot k03-return
+at 27600 key Return
+at 28500 shot k04-return
+at 28800 key space
+at 30300 shot k05-space
+at 31000 key d
+at 31300 key r
+at 31600 key a
+at 31900 key w
+at 32400 shot draw
+at 32900 key d
+at 33200 key r
+at 33500 key o
+at 33800 key o
+at 34100 key l
+at 34600 shot drool
+at 35100 key d
+at 35400 key r
+at 35700 key i
+at 36000 key v
+at 36300 key e
+at 36800 shot drive
+at 37300 key d
+at 37600 key r
+at 37900 key o
+at 38200 key p
+at 38700 shot drop

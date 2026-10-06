@@ -352,6 +352,8 @@ pub(crate) struct Menu {
     outcome: crate::books::Outcome,
     books: crate::books::Books,
     press_blink: u32,
+    /// Whether the results follow a race (`postRaceMain(0)`) or no race (1).
+    results_after_race: bool,
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
     save: bool,
@@ -437,6 +439,7 @@ impl Menu {
             outcome: crate::books::Outcome::default(),
             books: crate::books::Books::default(),
             press_blink: 0,
+            results_after_race: true,
             config,
             save,
             back: Canvas::default(),

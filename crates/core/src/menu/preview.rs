@@ -303,6 +303,7 @@ impl Menu {
             self.after_race();
             // 0x434670: every entry black before the results fade in.
             self.palette.fade(0);
+            self.results_after_race = true;
             return self.open_results();
         }
         State::Race { ticks: ticks + 1 }

@@ -888,7 +888,12 @@ fn through_a_new_game(game: &mut Game) {
     run(game, 4);
     step(game, Key::Escape);
     step(game, Key::Space);
-    // The fade to black, then the shop wiped in.
+    // The fade to black and the results fading in; Escape adds the races' points without
+    // their pages, then the statistics; a key, the results fading out and the shop in.
+    run(game, 120);
+    step(game, Key::Escape);
+    run(game, 4);
+    step(game, Key::Space);
     run(game, 120);
     step(game, Key::Escape);
     run(game, 60);
@@ -1413,6 +1418,39 @@ fn a_hand_made_loan_or_car_worth_does_not_stop_the_game() {
         saved_game_with(10_000, &[(60, i32::MAX - 10)]),
         &[&left[..], &[Key::Enter]].concat(),
     );
+}
+
+#[test]
+fn the_shops_cheat_words_give_money_and_points() {
+    // 0x4396B0: DRAW gives $1000, DROOL makes it $500000, DROP takes 10 points; the letters
+    // must come in order with nothing between, and do nothing else in the shop.
+    use Key::{A, D, E, I, L, O, P, R, V, W};
+    let money = |keys: &[Key]| field(&player_after_shopping(5_000, keys), 48);
+    assert_eq!(money(&[D, R, A, W]), 6_000);
+    assert_eq!(money(&[D, R, A, W, D, R, A, W]), 7_000);
+    assert_eq!(money(&[D, R, O, O, L]), 500_000);
+    assert_eq!(money(&[D, R, E, A, W]), 5_000, "a wrong letter between");
+    let points = field(&player_after_shopping(5_000, &[D, R, O, P]), 68);
+    assert_eq!(points, -10, "the last driver stays last with 10 fewer");
+    // DRIVE: 10 more points move the player up the sorted standings, so the game saves its
+    // player at another place in the drivers' table.
+    let mut game = in_shop(saved_game_with_money(5_000));
+    for key in [D, R, I, V, E] {
+        step(&mut game, key);
+    }
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (_, file) = game.take_saved_game().expect("a game was saved");
+    let saved = deadrally_gamedata::save_game::SaveGame::decode(&file);
+    let at = usize::from(saved.driver_id) * 108;
+    assert_ne!(saved.driver_id, 19);
+    assert_eq!(field(&saved.drivers[at..at + 108], 68), 10);
 }
 
 /// [`player_after_shopping`] from `file`.
