@@ -260,7 +260,6 @@ impl Menu {
                 .1
                 .map(|part| part as i32),
             session: self.campaign.race_session,
-            flame_phase: self.campaign.flame_phase,
         };
         let race =
             crate::race::Race::new(&self.assets.race, setup, drivers, &mut self.campaign.rand);
@@ -289,7 +288,6 @@ impl Menu {
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
         if outcome != crate::race::Outcome::Racing {
-            self.campaign.flame_phase = race.flame_phase();
             self.campaign.race_session = race.session();
             // 0x4334F7: the books settled, then the news in the panel (0x434512).
             self.outcome = race.outcome();

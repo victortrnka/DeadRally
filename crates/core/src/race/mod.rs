@@ -228,9 +228,8 @@ pub(crate) struct Race {
     fire: Vec<u8>,
     /// The HUD's medals of the places.
     medals: hud::Medals,
-    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`) and the one shown (0x456AFC).
+    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`); the one shown is the session's.
     rocket_flames: [Vec<u8>; 2],
-    flame_phase: usize,
     /// The effect power-up's waves.
     waves: waver::Waves,
     /// What the original keeps from race to race.
@@ -240,7 +239,8 @@ pub(crate) struct Race {
 /// What the original keeps in its globals from race to race, never set back: the switches
 /// the race's keys turn (TAB the status bar 0x445028 and its press 0x46F200, F2 the music
 /// 0x445020, F3 the effects 0x445024, F4 the scene's pictures 0x44502C, F5 the shadows
-/// 0x445030), all on at the game's start; and the effect power-up's waves' phase (0x456AF4).
+/// 0x445030), all on at the game's start; the effect power-up's waves' phase (0x456AF4); and
+/// the rocket flames' picture (0x456AFC), which only a flame's turn writes (0x40F651).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Session {
     status_bar: bool,
@@ -250,6 +250,7 @@ pub(crate) struct Session {
     pictures: bool,
     shadows: bool,
     waves: i32,
+    flame_phase: usize,
 }
 
 impl Session {
@@ -290,6 +291,7 @@ impl Default for Session {
             pictures: true,
             shadows: true,
             waves: 0,
+            flame_phase: 0,
         }
     }
 }
@@ -317,8 +319,6 @@ pub(crate) struct Setup {
     pub(crate) lap_record: [i32; 3],
     /// What the last race left in the original's globals.
     pub(crate) session: Session,
-    /// The rocket flames' picture the last race left (0x456AFC is never set back).
-    pub(crate) flame_phase: usize,
 }
 
 /// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
@@ -525,7 +525,6 @@ impl Race {
             pickup_money,
             lap_record,
             session,
-            flame_phase,
         } = setup;
         let number = circuit % 9 + 1;
         // The second half's circuits run their tracks the other way round (0x432532).
@@ -692,7 +691,6 @@ impl Race {
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
                 hud::decoded(&archives.engine, "ROCKET2.BPK")?,
             ],
-            flame_phase,
             wrecks: Vec::new(),
             tough,
             waves: waver::Waves::default(),
@@ -1459,7 +1457,7 @@ impl Race {
     /// the frame and the rocket flames' picture (`fp`, 0x456AFC), then for each car its
     /// numbers in the original's layout, floats as their bits.
     pub(crate) fn trace(&self) -> String {
-        let mut line = format!("{} fp{}", self.clock.frame, self.flame_phase);
+        let mut line = format!("{} fp{}", self.clock.frame, self.session.flame_phase);
         for car in &self.cars {
             let h = &car.handling;
             line += &format!(
@@ -1505,11 +1503,6 @@ impl Race {
             );
         }
         line
-    }
-
-    /// The rocket flames' picture, for the next race to go on from.
-    pub(crate) fn flame_phase(&self) -> usize {
-        self.flame_phase
     }
 
     /// The palette as shown.
@@ -1671,7 +1664,7 @@ impl Race {
                 &mut self.buffer,
                 car,
                 &self.rocket_flames,
-                &mut self.flame_phase,
+                &mut self.session.flame_phase,
                 now,
             );
         }
