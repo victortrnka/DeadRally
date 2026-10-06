@@ -156,14 +156,16 @@ impl Driver {
     }
 
     /// Whether the record holds numbers a game can have, which the screens index tables
-    /// with: a car 0 to 5, upgrade levels 0 to 4, a colour of `COPPER.PAL`'s 256, one of the
-    /// 20 faces, damage 0 to 100 and money the side panel can print.
+    /// with: a car 0 to 5, upgrade levels 0 to 4, an even colour of `COPPER.PAL`'s 256 (the
+    /// licence and the paint make no other; the paint steps by 2 down to 0), one of the 20
+    /// faces, damage 0 to 100 and money the side panel can print.
     pub(crate) fn is_playable(&self) -> bool {
         (0..=5).contains(&self.car)
             && [self.engine, self.tires, self.armour]
                 .iter()
                 .all(|level| (0..=4).contains(level))
-            && (0..=255).contains(&self.colour)
+            && (0..=254).contains(&self.colour)
+            && self.colour % 2 == 0
             && (0..20).contains(&self.face)
             && (0..=100).contains(&self.damage)
             && (-9_999_999..=9_999_999).contains(&self.money)

@@ -1030,6 +1030,8 @@ fn a_damaged_saved_game_is_refused_like_an_empty_slot() {
         (48, -20_000_000),
         (20, -1),
         (12, i32::MIN),
+        // The licence and the paint only make even colours; the paint steps by 2 to 0.
+        (44, 1),
     ] {
         let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game());
         let at = 19 * 108 + offset;
@@ -1361,7 +1363,61 @@ fn f3_without_a_quicksave_loads_nothing() {
         step(&mut game, key);
     }
     hold(&mut game, Key::F3, 4);
+    // The popup's fill (draw.rs POPUP_FILL) where the engine box was.
+    assert_eq!(pixel(&game, (120, 255)), 0xC4, "the confirmation is up");
     step(&mut game, Key::Space);
     let record = saved_player(game);
     assert_eq!(field(&record, 16), 1, "the engine bought stays");
+}
+
+#[test]
+fn a_quick_save_happens_once_however_long_f2_is_held() {
+    // confirmationPopup (0x42DC70) lets go of F2 and F3 when a key ends it: holding F2
+    // through "game saved" would otherwise save again, with another rand() for the file's key.
+    let mut game = in_shop(saved_game_with_money(1_000));
+    game.input(InputEvent::Key {
+        key: Key::F2,
+        pressed: true,
+    });
+    run(&mut game, 10);
+    assert!(game.take_saved_game().is_some(), "saved");
+    step(&mut game, Key::Space);
+    run(&mut game, 10);
+    game.input(InputEvent::Key {
+        key: Key::F2,
+        pressed: false,
+    });
+    assert!(game.take_saved_game().is_none(), "saved once");
+}
+
+#[test]
+fn a_hand_made_loan_or_car_worth_does_not_stop_the_game() {
+    // A save may hold any loan count or car worth; the debt and the car's worth wrap as the
+    // original's ints do instead of stopping the game.
+    let to_shark = [
+        Key::Left,
+        Key::Left,
+        Key::Left,
+        Key::Left,
+        Key::Up,
+        Key::Enter,
+    ];
+    player_after_market(
+        saved_game_with(1_000, &[(28, 1), (LOAN, 0), (LOAN_RACES, i32::MIN)]),
+        &to_shark,
+    );
+    let left = [Key::Left; 4];
+    player_after_shopping_from(
+        saved_game_with(10_000, &[(60, i32::MAX - 10)]),
+        &[&left[..], &[Key::Enter]].concat(),
+    );
+}
+
+/// [`player_after_shopping`] from `file`.
+fn player_after_shopping_from(file: Vec<u8>, keys: &[Key]) -> Vec<u8> {
+    let mut game = in_shop(file);
+    for &key in keys {
+        step(&mut game, key);
+    }
+    saved_player(game)
 }

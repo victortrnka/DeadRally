@@ -262,8 +262,12 @@ impl Menu {
         self.confirmed(then)
     }
 
+    /// The key that ends a confirmation; F2 and F3 count as let go (0x42DC70), so a quick
+    /// save or load held through it happens once.
     fn confirmed(&mut self, then: Confirmed) -> State {
         self.keys.take();
+        self.keys.release(keys::F2);
+        self.keys.release(keys::F3);
         match then {
             Confirmed::Loaded => self.enter_shop(),
             Confirmed::Saved => self.start_pass(),

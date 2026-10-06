@@ -664,7 +664,7 @@ impl Menu {
         self.sound(BUY_SOUND);
         let player = self.campaign.player_mut();
         player.money -= cost;
-        player.car_price += cost;
+        player.car_price = player.car_price.wrapping_add(cost);
         let mut screen = std::mem::take(&mut self.screen);
         self.draw_bought(&mut screen, kind, level as usize);
         let player = self.campaign.player_mut();
@@ -779,7 +779,7 @@ impl Menu {
             player.damage - 10
         };
         player.money -= cost;
-        player.car_price += cost;
+        player.car_price = player.car_price.wrapping_add(cost);
         let mut screen = std::mem::take(&mut self.screen);
         self.draw_side_panel(&mut screen);
         self.draw_item(&mut screen, REPAIR);

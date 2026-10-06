@@ -70,9 +70,15 @@ fn loan_for(car: i32) -> usize {
     }
 }
 
-/// What is owed on `loan` taken `races` races ago (counting from 1).
+/// What is owed on `loan` taken `races` races ago (counting from 1). The count wraps and an
+/// amount past an int becomes `_ftol`'s 0x80000000, as the original's arithmetic does.
 fn debt(loan: usize, races: i32) -> i32 {
-    (f64::from(races - 1) * THIRD * DEBT_GROWTH[loan] + LOANS[loan]) as i32
+    let owed = f64::from(races.wrapping_sub(1)) * THIRD * DEBT_GROWTH[loan] + LOANS[loan];
+    if (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&owed) {
+        owed as i32
+    } else {
+        i32::MIN
+    }
 }
 
 impl Menu {
@@ -407,7 +413,7 @@ impl Menu {
             let player = self.campaign.player_mut();
             player.loan_races = 1;
             player.loan = loan as i32;
-            player.money += LOANS[loan] as i32;
+            player.money = player.money.wrapping_add(LOANS[loan] as i32);
             self.market_message(&lines, true);
             return;
         }
@@ -419,7 +425,7 @@ impl Menu {
         let lines = shop.loan_paid.clone();
         self.sound(LOAN_SOUND);
         let player = self.campaign.player_mut();
-        player.money -= owed;
+        player.money = player.money.wrapping_sub(owed);
         player.loan_races = -1;
         player.loan = -1;
         self.market_message(&lines, true);
@@ -461,6 +467,7 @@ impl Menu {
             return State::Market { second: false };
         }
         self.sound(ON_SOUND);
+        // 0x4366CA: the selection left on the sabotage, as the original leaves it.
         self.shop.market = 4;
         self.open_sign_up()
     }

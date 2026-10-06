@@ -206,6 +206,11 @@ impl Keys {
         }
     }
 
+    /// Forgets that the key with scancode `code` is held, until it goes down again.
+    pub(crate) fn release(&mut self, code: u8) {
+        self.set_held(code, false);
+    }
+
     /// Whether the key with scancode `code` is held down.
     pub(crate) fn held(&self, code: u8) -> bool {
         self.held[usize::from(code / 64)] & (1 << (code % 64)) != 0

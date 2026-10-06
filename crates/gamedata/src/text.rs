@@ -156,10 +156,11 @@ const SHORT_AFTER: u32 = 0x44_341C;
 const SHORT_ABOVE: u32 = 0x44_33FC;
 const SHORT_BELOW: u32 = 0x44_33D8;
 const WRECKED: [u32; 5] = [0x44_4164, 0x44_4160, 0x44_413C, 0x44_4118, 0x44_418C];
-/// The car dealer (`enterShop`, 0x4374A5): the offer's pieces (refund before and after the
-/// amount, its second line, the money returned when the refund passes the price, "buy a",
-/// the question mark, "would cost", "purchase it"), the paint's three lines, and what the
-/// car's record says once it is bought (+0x1F0, six lines).
+/// The car dealer (`enterShop`, 0x4374A5): the offer's pieces (the refund's words before and
+/// after the amount, its second line, the money returned when the refund passes the price,
+/// the words before the car's name, the question mark, the words before its price and the
+/// question's end), the paint's three lines, and what the car's record says once it is
+/// bought (+0x1F0, six lines).
 const OFFER: [u32; 8] = [
     0x44_4260, 0x44_4258, 0x44_4238, 0x44_4224, 0x44_421C, 0x44_4218, 0x44_4208, 0x44_41F8,
 ];

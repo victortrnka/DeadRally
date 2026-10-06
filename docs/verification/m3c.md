@@ -35,3 +35,7 @@ Every key of the scenario has a shot after it; the keys were put on the 14 ms li
 ## The manifest
 
 `crates/headless/tests/shop-purchases-run.sha256` holds our frames at the 46 shots' ticks, the run's sound and the last `dr.cfg` written; `market-run.sha256`, `sabotage-run.sha256`, `offer-run.sha256` and `quick-save-run.sha256` the same for the other runs (the quick save's also with the `DR.SG7` it writes).
+
+## Review
+
+A fresh review of the branch found nothing Critical or Important; graded by what a player gets, four of its findings were fixed with tests that failed first: F2 and F3 count as let go when a confirmation ends (0x42DC70), so a quick save held through "game saved" happens once; a saved game with an odd colour is refused like a damaged one (the paint would step it below 0); a hand-made loan count or car worth wraps as the original's ints do instead of stopping the game; and a comment no longer quotes the dealer's words. The test of a quick load without a quicksave now checks the confirmation is shown. Deferred (minor): the quick keys are read only on passes that stay in the shop or the market (the original also reads them on the pass that leaves, and right after a car's turn, offer or paint); the shop's fade back in from the market works out the trade-in value afresh where the original keeps the one from the shop's start; the sabotage test does not pin its victim; the 14 ms tick is written in three places.
