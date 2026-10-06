@@ -184,10 +184,12 @@ pub(crate) fn draw(
         let width = full as u8 as i64;
         let at = [53344i64, 69728, 86112][index - 1];
         for row in 0..9 {
-            let from = (64 - width + 64 * row) as usize;
-            let line = images
-                .slider
-                .get(from..from + width as usize)
+            // Past full damage (only from a damaged save) the slider starts before its
+            // picture, which the original reads garbage from; that part is left out here.
+            let from = 64 - width + 64 * row;
+            let line = usize::try_from(from)
+                .ok()
+                .and_then(|from| images.slider.get(from..from + width as usize))
                 .unwrap_or(&[]);
             buffer.copy(left + at - width + STRIDE as i64 * row, line);
         }
@@ -291,4 +293,52 @@ fn number(buffer: &mut Buffer, digits: &[u8], n: i32, at: i64) -> i64 {
         x += width;
     }
     x
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn images() -> HudImages {
+        let some = |len: usize| vec![1; len];
+        HudImages {
+            boards: some(64 * 201),
+            damage: some(8064),
+            big_digits: some(4000),
+            small_font: some(36 * 96),
+            own_place: some(4000),
+            other_place: some(4000),
+            flag: some(4000),
+            mine: some(4000),
+            slider: some(64 * 9),
+            wreck: some(4000),
+        }
+    }
+
+    fn board(damage: i32) -> Board {
+        Board {
+            name: b"A".to_vec(),
+            lap: 1,
+            place: 2,
+            damage_bar: (100 - damage) << 10,
+            finished: false,
+        }
+    }
+
+    /// An opponent recorded past 100 % damage (a damaged or edited save; the original never
+    /// writes one) must not stop the race: its slider is longer than the HUD's, and the part
+    /// before the slider's picture is left out.
+    #[test]
+    fn an_opponent_past_full_damage_does_not_stop_the_race() {
+        let player = Player {
+            speed: 0.0,
+            engine: 1.0,
+            weapons: true,
+            weapons_bar: FULL_BAR,
+            turbo_bar: FULL_BAR,
+            mines: 0,
+        };
+        let boards = [board(0), board(110), board(255), board(40)];
+        draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
+    }
 }

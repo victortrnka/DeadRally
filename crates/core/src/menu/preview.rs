@@ -71,8 +71,13 @@ impl Menu {
             medium.draw(&mut back, &rank, at(pen, y));
             let name = record.name().to_ascii_uppercase();
             medium.draw(&mut back, &name, at(NAMES[place].0, NAMES[place].1));
-            let face = &menu.faces[record.face as usize];
-            back.draw(face, at(FACES[place].0, FACES[place].1), false);
+            // A face past the pictures (only from an edited save) is left out.
+            if let Some(face) = usize::try_from(record.face)
+                .ok()
+                .and_then(|f| menu.faces.get(f))
+            {
+                back.draw(face, at(FACES[place].0, FACES[place].1), false);
+            }
         }
         self.back = back;
         State::Wipe {
@@ -209,14 +214,14 @@ impl Menu {
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }
-            Err(_) => self.race_stand_in(),
+            Err(_) => self.after_race(),
         }
     }
 
     /// A tick of the race; Escape leaves it for the stand-in until the pause menu (M4b).
     pub(super) fn race_tick(&mut self, ticks: u32) -> State {
         let Some(race) = self.race.as_mut() else {
-            return self.race_stand_in();
+            return self.after_race();
         };
         let outcome = race.tick(&mut self.sound, &mut self.keys, &mut self.campaign.rand);
         race.present(self.shown.pixels_mut());
@@ -225,8 +230,21 @@ impl Menu {
         if outcome == crate::race::Outcome::Aborted {
             // The race's end (the zoom out, the results) comes with M4c and M5.
             self.race = None;
-            return self.race_stand_in();
+            return self.after_race();
         }
         State::Race { ticks: ticks + 1 }
+    }
+
+    /// The race over (abandoned, or its data not loading): the menus' music and sounds back as
+    /// the original brings them back after a race (0x434617), and the menus' background under
+    /// the stand-in's shop with nothing of the preview or the race left on it.
+    fn after_race(&mut self) -> State {
+        self.sound.stop();
+        self.sound.load_effects(&self.assets.menu.effects);
+        self.sound
+            .play_music(&self.assets.menu_music, 0, self.config.music_volume());
+        self.screen.copy_all(&self.graphics.background);
+        self.shown = self.screen.clone();
+        self.race_stand_in()
     }
 }

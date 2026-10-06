@@ -653,9 +653,9 @@ impl Menu {
         self.open_preview()
     }
 
-    /// Until races exist (M4b), the race the player signed up for ends once its preview is
-    /// shown: back to the shop with nothing changed but the welcome, which the shop shows once
-    /// after the first race (spec M3a §2, M3b §2).
+    /// Until the race's end and results exist (M4c, M5), the races end here: back to the shop
+    /// with nothing changed but the welcome, which the shop shows once after the first race
+    /// (spec M3a §2, M3b §2).
     pub(super) fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;

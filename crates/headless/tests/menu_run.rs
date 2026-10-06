@@ -1254,7 +1254,8 @@ fn the_pause_run_matches_the_committed_manifest() {
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_abort_run_matches_the_committed_manifest() {
     // Written after every screenshot of the run equalled our frame at its tick
-    // (docs/verification/m4b.md): the box landed, Y, the tiles flying apart.
+    // (docs/verification/m4b.md): the box landed, Y, the tiles flying apart. The run goes on
+    // into the stand-in's shop, so its sound pins the menus' music coming back after the race.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
     slots[0] = Some(test_save(&assets.menu.texts));
@@ -1262,7 +1263,7 @@ fn the_abort_run_matches_the_committed_manifest() {
         (SEED, None),
         (&RACE_START_KEYS, &ABORT_HELD),
         &ABORT_SHOTS,
-        3_640,
+        3_800,
         slots,
     );
     check_manifest("abort-run.sha256", &lines, "the abort run");

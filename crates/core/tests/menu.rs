@@ -1446,3 +1446,55 @@ fn the_race_s_preview_wipes_in_after_the_sign_up() {
     assert_eq!(pixel(&game, (600, 450)), common::PREVIEW, "the banner");
     assert_eq!(pixel(&game, (400, 200)), common::PREVIEW + 2, "the circuit");
 }
+
+#[test]
+fn the_shop_after_a_race_is_the_menus_own_again() {
+    // After a race (here the stand-in for one whose data does not load) the shop opens on the
+    // menus' screen with none of the preview left on it, and its sounds are heard again: the
+    // race's fade to black had silenced them, and the original brings the menus' music and
+    // sounds back as the race ends (0x434617).
+    let mut game = new_game_in_shop();
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 44 + 143 + 41 + 60);
+    assert_ne!(
+        pixel(&game, (5, 450)),
+        common::PREVIEW,
+        "the preview's banner gone"
+    );
+    assert_ne!(
+        pixel(&game, (400, 200)),
+        common::PREVIEW + 2,
+        "its circuit gone"
+    );
+    press(&mut game, Key::Left);
+    let mut audio = Vec::new();
+    for _ in 0..10 {
+        game.tick();
+        game.take_audio(&mut audio);
+    }
+    assert!(
+        audio.iter().any(|&sample| sample != 0),
+        "the shop's step heard"
+    );
+}
+
+#[test]
+fn an_opponent_s_face_past_the_pictures_does_not_stop_the_preview() {
+    // A save's check covers the player's record only: an edited one may give the opponents
+    // faces past the pictures. The preview leaves such a face out instead of stopping the game.
+    let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(5_000));
+    for driver in 0..19 {
+        let at = driver * 108 + 64;
+        file.drivers[at..at + 4].copy_from_slice(&1_000i32.to_le_bytes());
+    }
+    let mut game = in_shop(file.encode(3));
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 50);
+    assert_eq!(
+        pixel(&game, (600, 450)),
+        common::PREVIEW,
+        "the preview shown"
+    );
+}
