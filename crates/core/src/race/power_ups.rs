@@ -360,7 +360,7 @@ impl PowerUps {
             let [x, y] = spot.at;
             let column = x - camera_x + left;
             let row = (spot.shown >> 3) - camera_y + y - 10;
-            if column >= -18 && column < 320 && row >= 0 && row + 6 < 200 {
+            if (-18..320).contains(&column) && row >= 0 && row + 6 < 200 {
                 let note = match spot.shown_kind {
                     3 => Some(format!("${money}")),
                     5 | 8 => Some(format!("{}%", spot.amount)),
