@@ -1719,6 +1719,90 @@ const ABORT_SHOTS: [(u64, &str); 16] = [
     (3680, "a15"),
 ];
 
+/// The keys held in `scripts/reference/abort-early.scenario`'s run: Escape held through the
+/// race's load, so the loop's first pass pauses before the intro, then Y.
+const ABORT_EARLY_HELD: [Held; 2] = [(2990, Key::Escape, 40), (3213, Key::Y, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview's fade,
+/// the box flying in and apart over the black palette, the intro run all the same and the view
+/// tilting away.
+const ABORT_EARLY_SHOTS: [(u64, &str); 74] = [
+    (2974, "e11"),
+    (2981, "e12"),
+    (2988, "e13"),
+    (2996, "e14"),
+    (3003, "e15"),
+    (3010, "e16"),
+    (3017, "e17"),
+    (3024, "e18"),
+    (3031, "e19"),
+    (3038, "e20"),
+    (3045, "e21"),
+    (3052, "e22"),
+    (3059, "e23"),
+    (3066, "e24"),
+    (3073, "e25"),
+    (3080, "e26"),
+    (3087, "e27"),
+    (3094, "e28"),
+    (3101, "e29"),
+    (3108, "e30"),
+    (3115, "e31"),
+    (3122, "e32"),
+    (3129, "e33"),
+    (3136, "e34"),
+    (3143, "e35"),
+    (3150, "e36"),
+    (3157, "e37"),
+    (3164, "e38"),
+    (3171, "e39"),
+    (3178, "e40"),
+    (3185, "e41"),
+    (3192, "e42"),
+    (3199, "e43"),
+    (3206, "e44"),
+    (3213, "e45"),
+    (3220, "e46"),
+    (3227, "e47"),
+    (3234, "e48"),
+    (3241, "e49"),
+    (3248, "e50"),
+    (3255, "e51"),
+    (3262, "e52"),
+    (3269, "e53"),
+    (3276, "e54"),
+    (3283, "e55"),
+    (3290, "e56"),
+    (3298, "e57"),
+    (3305, "e58"),
+    (3312, "e59"),
+    (3319, "e60"),
+    (3326, "e61"),
+    (3333, "e62"),
+    (3340, "e63"),
+    (3348, "e64"),
+    (3355, "e65"),
+    (3362, "e66"),
+    (3369, "e67"),
+    (3376, "e68"),
+    (3383, "e69"),
+    (3390, "e70"),
+    (3397, "e71"),
+    (3404, "e72"),
+    (3411, "e73"),
+    (3419, "e74"),
+    (3426, "e75"),
+    (3433, "e76"),
+    (3441, "e77"),
+    (3448, "e78"),
+    (3455, "e79"),
+    (3462, "e80"),
+    (3469, "e81"),
+    (3476, "e82"),
+    (3483, "e83"),
+    (3491, "e84"),
+];
+
 /// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
 /// the preview run with the medium race chosen (Right at the sign-up), circuit 17.
 const REVERSED_KEYS: [(u64, Key); 11] = [
@@ -2395,6 +2479,25 @@ fn the_abort_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("abort-run.sha256", &lines, "the abort run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_abort_early_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m5.md): a race abandoned before its intro must still show the intro
+    // before the view tilts away.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &ABORT_EARLY_HELD),
+        &ABORT_EARLY_SHOTS,
+        3_560,
+        slots,
+    );
+    check_manifest("abort-early-run.sha256", &lines, "the abort-early run");
 }
 
 #[test]

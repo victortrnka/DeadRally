@@ -337,7 +337,11 @@ enum Stage {
     Loop {
         first: bool,
     },
-    Intro(Box<intro::Intro>),
+    /// The intro; whether the race was abandoned before it, and ends once it is over.
+    Intro {
+        intro: Box<intro::Intro>,
+        ending: bool,
+    },
     /// The pause; whether it came before the intro, or is the box at the race's end.
     Pause {
         pause: Box<pause::Pause>,
@@ -367,6 +371,31 @@ pub(crate) enum Outcome {
     Aborted,
     /// The race over, its box answered, and the view tilted away.
     Over,
+}
+
+/// What follows the pause once its box has flown apart (from 0x4176F8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterPause {
+    /// The race goes on.
+    Race,
+    /// The race goes on, from the intro the pause came before.
+    Intro,
+    /// The race is abandoned: its last frame, then the view tilting away.
+    End,
+    /// The race is abandoned, but the intro the pause came before still runs first.
+    IntroThenEnd,
+}
+
+/// The pause's `answer`, the pause having come before the intro when `first`: abandoning the
+/// race (0x41770D) goes on to 0x417862 like the other answers, where the loop's first pass
+/// runs the intro, and only then leaves the loop.
+fn after_pause(answer: pause::Answer, first: bool) -> AfterPause {
+    match (answer, first) {
+        (pause::Answer::Abort, true) => AfterPause::IntroThenEnd,
+        (pause::Answer::Abort, false) => AfterPause::End,
+        (_, true) => AfterPause::Intro,
+        (_, false) => AfterPause::Race,
+    }
 }
 
 /// Escape's scancode, which pauses the race.
@@ -954,16 +983,21 @@ impl Race {
                     return Outcome::Racing;
                 }
                 if first {
-                    self.start_intro(sound);
+                    self.start_intro(sound, false);
                     return Outcome::Racing;
                 }
             }
-            Stage::Intro(intro) => {
+            Stage::Intro { intro, ending } => {
                 let going = intro.wait();
                 sound.set_mask(intro.volume() >> 8);
                 self.screen.copy_from_slice(intro.screen());
                 self.shown = intro.palette().clone();
                 if going {
+                    return Outcome::Racing;
+                }
+                if *ending {
+                    // 0x41795D: the race abandoned before the intro leaves the loop after it.
+                    self.start_outro(sound, Outcome::Aborted);
                     return Outcome::Racing;
                 }
                 self.clock.restart();
@@ -993,21 +1027,32 @@ impl Race {
                     return Outcome::Racing;
                 }
                 self.clock.restart();
-                if answer == pause::Answer::Abort {
+                let after = after_pause(answer, first);
+                if matches!(after, AfterPause::End | AfterPause::IntroThenEnd) {
                     // 0x4176F8: the player drops behind the cars racing, and the race ends.
                     laps::abandon(&mut self.cars, self.player);
-                    self.show_buffer();
-                    self.stage = Stage::Ended(Outcome::Aborted);
-                    return Outcome::Racing;
+                }
+                match after {
+                    AfterPause::End => {
+                        self.show_buffer();
+                        self.stage = Stage::Ended(Outcome::Aborted);
+                        return Outcome::Racing;
+                    }
+                    AfterPause::IntroThenEnd => {
+                        // The intro runs on the same frame, then the race ends.
+                        self.start_intro(sound, true);
+                        return Outcome::Racing;
+                    }
+                    AfterPause::Intro | AfterPause::Race => {}
                 }
                 // 0x41771D: the engine again; F1 left held for the race's pass, which opens the
                 // help.
                 self.help_asked = answer == pause::Answer::Help;
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                if first {
+                if after == AfterPause::Intro {
                     // The pause came before the intro, which now runs on the same frame.
-                    self.start_intro(sound);
+                    self.start_intro(sound, false);
                     return Outcome::Racing;
                 }
             }
@@ -1042,7 +1087,9 @@ impl Race {
             }
             Stage::Outro { outro, outcome } => {
                 let going = outro.wait();
-                sound.set_mask(outro.volume() >> 8);
+                if let Some(volume) = outro.volume() {
+                    sound.set_mask(volume >> 8);
+                }
                 self.screen.copy_from_slice(outro.screen());
                 self.shown = outro.palette().clone();
                 if going {
@@ -1100,11 +1147,18 @@ impl Race {
 
     /// The view tilting away (`sub_4055A0`, 0x417963) from the loop's last frame in the
     /// buffer and the race's palette (0x4A9BA0, the intro's too), over the screen as shown, up
-    /// to its first wait.
+    /// to its first wait. The HUD is always in: TAB, which can hide it and make the race spin
+    /// away instead, is not ported yet.
     fn start_outro(&mut self, sound: &mut Sound, outcome: Outcome) {
-        let (view, hud) = self.view_and_hud();
-        let outro = outro::Outro::new(&self.palette, &self.screen, &view, &hud);
-        sound.set_mask(outro.volume() >> 8);
+        let frame: Vec<u8> = (0..VIEW_HEIGHT)
+            .flat_map(|y| (0..VIEW_WIDTH).map(move |x| (x, y)))
+            .map(|(x, y)| self.buffer.pixel(x, y))
+            .collect();
+        let shown = (self.screen.as_slice(), &self.shown);
+        let outro = outro::Outro::new(&self.palette, shown, &frame, HUD_WIDTH);
+        if let Some(volume) = outro.volume() {
+            sound.set_mask(volume >> 8);
+        }
         self.screen.copy_from_slice(outro.screen());
         self.shown = outro.palette().clone();
         self.stage = Stage::Outro {
@@ -1137,13 +1191,17 @@ impl Race {
         (view, hud)
     }
 
-    /// The intro (0x41787C), over the loop's first frame, up to its first wait.
-    fn start_intro(&mut self, sound: &mut Sound) {
+    /// The intro (0x41787C), over the loop's first frame, up to its first wait; `ending` when
+    /// the race was abandoned before it.
+    fn start_intro(&mut self, sound: &mut Sound, ending: bool) {
         let (view, hud) = self.view_and_hud();
         let intro = intro::Intro::new(&self.palette, self.player, &view, &hud);
         sound.set_mask(intro.volume() >> 8);
         self.show_intro(&intro);
-        self.stage = Stage::Intro(Box::new(intro));
+        self.stage = Stage::Intro {
+            intro: Box::new(intro),
+            ending,
+        };
     }
 
     /// The pause (0x417544): every channel silenced, the box with its lines, up to its first
@@ -1817,6 +1875,19 @@ mod tests {
         cars[0].keys[0] = 0;
         assert_eq!(horns(&mut cars, 1, 0), vec![Horn::Stop(11)]);
         assert!(horns(&mut cars, 1, 0).is_empty());
+    }
+
+    /// A race abandoned in a pause before its intro (Escape held while the race loads) still
+    /// runs the intro, the view tilting up and the colours coming back, before the view tilts
+    /// away; the player must not see the race end on a black screen.
+    #[test]
+    fn a_race_abandoned_before_its_intro_still_shows_the_intro() {
+        use pause::Answer::{Abort, Help, Resume};
+        assert_eq!(after_pause(Abort, true), AfterPause::IntroThenEnd);
+        assert_eq!(after_pause(Abort, false), AfterPause::End);
+        assert_eq!(after_pause(Resume, true), AfterPause::Intro);
+        assert_eq!(after_pause(Help, true), AfterPause::Intro);
+        assert_eq!(after_pause(Resume, false), AfterPause::Race);
     }
 
     /// The original checks a shadow's corners, not its area: one stretched across the whole
