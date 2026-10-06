@@ -32,8 +32,16 @@ impl Game {
     #[must_use]
     /// `config` is the player's `dr.cfg` (`assets.menu.default_config` when there is none).
     pub fn new(assets: Assets, config: DrCfg) -> Game {
+        Game::with_seed(assets, config, 0)
+    }
+
+    /// Like [`Game::new`], with `seed` for the original's random numbers, which it seeds with
+    /// the milliseconds since its start as the main menu starts: same seed and same keys, same
+    /// drivers and races (spec M3a §2).
+    #[must_use]
+    pub fn with_seed(assets: Assets, config: DrCfg, seed: u32) -> Game {
         Game {
-            scene: Scene::Startup(Box::new(Startup::new(assets, config))),
+            scene: Scene::Startup(Box::new(Startup::new(assets, config, seed))),
         }
     }
 

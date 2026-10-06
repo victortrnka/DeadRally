@@ -86,12 +86,14 @@ pub(crate) struct Startup {
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
     save: bool,
+    /// What `mainMenu` seeds `rand()` with once the intro is under way (0x43A191).
+    seed: u32,
 }
 
 impl Startup {
     /// `mainMenu` (0x43A020) reads `dr.cfg`, counts the start, writes it back and only then
     /// plays the intro.
-    pub(crate) fn new(assets: Assets, mut config: DrCfg) -> Startup {
+    pub(crate) fn new(assets: Assets, mut config: DrCfg, seed: u32) -> Startup {
         config.set_times_played(config.times_played().wrapping_add(1));
         let mut keys = Keys::default();
         keys.set_pad_on(config.use_joystick() as i32 > 0);
@@ -108,6 +110,7 @@ impl Startup {
             audio: Vec::new(),
             config,
             save: true,
+            seed,
         };
         if startup.assets.intro.is_empty() {
             // `openAnimation` plays nothing when the file has no frames.
@@ -142,6 +145,7 @@ impl Startup {
             self.audio,
             &self.palette,
             (self.config, self.save),
+            self.seed,
         )
     }
 

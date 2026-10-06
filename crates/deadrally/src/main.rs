@@ -113,7 +113,12 @@ fn load_game(data: Option<&Path>) -> Result<Loaded, String> {
     let own = dr_cfg::own_path();
     let config = dr_cfg::load(own.as_deref(), dir, &assets.menu.default_config)
         .map_err(|error| format!("cannot read dr.cfg: {error}"))?;
-    Ok((Game::new(assets, config), warning, own))
+    // The original seeds its random numbers with the milliseconds since its start; any
+    // number that changes from run to run does as well.
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis() as u32);
+    Ok((Game::with_seed(assets, config, seed), warning, own))
 }
 
 /// Shows `message` in a dialog as well as on stderr; the dialog is best effort (there may be

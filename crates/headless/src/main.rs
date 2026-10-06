@@ -83,6 +83,7 @@ enum Command {
         data: Option<PathBuf>,
         tick: u64,
         keys: Vec<Press>,
+        seed: u32,
         out: PathBuf,
     },
     Compare {
@@ -92,6 +93,7 @@ enum Command {
     Find {
         data: Option<PathBuf>,
         keys: Vec<Press>,
+        seed: u32,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -99,6 +101,7 @@ enum Command {
         data: Option<PathBuf>,
         source: AudioSource,
         keys: Vec<Press>,
+        seed: u32,
         seconds: Option<u64>,
         out: PathBuf,
     },
@@ -140,24 +143,26 @@ fn main() -> ExitCode {
             data,
             tick,
             keys,
+            seed,
             out,
-        } => render(data.as_deref(), tick, &keys, &out).map(|()| ExitCode::SUCCESS),
+        } => render(data.as_deref(), tick, &keys, seed, &out).map(|()| ExitCode::SUCCESS),
         Command::Compare { a, b } => compare(&a, &b),
         Command::Find {
             data,
             keys,
+            seed,
             ticks,
             shots,
-        } => find(data.as_deref(), &keys, ticks, &shots),
+        } => find(data.as_deref(), &keys, seed, ticks, &shots),
         Command::RenderAudio {
             data,
             source,
             keys,
+            seed,
             seconds,
             out,
-        } => {
-            render_audio(data.as_deref(), &source, &keys, seconds, &out).map(|()| ExitCode::SUCCESS)
-        }
+        } => render_audio(data.as_deref(), &source, &keys, seed, seconds, &out)
+            .map(|()| ExitCode::SUCCESS),
         Command::CompareAudio {
             original,
             ours,
@@ -178,11 +183,12 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
         "run" => &["--ticks"],
         "check-data" => &["--data"],
         "dump-assets" => &["--data", "--out"],
-        "render" => &["--data", "--tick", "--key-at", "--out"],
+        "render" => &["--data", "--tick", "--key-at", "--seed", "--out"],
         "compare" => &[],
-        "find" => &["--data", "--key-at", "--ticks"],
+        "find" => &["--data", "--key-at", "--seed", "--ticks"],
         "render-audio" => &[
             "--data",
+            "--seed",
             "--music",
             "--effect",
             "--number",
@@ -198,6 +204,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let (mut startup, mut music, mut effect, mut effect_number, mut seconds, mut min_overlap) =
         (false, None, None, None, None, None);
     let mut keys = Vec::new();
+    let mut seed = 0;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
@@ -217,6 +224,9 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 "--ticks" => ticks = Some(number()?),
                 "--tick" => tick = Some(number()?),
                 "--key-at" => keys.push(press(&value.to_string_lossy())?),
+                "--seed" => {
+                    seed = u32::try_from(number()?).map_err(|_| "--seed: at most 4294967295")?;
+                }
                 "--music" => music = Some(value.to_string_lossy().into_owned()),
                 "--effect" => effect = Some(value.to_string_lossy().into_owned()),
                 "--number" => {
@@ -247,6 +257,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             data,
             tick: tick.ok_or("render needs --tick T")?,
             keys,
+            seed,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
@@ -279,6 +290,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 data,
                 source,
                 keys,
+                seed,
                 seconds,
                 out: out.ok_or("render-audio needs --out FILE.wav")?,
             })
@@ -290,6 +302,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             Ok(Command::Find {
                 data,
                 keys,
+                seed,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -407,10 +420,17 @@ fn press(text: &str) -> Result<Press, String> {
     let tick = tick
         .parse()
         .map_err(|_| format!("--key-at: not a number: {tick}"))?;
+    // The short names, then any key by its name in `Key` (letters, digits, Backspace, ...).
     let key = KEY_NAMES
         .iter()
         .find(|(known, _)| known.eq_ignore_ascii_case(name))
         .map(|&(_, key)| key)
+        .or_else(|| {
+            Key::ALL
+                .iter()
+                .copied()
+                .find(|key| format!("{key:?}").eq_ignore_ascii_case(name))
+        })
         .ok_or_else(|| {
             let names: Vec<&str> = KEY_NAMES.iter().map(|(known, _)| *known).collect();
             format!(
@@ -441,11 +461,17 @@ fn play(game: &mut Game, ticks: u64, keys: &[Press], mut each: impl FnMut(u64, &
 }
 
 /// Writes the frame after `tick` ticks as the original's window would show it.
-fn render(data: Option<&Path>, tick: u64, keys: &[Press], out: &Path) -> Result<(), String> {
+fn render(
+    data: Option<&Path>,
+    tick: u64,
+    keys: &[Press],
+    seed: u32,
+    out: &Path,
+) -> Result<(), String> {
     let located = locate_data(data)?;
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = assets.menu.default_config.clone();
-    let mut game = Game::new(assets, config);
+    let mut game = Game::with_seed(assets, config, seed);
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame())?.write_png(out)
 }
@@ -476,6 +502,7 @@ fn compare(a: &Path, b: &Path) -> Result<ExitCode, String> {
 fn find(
     data: Option<&Path>,
     keys: &[Press],
+    seed: u32,
     ticks: u64,
     shots: &[PathBuf],
 ) -> Result<ExitCode, String> {
@@ -499,7 +526,7 @@ fn find(
     // First only exact matches, which fail fast on the first differing byte.
     let mut matches = vec![Vec::new(); shots.len()];
     let mut equal = vec![false; shots.len()];
-    timeline(&located, keys, ticks, |tick, window, changed| {
+    timeline(&located, keys, seed, ticks, |tick, window, changed| {
         for (index, picture) in pictures.iter().enumerate() {
             if changed {
                 equal[index] = window.pixels == picture.pixels;
@@ -515,7 +542,7 @@ fn find(
         .collect();
     let mut closest: Vec<Option<(Difference, u64)>> = vec![None; shots.len()];
     if !unmatched.is_empty() {
-        timeline(&located, keys, ticks, |tick, window, changed| {
+        timeline(&located, keys, seed, ticks, |tick, window, changed| {
             if !changed {
                 return;
             }
@@ -551,12 +578,13 @@ fn find(
 fn timeline(
     located: &Located,
     keys: &[Press],
+    seed: u32,
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = assets.menu.default_config.clone();
-    let mut game = Game::new(assets, config);
+    let mut game = Game::with_seed(assets, config, seed);
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -600,6 +628,7 @@ fn render_audio(
     data: Option<&Path>,
     source: &AudioSource,
     keys: &[Press],
+    seed: u32,
     seconds: Option<u64>,
     out: &Path,
 ) -> Result<(), String> {
@@ -629,7 +658,7 @@ fn render_audio(
                 seconds * 1_000_000_000 / TICK_NANOS
             });
             let config = assets.menu.default_config.clone();
-            let mut game = Game::new(assets, config);
+            let mut game = Game::with_seed(assets, config, seed);
             let mut audio = Vec::new();
             for done in 0..ticks {
                 press_due(&mut game, keys, done);
@@ -833,6 +862,7 @@ mod tests {
                 data: None,
                 tick: 300,
                 keys: vec![(10, Key::Space), (20, Key::Down)],
+                seed: 0,
                 out: PathBuf::from("a.png")
             })
         );
@@ -848,6 +878,7 @@ mod tests {
             Ok(Command::Find {
                 data: Some(PathBuf::from("/x")),
                 keys: vec![],
+                seed: 0,
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })

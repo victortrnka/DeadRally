@@ -3,7 +3,7 @@
 # can be compared with it (spec M1a section 8, M1b section 4.5). The original is only a test
 # tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
-#   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] SCENARIO OUT_DIR
+#   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -11,6 +11,10 @@
 #
 # With --cfg the original starts with FILE as its dr.cfg (volumes, keys, records); without it,
 # it writes a fresh one with its defaults.
+#
+# With --seed the copy of dr.exe seeds its random numbers with N instead of the clock when the
+# main menu starts (spec M3a section 3), so the drivers and the races it offers repeat run to run.
+# After the run, the dr.cfg and the saved games DR.SG0..DR.SG7 it wrote are copied to OUT_DIR.
 #
 # SCENARIO is a text file of lines "at <ms> key <name>" (an xdotool key name, e.g. space) and
 # "at <ms> shot <label>", in time order; times count from the moment the window appears, and
@@ -23,13 +27,14 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
 data_args=()
 sound=false
 cfg=
+seed=
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --data)
@@ -44,6 +49,11 @@ while [[ "${1:-}" == --* ]]; do
         --cfg)
             [[ $# -ge 2 ]] || usage
             cfg=$(realpath "$2")
+            shift 2
+            ;;
+        --seed)
+            [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || usage
+            seed=$2
             shift 2
             ;;
         *) usage ;;
@@ -96,6 +106,21 @@ cp -a "$dir/." "$run/"
 if [[ -n "$cfg" ]]; then
     cp "$cfg" "$run/dr.cfg"
     echo "dr.cfg: $cfg" >>"$log"
+fi
+if [[ -n "$seed" ]]; then
+    # mainMenu (0x43A020) calls SDL_GetTicks at 0x43A191 and passes the result to srand; the
+    # call becomes "mov eax, N". The bytes are checked first, so another build is refused.
+    python3 - "$run/dr.exe" "$seed" <<'PATCH'
+import struct, sys
+path, seed = sys.argv[1], int(sys.argv[2])
+data = bytearray(open(path, "rb").read())
+offset = 0x43A191 - 0x400000
+if data[offset:offset + 5] != bytes.fromhex("e850560000"):
+    sys.exit("error: dr.exe has no SDL_GetTicks call before srand at 0x43A191")
+data[offset:offset + 5] = b"\xb8" + struct.pack("<I", seed & 0xFFFFFFFF)
+open(path, "wb").write(data)
+PATCH
+    echo "seed: $seed" >>"$log"
 fi
 
 display_fd=$(mktemp)
@@ -199,6 +224,10 @@ if $sound; then
     wait "$recorder" || true
     recorder=
 fi
+
+for file in "$run"/dr.cfg "$run"/DR.SG[0-7]; do
+    if [[ -f "$file" ]]; then cp "$file" "$out/"; fi
+done
 
 for label in "${shots[@]}"; do
     convert "$out/$label.xwd" "$out/$label.png"

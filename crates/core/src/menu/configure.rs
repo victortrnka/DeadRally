@@ -83,7 +83,7 @@ impl Menu {
                 match menu {
                     Submenu::Start => self.main_pass(),
                     Submenu::Configure => {
-                        self.save = true;
+                        self.save_config();
                         self.main_pass()
                     }
                     Submenu::Keyboard | Submenu::Pad => self.submenu_pass(Submenu::Configure),
@@ -118,7 +118,9 @@ impl Menu {
                 table.selected = 0;
                 self.main_pass()
             }
-            // New game and loading wait for M3.
+            (Submenu::Start, 0) => self.start_or_enter(),
+            (Submenu::Start, 1) => self.ask_end_game(),
+            // Statistics, loading and saving come with M3b.
             (Submenu::Start, _) => self.submenu_pass(Submenu::Start),
             (Submenu::Configure, MUSIC_ROW) => self.volume_open(true),
             (Submenu::Configure, EFFECTS_ROW) => self.volume_open(false),
@@ -134,7 +136,7 @@ impl Menu {
             // 5: previous menu.
             (Submenu::Configure, _) => {
                 table.selected = 0;
-                self.save = true;
+                self.save_config();
                 self.main_pass()
             }
             (Submenu::Keyboard, KEY_COUNT) | (Submenu::Pad, PAD_COUNT) => {

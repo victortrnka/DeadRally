@@ -34,6 +34,10 @@ pub(super) enum Wipe {
     Fame,
     Records,
     Menu,
+    /// The sign-up screen, and the Start Racing menu after a game's screens (`sub_42C4A0`,
+    /// no music).
+    SignUp,
+    StartMenu,
 }
 
 fn upper(text: &[u8]) -> Vec<u8> {
@@ -88,7 +92,7 @@ impl Menu {
             }
         }
         self.shown.copy_from(&self.screen, base, 150, 330);
-        if wipe != Wipe::Records {
+        if matches!(wipe, Wipe::Fame | Wipe::Menu) {
             self.sound
                 .set_mask((WIPE_VOLUME - WIPE_VOLUME_STEP * step) >> 8);
         }
@@ -110,6 +114,14 @@ impl Menu {
                 State::FameWait
             }
             Wipe::Records => State::Records { index: 0 },
+            Wipe::SignUp => self.sign_up_shown(),
+            Wipe::StartMenu => {
+                self.shown = self.screen.clone();
+                State::Submenu {
+                    menu: super::Submenu::Start,
+                    second: false,
+                }
+            }
             Wipe::Menu => {
                 let volume = self.config.music_volume();
                 self.sound
@@ -240,7 +252,14 @@ impl Menu {
     }
 
     /// `drawBorder` (0x421AE0): `CHOO2`'s four corners and lines of colour 22 between them.
-    fn border(&self, canvas: &mut Canvas, x: usize, y: usize, width: usize, height: usize) {
+    pub(super) fn border(
+        &self,
+        canvas: &mut Canvas,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) {
         const CORNER: usize = 24;
         const LINE: u8 = 0x16;
         let corners = &self.assets.menu.border_corners;

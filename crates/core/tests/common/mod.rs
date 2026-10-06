@@ -5,7 +5,9 @@
 use deadrally_gamedata::assets::{MenuAssets, Picture};
 use deadrally_gamedata::dr_cfg::{DrCfg, HEADER_BYTES, PAYLOAD_BYTES};
 use deadrally_gamedata::image::{Image, Palette};
-use deadrally_gamedata::text::{ConfigureTexts, HallOfFameTexts, Metrics, Texts};
+use deadrally_gamedata::text::{
+    CampaignTexts, CarSpec, ConfigureTexts, HallOfFameTexts, Metrics, Texts,
+};
 use deadrally_gamedata::xm::{Bank, Instrument, Looping};
 
 /// `MENUBG5`, white in `MENU.PAL`.
@@ -38,6 +40,12 @@ pub const RECORDS_BAR: u8 = 75;
 pub const SNAPSHOT: u8 = 150;
 pub const ARROW: u8 = 180;
 pub const BORDER: u8 = 190;
+/// The licence's pictures from 203 on, the faces from 76, the turning car's frames from 231
+/// (eight colours round), the sign-up's pictures from 239.
+pub const LICENCE: u8 = 203;
+pub const FACE: u8 = 76;
+pub const TURNING: u8 = 231;
+pub const SIGN_UP: u8 = 239;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -119,6 +127,38 @@ fn texts() -> Texts {
             // The original's order starts 0, 7, 5.
             circuit_order: vec![0, 7, 5, 3, 4, 2, 8, 1, 6, 9, 16, 14, 12, 13, 11, 17, 10, 15],
         },
+        campaign: CampaignTexts {
+            driver_names: (0..20)
+                .map(|face| format!("N{face}").into_bytes())
+                .collect(),
+            cars: (0..6)
+                .map(|k| CarSpec {
+                    price: 500 * (k + 1),
+                    upgrades: [1 + k % 4, 2, 4],
+                    upgrade_prices: [[100; 4]; 3],
+                    repair_price: 10,
+                })
+                .collect(),
+            new_game_row: b"M".to_vec(),
+            start_racing_row: b"M".to_vec(),
+            enter_shop_row: b"S".to_vec(),
+            continue_racing_row: b"R".to_vec(),
+            text_cursor: vec![0x7F],
+            select_difficulty: b"D".to_vec(),
+            name_characters: (0..256).map(|c| (32..127).contains(&c)).collect(),
+            price: Metrics {
+                width: 16,
+                height: 13,
+                advances: vec![14, 13, 9, 13, 13, 13, 13, 13, 12, 13, 13],
+            },
+            race_prices: vec![b"$1".to_vec(), b"$2".to_vec(), b"$3".to_vec()],
+            welcome: vec![b"w".to_vec(); 10],
+            continue_word: b"C".to_vec(),
+            end_game: b"E".to_vec(),
+            no_sign_up: b"0".to_vec(),
+            race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
+            speeds: vec![[55, 60, 65, 70, 75]; 6],
+        },
     }
 }
 
@@ -176,5 +216,20 @@ pub fn menu_assets() -> MenuAssets {
             })
             .collect(),
         border_corners: (0..4).map(|_| solid(24, 24, BORDER)).collect(),
+        licence: solid(530, 249, LICENCE),
+        face_frame: solid(68, 102, LICENCE + 1),
+        faces: (0..20).map(|face| solid(64, 64, FACE + face)).collect(),
+        face_arrows: (0..4).map(|k| solid(68, 16, LICENCE + 2 + k)).collect(),
+        car_box: solid(96, 96, LICENCE + 6),
+        car_names: (0..6).map(|k| solid(96, 16, LICENCE + 7 + k)).collect(),
+        car_turning: (0..64).map(|k| solid(96, 64, TURNING + k % 8)).collect(),
+        colour_slider: solid(294, 16, LICENCE + 13),
+        colour_knob: solid(10, 24, LICENCE + 14),
+        price_digits: (0..11).map(|k| solid(16, 13, LICENCE + 15 + k)).collect(),
+        sign_up_title: solid(640, 32, SIGN_UP),
+        side_panel: solid(96, 224, SIGN_UP + 1),
+        side_cars: (0..6).map(|k| solid(96, 64, SIGN_UP + 2 + k)).collect(),
+        upgrade_lamps: (0..6).map(|k| solid(20, 10, SIGN_UP + 8 + k)).collect(),
+        sign_line: solid(136, 2, SIGN_UP + 14),
     }
 }

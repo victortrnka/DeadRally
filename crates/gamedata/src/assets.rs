@@ -97,6 +97,29 @@ pub struct MenuAssets {
     pub arrows: Vec<Image>,
     pub wipe: Vec<Image>,
     pub border_corners: Vec<Image>,
+    /// The driver's licence (spec M3a §3): `LICENCE3`, the face's frame `FACESEL1`, the faces
+    /// `FACE01`–`FACE20`, the face arrows `FACEARR1` (up, down, up lit, down lit), the car's box
+    /// `CARBAS2`, the car names `CARNAME`, the Vagabond turning (`KUPLA`, 64 frames), the
+    /// colour slider `SLIDCOP2` and its knob `SLIDCUR3`, and the price digits `F-SMA3F` ("$",
+    /// then 0 to 9).
+    pub licence: Image,
+    pub face_frame: Image,
+    pub faces: Vec<Image>,
+    pub face_arrows: Vec<Image>,
+    pub car_box: Image,
+    pub car_names: Vec<Image>,
+    pub car_turning: Vec<Image>,
+    pub colour_slider: Image,
+    pub colour_knob: Image,
+    pub price_digits: Vec<Image>,
+    /// The sign-up (spec M3a §3): its title `ENTERTX2`, the side panel
+    /// `STATBAS7` with the cars `SCENECAR` and the upgrade lamps `STATPOP4`, and the line under
+    /// the player's entry `SIGNLINE`.
+    pub sign_up_title: Image,
+    pub side_panel: Image,
+    pub side_cars: Vec<Image>,
+    pub upgrade_lamps: Vec<Image>,
+    pub sign_line: Image,
 }
 
 #[derive(Debug)]
@@ -240,6 +263,30 @@ fn full_screen(picture: Picture, path: &std::path::Path) -> Result<Picture, Asse
     }
 }
 
+/// The twenty drivers' faces, by face.
+const FACES: [&str; 20] = [
+    "FACE01.BPK",
+    "FACE02.BPK",
+    "FACE03.BPK",
+    "FACE04.BPK",
+    "FACE05.BPK",
+    "FACE06.BPK",
+    "FACE07.BPK",
+    "FACE08.BPK",
+    "FACE09.BPK",
+    "FACE10.BPK",
+    "FACE11.BPK",
+    "FACE12.BPK",
+    "FACE13.BPK",
+    "FACE14.BPK",
+    "FACE15.BPK",
+    "FACE16.BPK",
+    "FACE17.BPK",
+    "FACE18.BPK",
+    "FACE19.BPK",
+    "FACE20.BPK",
+];
+
 fn menu_assets(
     menu: &Archive,
     musics: &Archive,
@@ -300,6 +347,24 @@ fn menu_assets(
         arrows: frames(menu, "TRARR1.BPK")?,
         wipe: frames(menu, "15X150.BPK")?,
         border_corners: frames(menu, "CHOO2.BPK")?,
+        licence: frames(menu, "LICENCE3.BPK")?.remove(0),
+        face_frame: frames(menu, "FACESEL1.BPK")?.remove(0),
+        faces: FACES
+            .iter()
+            .map(|&name| Ok(frames(menu, name)?.remove(0)))
+            .collect::<Result<_, AssetError>>()?,
+        face_arrows: frames(menu, "FACEARR1.BPK")?,
+        car_box: frames(menu, "CARBAS2.BPK")?.remove(0),
+        car_names: frames(menu, "CARNAME.BPK")?,
+        car_turning: frames(menu, "KUPLA.BPK")?,
+        colour_slider: frames(menu, "SLIDCOP2.BPK")?.remove(0),
+        colour_knob: frames(menu, "SLIDCUR3.BPK")?.remove(0),
+        price_digits: frames(menu, "F-SMA3F.BPK")?,
+        sign_up_title: frames(menu, "ENTERTX2.BPK")?.remove(0),
+        side_panel: frames(menu, "STATBAS7.BPK")?.remove(0),
+        side_cars: frames(menu, "SCENECAR.BPK")?,
+        upgrade_lamps: frames(menu, "STATPOP4.BPK")?,
+        sign_line: frames(menu, "SIGNLINE.BPK")?.remove(0),
     })
 }
 

@@ -9,7 +9,9 @@
 mod configure;
 pub(crate) mod draw;
 mod hall_of_fame;
+mod licence;
 pub(crate) mod palette;
+mod sign_up;
 
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::dr_cfg::DrCfg;
@@ -20,6 +22,7 @@ use self::draw::{
 };
 use self::palette::MenuPalette;
 use crate::audio::Sound;
+use crate::campaign::{Campaign, NAME_BYTES};
 use crate::canvas::{Canvas, HEIGHT, WIDTH, at};
 use crate::keys::{self, Keys};
 use crate::{AUDIO_FRAMES_PER_TICK, Frame};
@@ -42,9 +45,8 @@ const CREDITS_ROW: usize = 4;
 const EXIT_ROW: usize = 5;
 /// The start submenu's last row returns to the main menu.
 const START_MENU_BACK: usize = 5;
-/// The exit question's popup and its yes/no at (x, y) = (180, 238).
-const YES_NO_X: usize = 180;
-const YES_NO_Y: usize = 238;
+/// The exit question's yes/no at (x, y) = (180, 238).
+const EXIT_QUESTION: (usize, usize) = (180, 238);
 /// The end screen shows for at most 560 ticks; its fade-out lowers the music from 65500 in
 /// steps of 2620.
 const END_HOLD_TICKS: u32 = 560;
@@ -111,10 +113,44 @@ enum State {
         right: bool,
         waits: u32,
     },
-    /// `drawYesNoMenu` for the exit question; `yes` is the side selected.
-    Exit {
+    /// `drawYesNoMenu` (0x42E310): two waits a pass; `yes` is the side selected.
+    YesNo {
+        question: Question,
         second: bool,
         yes: bool,
+    },
+    /// The licence: `readKeyboard`'s wait while the nickname is typed, the ten waits after
+    /// a face change, and the difficulty popup's two waits a pass with the key read before
+    /// them.
+    Nickname,
+    FaceChange {
+        up: bool,
+        waits: u32,
+    },
+    Difficulty {
+        second: bool,
+        row: usize,
+        key: u8,
+    },
+    /// The sign-up: its two waits a pass, the welcome popup's wait (`passes` so far, the key
+    /// read before its waits), a warning's and the "no race" popup's wait for a key, the fade
+    /// after it, and the waits the screen stays after the sign-up.
+    SignUp {
+        second: bool,
+        phase: sign_up::Phase,
+    },
+    PopupWait {
+        second: bool,
+        passes: u8,
+        key: u8,
+    },
+    RaceWarning,
+    NoSignUp,
+    NoSignUpFade {
+        step: u32,
+    },
+    Linger {
+        waits: u32,
     },
     /// `showEndScreen`: the menu to black, `END.BMP` in, held, out with the music.
     EndToBlack {
@@ -152,6 +188,24 @@ enum State {
     },
 }
 
+/// What a yes/no question asks; its answers sit at [`Question::at`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Question {
+    Exit,
+    Weapons,
+    EndGame,
+}
+
+impl Question {
+    fn at(self) -> (usize, usize) {
+        match self {
+            Question::Exit => EXIT_QUESTION,
+            Question::Weapons => (193, 323),
+            Question::EndGame => (180, 258),
+        }
+    }
+}
+
 /// The menus below the main menu, each read by `readEventInMenu`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Submenu {
@@ -187,6 +241,15 @@ pub(crate) struct Menu {
     /// The cursor's frame (0x45FBF8).
     cursor: usize,
     state: State,
+    /// The game in progress, and the licence's nickname entry with the name it replaces.
+    campaign: Campaign,
+    nickname: licence::Nickname,
+    saved_name: [u8; NAME_BYTES],
+    /// `sub_42C7F0`'s text cursor count (0x456BD0) and turn toggle (0x456BD4), and the
+    /// turning car's frame (0x45FBA0).
+    blink: i32,
+    car_toggle: bool,
+    car_frame: usize,
 }
 
 impl Menu {
@@ -199,6 +262,7 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
+        seed: u32,
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -233,6 +297,12 @@ impl Menu {
             cursor: 0,
             state: State::TitleToBlack { step: 0 },
             assets,
+            campaign: Campaign::new(seed),
+            nickname: licence::Nickname::default(),
+            saved_name: [0; NAME_BYTES],
+            blink: 0,
+            car_toggle: false,
+            car_frame: 0,
         }
     }
 
@@ -327,14 +397,50 @@ impl Menu {
                 right,
                 waits,
             } => self.records_arrow(index, right, waits),
-            State::Exit { second: false, yes } => {
+            State::YesNo {
+                question,
+                second: false,
+                yes,
+            } => {
                 self.palette.after_wait();
-                State::Exit { second: true, yes }
+                State::YesNo {
+                    question,
+                    second: true,
+                    yes,
+                }
             }
-            State::Exit { second: true, yes } => {
+            State::YesNo {
+                question,
+                second: true,
+                yes,
+            } => {
                 self.palette.after_wait();
-                self.exit_key(yes)
+                match self.yes_no_key(question.at(), yes) {
+                    Ok(yes) => State::YesNo {
+                        question,
+                        second: false,
+                        yes,
+                    },
+                    Err(answer) => match question {
+                        Question::Exit => self.exit_answer(answer),
+                        Question::Weapons => self.weapons_answer(answer),
+                        Question::EndGame => self.end_game_answer(answer),
+                    },
+                }
             }
+            State::Nickname => self.nickname_tick(),
+            State::FaceChange { up, waits } => self.face_change(up, waits),
+            State::Difficulty { second, row, key } => self.difficulty_tick(second, row, key),
+            State::SignUp { second, phase } => self.sign_up_tick(second, phase),
+            State::PopupWait {
+                second,
+                passes,
+                key,
+            } => self.popup_wait(second, passes, key),
+            State::RaceWarning => self.race_warning_tick(),
+            State::NoSignUp => self.no_sign_up_tick(),
+            State::NoSignUpFade { step } => self.no_sign_up_fade(step),
+            State::Linger { waits } => self.linger_tick(waits),
             State::EndToBlack { step } => {
                 self.palette.fade(100 - 4 * i64::from(step));
                 if step + 1 < FADE_OUT_STEPS {
@@ -370,7 +476,7 @@ impl Menu {
                     State::EndOut { step: step + 1 }
                 } else {
                     // `mainMenu` writes `dr.cfg` after the end screen.
-                    self.save = true;
+                    self.save_config();
                     State::Ended
                 }
             }
@@ -572,42 +678,42 @@ impl Menu {
             .popup(&mut self.screen, 170, 200, 300, 80, Focus::Focused);
         let question = &self.assets.menu.texts.exit_question;
         self.graphics.small[0].draw(&mut self.screen, question, at(253, 208));
-        self.draw_yes_no(false);
+        self.yes_no_open(Question::Exit, false)
+    }
+
+    /// `drawYesNoMenu`'s start: the answers drawn, the screen shown.
+    fn yes_no_open(&mut self, question: Question, yes: bool) -> State {
+        self.draw_yes_no(question.at(), yes);
         self.shown = self.screen.clone();
-        State::Exit {
+        State::YesNo {
+            question,
             second: false,
-            yes: false,
+            yes,
         }
     }
 
-    /// The two answers, the selected one in big A.
-    fn draw_yes_no(&mut self, yes: bool) {
+    /// The two answers, the selected one in big A: "yes" at (x + 30, y − 7), "no" at
+    /// (x + 200, y − 7).
+    fn draw_yes_no(&mut self, (x, y): (usize, usize), yes: bool) {
         let texts = &self.assets.menu.texts;
         let (yes_font, no_font) = if yes {
             (&self.graphics.big_a, &self.graphics.big_b)
         } else {
             (&self.graphics.big_b, &self.graphics.big_a)
         };
-        yes_font.draw(
-            &mut self.screen,
-            &texts.yes,
-            at(YES_NO_X + 30, YES_NO_Y - 7),
-        );
-        no_font.draw(
-            &mut self.screen,
-            &texts.no,
-            at(YES_NO_X + 200, YES_NO_Y - 7),
-        );
+        yes_font.draw(&mut self.screen, &texts.yes, at(x + 30, y - 7));
+        no_font.draw(&mut self.screen, &texts.no, at(x + 200, y - 7));
     }
 
-    fn exit_key(&mut self, yes: bool) -> State {
-        let cursor_x = if yes { YES_NO_X + 7 } else { YES_NO_X + 177 };
-        let cursor_at = at(cursor_x, YES_NO_Y);
+    /// The end of a pass of `drawYesNoMenu`: the cursor beside the selected answer, then the
+    /// key. `Ok` with the side selected to go on; `Err` with the answer, `None` for Escape.
+    fn yes_no_key(&mut self, (x, y): (usize, usize), yes: bool) -> Result<bool, Option<bool>> {
+        let cursor_x = if yes { x + 7 } else { x + 177 };
+        let cursor_at = at(cursor_x, y);
         self.screen.fill(cursor_at, 20, 20, POPUP_FILL);
         let cursor = self.graphics.cursor(self.cursor).clone();
         self.screen.draw(&cursor, cursor_at, true);
-        self.shown
-            .copy_from(&self.screen, at(YES_NO_X + 2, YES_NO_Y), 240, 28);
+        self.shown.copy_from(&self.screen, at(x + 2, y), 240, 28);
         self.cursor = (self.cursor + 1) % CURSOR_FRAMES;
         let key = match self.keys.take() {
             keys::Y => keys::PAD_LEFT,
@@ -620,22 +726,163 @@ impl Menu {
                 if left != yes {
                     self.sound(MOVE_SOUND);
                 }
-                self.screen
-                    .fill(at(YES_NO_X + 2, YES_NO_Y), 240, 25, POPUP_FILL);
-                self.draw_yes_no(left);
-                return State::Exit {
-                    second: false,
-                    yes: left,
-                };
+                self.screen.fill(at(x + 2, y), 240, 25, POPUP_FILL);
+                self.draw_yes_no((x, y), left);
+                return Ok(left);
             }
-            keys::ESCAPE => false,
-            keys::ENTER | 0x9C => yes,
-            _ => {
-                return State::Exit { second: false, yes };
-            }
+            keys::ESCAPE => None,
+            keys::ENTER | 0x9C => Some(yes),
+            _ => return Ok(yes),
         };
         self.sound(CHOOSE_SOUND);
-        if answer {
+        Err(answer)
+    }
+
+    /// `saveConfiguration` (0x4264E0): one `rand()` for its last header byte, then the file
+    /// is written.
+    fn save_config(&mut self) {
+        let byte = self.campaign.rand.next() as u8;
+        self.config.set_random_byte(byte);
+        self.save = true;
+    }
+
+    fn sound_at(&mut self, effect: u8, pitch: u32) {
+        self.sound
+            .trigger_at(SOUND_CHANNEL, effect, self.config.effects_volume(), pitch);
+    }
+
+    /// `COPPER.PAL`'s entry for the player's colour.
+    fn player_copper(&self) -> [u8; 3] {
+        self.assets.menu.copper.0[self.campaign.player().colour as usize]
+    }
+
+    /// A pass of `startRacingMenu`'s loop: the Start Racing menu over the dimmed main menu.
+    fn start_pass(&mut self) -> State {
+        self.submenu_pass(Submenu::Start)
+    }
+
+    /// The loop's pass after a game's screens: the menus drawn into the second buffer and
+    /// wiped in (`gameStarted_456B5C`, `sub_42C4A0`).
+    fn start_wipe(&mut self) -> State {
+        let mut back = self.screen.clone();
+        back.copy_rows(&self.graphics.background, 92, 275);
+        self.graphics
+            .menu(&mut back, &self.main, Focus::Unfocused, self.cursor);
+        self.graphics.menu(
+            &mut back,
+            &self.submenus[Submenu::Start as usize],
+            Focus::Focused,
+            self.cursor,
+        );
+        self.back = back;
+        State::Wipe {
+            wipe: hall_of_fame::Wipe::StartMenu,
+            step: 0,
+        }
+    }
+
+    /// The Start Racing menu's first row: the licence, or with a game on the shop
+    /// (`startRacingMenu`).
+    fn start_or_enter(&mut self) -> State {
+        if !self.campaign.started {
+            self.graphics.menu(
+                &mut self.screen,
+                &self.submenus[Submenu::Start as usize],
+                Focus::Unfocused,
+                self.cursor,
+            );
+            return self.open_licence();
+        }
+        // The shop comes with M3b; until then the shop's way on, the sign-up.
+        self.open_sign_up()
+    }
+
+    /// The licence is done: the drivers set up, the menus renamed, then the sign-up.
+    fn new_game(&mut self) -> State {
+        let colour = self.campaign.player().colour;
+        let start = &mut self.submenus[Submenu::Start as usize];
+        for row in [1, 2, 4] {
+            start.active[row] = true;
+        }
+        let campaign = &mut self.campaign;
+        campaign.warn_hard = true;
+        campaign.warn_medium = true;
+        campaign.underground_popup = true;
+        campaign.welcome = true;
+        self.init_drivers();
+        self.campaign.player_mut().colour = colour;
+        self.palette.fade(100);
+        let texts = &self.assets.menu.texts.campaign;
+        let (shop, racing) = (
+            texts.enter_shop_row.clone(),
+            texts.continue_racing_row.clone(),
+        );
+        self.graphics.set_row(START_MENU.text, 0, shop);
+        self.graphics.set_row(MAIN_MENU.text, 0, racing);
+        self.campaign.started = true;
+        self.palette.set_colour(self.player_copper());
+        self.palette.compose();
+        self.open_sign_up()
+    }
+
+    /// `initDrivers` (0x428930), with the globals it resets; it ends composing the palette
+    /// for the player's colour (`sub_4224E0`).
+    fn init_drivers(&mut self) {
+        let texts = &self.assets.menu.texts.campaign;
+        let campaign = &mut self.campaign;
+        crate::campaign::init_drivers(
+            &mut campaign.drivers,
+            &mut campaign.rand,
+            &texts.cars,
+            &texts.driver_names,
+        );
+        campaign.selected_race = 0;
+        self.palette.set_colour(self.player_copper());
+        self.palette.compose();
+    }
+
+    /// The Start Racing menu's second row, ending the game: the question, "yes" selected.
+    fn ask_end_game(&mut self) -> State {
+        self.graphics.menu(
+            &mut self.screen,
+            &self.submenus[Submenu::Start as usize],
+            Focus::Unfocused,
+            self.cursor,
+        );
+        self.graphics
+            .popup(&mut self.screen, 170, 220, 300, 80, Focus::Focused);
+        let question = self.assets.menu.texts.campaign.end_game.clone();
+        self.graphics.small[0].draw(&mut self.screen, &question, at(232, 228));
+        self.yes_no_open(Question::EndGame, true)
+    }
+
+    /// "Yes" ends the game: the menus as at the start, the drivers set up afresh.
+    fn end_game_answer(&mut self, answer: Option<bool>) -> State {
+        if answer == Some(true) {
+            let texts = &self.assets.menu.texts.campaign;
+            let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
+            self.graphics.set_row(START_MENU.text, 0, new);
+            self.graphics.set_row(MAIN_MENU.text, 0, racing);
+            let start = &mut self.submenus[Submenu::Start as usize];
+            for row in [1, 2, 4] {
+                start.active[row] = false;
+            }
+            // 0x439F7D: the highlight back on the first row.
+            start.selected = 0;
+            let campaign = &mut self.campaign;
+            campaign.warn_hard = false;
+            campaign.warn_medium = false;
+            campaign.underground_popup = false;
+            campaign.welcome = false;
+            campaign.started = false;
+            self.init_drivers();
+            self.palette.fade(100);
+        }
+        self.start_pass()
+    }
+
+    fn exit_answer(&mut self, answer: Option<bool>) -> State {
+        if answer == Some(true) {
             self.palette.compose();
             State::EndToBlack { step: 0 }
         } else {
