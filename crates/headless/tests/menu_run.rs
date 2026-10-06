@@ -1628,6 +1628,46 @@ const RESULTS_SHOTS: [(u64, &str); 91] = [
     (5315, "s092"),
 ];
 
+/// The keys of `scripts/reference/cheats.scenario`'s run of `docs/verification/m5.md`: the
+/// test game loaded into the shop as in the race start's run, then DRAW, DROOL, DRIVE and
+/// DROP typed, a key every 300 ms.
+const CHEATS_KEYS: [(u64, Key); 24] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2190, Key::D),
+    (2212, Key::R),
+    (2233, Key::A),
+    (2254, Key::W),
+    (2326, Key::D),
+    (2347, Key::R),
+    (2369, Key::O),
+    (2390, Key::O),
+    (2412, Key::L),
+    (2483, Key::D),
+    (2504, Key::R),
+    (2526, Key::I),
+    (2547, Key::V),
+    (2569, Key::E),
+    (2640, Key::D),
+    (2662, Key::R),
+    (2683, Key::O),
+    (2704, Key::P),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the shop, then the
+/// side panel after each word.
+const CHEATS_SHOTS: [(u64, &str); 5] = [
+    (2140, "k05-space"),
+    (2290, "draw"),
+    (2447, "drool"),
+    (2604, "drive"),
+    (2740, "drop"),
+];
+
 /// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
 /// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
 /// menu, Up to "See current statistics", Enter, and Enter on the statistics.
@@ -3574,6 +3614,25 @@ fn the_results_run_matches_the_committed_manifest() {
         false,
     );
     check_manifest("results-run.sha256", &lines, "the results run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_cheats_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // DRAW's $1000, DROOL's $500000, DRIVE's and DROP's ranks after the standings are sorted
+    // afresh, in the shop's side panel.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&CHEATS_KEYS, &[]),
+        &CHEATS_SHOTS,
+        2_800,
+        slots,
+    );
+    check_manifest("cheats-run.sha256", &lines, "the cheats run");
 }
 
 #[test]

@@ -20,6 +20,19 @@ pub(crate) const TIRES: usize = 2;
 pub(crate) const ARMOUR: usize = 3;
 pub(crate) const REPAIR: usize = 4;
 pub(crate) const CONTINUE: usize = 5;
+/// The cheat words' scancodes: D, R, A, W; D, R, O, O, L; D, R, I, V, E; D, R, O, P. The
+/// shop keeps the last five keys.
+const TYPED: usize = 5;
+const DRAW: [u8; 4] = [0x20, 0x13, 0x1E, 0x11];
+const DROOL: [u8; 5] = [0x20, 0x13, 0x18, 0x18, 0x26];
+const DRIVE: [u8; 5] = [0x20, 0x13, 0x17, 0x2F, 0x12];
+const DROP: [u8; 4] = [0x20, 0x13, 0x18, 0x19];
+/// DROOL's laugh (0x43978B): effect 23 on channel 2 at a fixed volume, lower than the shop's
+/// sounds.
+const CHEAT_CHANNEL: usize = 2;
+const CHEAT_SOUND: u8 = 0x17;
+const CHEAT_VOLUME: u32 = 0xF500;
+const CHEAT_PITCH: u32 = 0x2_8000 - 0x7000;
 /// The item boxes' left edges along the bottom row, engine to continue.
 const ITEM_X: [usize; 5] = [16, 120, 224, 328, 432];
 const ITEM_BOX_Y: usize = 253;
@@ -85,6 +98,8 @@ pub(crate) struct Shop {
     /// Whether the market was left by Escape (0x456B60): the shop then brings its music's
     /// order and volume back.
     pub(super) market_escaped: bool,
+    /// The last keys typed in the shop, the latest last, for its cheat words (0x4396B0).
+    typed: [u8; TYPED],
 }
 
 impl Default for Shop {
@@ -102,6 +117,7 @@ impl Default for Shop {
             market: CONTINUE,
             continue_seen: false,
             market_escaped: false,
+            typed: [0; TYPED],
         }
     }
 }
@@ -132,6 +148,7 @@ impl Menu {
     /// screen and wiped in, the continue item selected.
     pub(super) fn open_shop(&mut self) -> State {
         self.shop.selected = CONTINUE;
+        self.shop.typed = [0; TYPED];
         let mut back = self.screen.clone();
         back.restore(&self.graphics.background, at(0, 96), 640, 267);
         self.draw_shop(&mut back);
@@ -350,7 +367,11 @@ impl Menu {
             self.redraw_item(self.shop.selected);
             self.shown = self.screen.clone();
         }
-        match self.keys.take() {
+        let key = self.keys.take();
+        if key != 0 {
+            self.cheat(key);
+        }
+        match key {
             keys::UP | keys::PAD_UP => {
                 if self.shop.selected == ENGINE {
                     self.sound(STEP_SOUND);
@@ -391,6 +412,34 @@ impl Menu {
             _ => {}
         }
         State::Shop { second: false }
+    }
+
+    /// The shop's cheat words (0x4396B0), typed as scancodes and kept with the four keys before:
+    /// DRAW gives $1000, DROOL makes the money $500000 with a laugh, DRIVE and DROP give and
+    /// take 10 points and sort the standings afresh; the side panel shows the change. The key
+    /// then does what it does in the shop.
+    fn cheat(&mut self, key: u8) {
+        let typed = &mut self.shop.typed;
+        typed.rotate_left(1);
+        typed[TYPED - 1] = key;
+        let typed = *typed;
+        let player = self.campaign.player_mut();
+        if typed.ends_with(&DRAW) {
+            player.money += 1000;
+        } else if typed.ends_with(&DROOL) {
+            player.money = 500_000;
+            self.sound
+                .trigger_at(CHEAT_CHANNEL, CHEAT_SOUND, CHEAT_VOLUME, CHEAT_PITCH);
+        } else if typed.ends_with(&DRIVE) || typed.ends_with(&DROP) {
+            player.points += if typed.ends_with(&DRIVE) { 10 } else { -10 };
+            self.campaign.rank_drivers();
+        } else {
+            return;
+        }
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_side_panel(&mut screen);
+        self.screen = screen;
+        self.shown = self.screen.clone();
     }
 
     /// `enterShop` (0x4373B0) on the selected item.
