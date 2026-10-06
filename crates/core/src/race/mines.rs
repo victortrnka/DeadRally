@@ -84,7 +84,8 @@ fn heard(cars: &[Car], from: usize, player: usize) -> Option<u32> {
 }
 
 impl Mines {
-    /// None dropped yet; `picture` the mine's, `blast` the blast's six.
+    /// None dropped yet; `picture` the mine's, `blast` the blast's six. Every race starts its
+    /// slots afresh, armed and their times 0, as `initRaceValues` sets them (0x409B13).
     pub(crate) fn new(picture: Vec<u8>, blast: Vec<u8>) -> Mines {
         Mines {
             slots: [Mine {

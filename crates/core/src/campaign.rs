@@ -295,6 +295,9 @@ pub(crate) struct Campaign {
     pub(crate) offer: Option<Offer>,
     /// The race's drivers in their places on the grid.
     pub(crate) racers: Vec<Racer>,
+    /// The rocket flames' picture (0x456AFC), which only a flame's turn sets: the next race's
+    /// flames go on from the last race's.
+    pub(crate) flame_phase: usize,
 }
 
 /// A driver in the race as the preview sets them up (0x432F46): the opponents' weapons are
@@ -341,6 +344,7 @@ impl Campaign {
             hit_victim: 0,
             offer: None,
             racers: Vec::new(),
+            flame_phase: 0,
         }
     }
 

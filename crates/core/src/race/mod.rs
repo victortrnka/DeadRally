@@ -249,6 +249,8 @@ pub(crate) struct Setup {
     pub(crate) still: bool,
     pub(crate) pickup_money: i32,
     pub(crate) lap_record: [i32; 3],
+    /// The rocket flames' picture the last race left (0x456AFC is never set back).
+    pub(crate) flame_phase: usize,
 }
 
 /// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
@@ -439,6 +441,7 @@ impl Race {
             still,
             pickup_money,
             lap_record,
+            flame_phase,
         } = setup;
         let number = circuit % 9 + 1;
         // The second half's circuits run their tracks the other way round (0x432532).
@@ -602,7 +605,7 @@ impl Race {
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
                 hud::decoded(&archives.engine, "ROCKET2.BPK")?,
             ],
-            flame_phase: 0,
+            flame_phase,
             wrecks: Vec::new(),
             tough,
         };
@@ -1266,10 +1269,10 @@ impl Race {
     }
 
     /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
-    /// the frame, then for each car its numbers in the original's layout, floats as their
-    /// bits.
+    /// the frame and the rocket flames' picture (`fp`, 0x456AFC), then for each car its
+    /// numbers in the original's layout, floats as their bits.
     pub(crate) fn trace(&self) -> String {
-        let mut line = format!("{}", self.clock.frame);
+        let mut line = format!("{} fp{}", self.clock.frame, self.flame_phase);
         for car in &self.cars {
             let h = &car.handling;
             line += &format!(
@@ -1315,6 +1318,11 @@ impl Race {
             );
         }
         line
+    }
+
+    /// The rocket flames' picture, for the next race to go on from.
+    pub(crate) fn flame_phase(&self) -> usize {
+        self.flame_phase
     }
 
     /// The palette as shown.

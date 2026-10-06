@@ -2364,6 +2364,68 @@ fn the_rocket_run_matches_the_committed_manifest() {
     check_manifest("rocket-run.sha256", &lines, "the rocket run");
 }
 
+/// Two races in a row with a rocket: the rocket run's way into the race, the turbo held 75
+/// ticks (the flames turning to their second picture last), Escape and Y, then the stand-in's
+/// shop, the Underground Market, the sign-up's first race, No to the hitman, and the preview
+/// on into the next race.
+const TWO_RACES_HELD: [Held; 9] = [
+    (3388, Key::Up, 122),
+    (3403, Key::LeftShift, 75),
+    (3540, Key::Escape, 7),
+    (3670, Key::Y, 7),
+    (3950, Key::Enter, 1),
+    (4200, Key::Enter, 1),
+    (4400, Key::Enter, 1),
+    (4700, Key::Right, 1),
+    (4780, Key::Enter, 1),
+];
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_later_race_starts_its_rocket_flames_where_the_last_race_left_them() {
+    // The original never sets the flames' picture (0x456AFC) back: only a flame's turn writes
+    // it (0x40F651). A player who ends a race on the second picture sees the next race's first
+    // flame in it, not in the first.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 0, 1]));
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::with_seed(assets, config, SEED);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    // Each race's flame pictures, tick by tick.
+    let mut races: Vec<Vec<String>> = Vec::new();
+    let mut racing = false;
+    for done in 0..5_100 {
+        for &(_, key) in RACE_START_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in &TWO_RACES_HELD {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        let trace = game.race_trace();
+        if let Some(trace) = &trace {
+            if !racing {
+                races.push(Vec::new());
+            }
+            let phase = trace.split_whitespace().nth(1).unwrap_or_default();
+            races.last_mut().unwrap().push(phase.to_owned());
+        }
+        racing = trace.is_some();
+    }
+    assert_eq!(races.len(), 2, "two races");
+    assert_eq!(races[0].last().map(String::as_str), Some("fp1"));
+    assert_eq!(races[1].first().map(String::as_str), Some("fp1"));
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_wreck_run_matches_the_committed_manifest() {
