@@ -559,6 +559,31 @@ pub(crate) mod tests {
                 key_names: vec![b"N".to_vec(); 256],
                 pad_names: vec![b"D".to_vec(); 9],
             },
+            shop_popups: shop_popup_texts(),
+        }
+    }
+
+    /// Every popup of the shop after a race ten lines of one letter, the pieces around the deals'
+    /// pay and the hit's victim one letter each.
+    pub(crate) fn shop_popup_texts() -> deadrally_gamedata::text::ShopPopupTexts {
+        let lines = |c: u8| vec![vec![c]; 10];
+        deadrally_gamedata::text::ShopPopupTexts {
+            welcome: lines(b'w'),
+            lapped: lines(b'l'),
+            win_streak: vec![lines(b's'); 6],
+            clean_race: vec![lines(b'c'); 6],
+            all_wrecked: vec![lines(b'a'); 6],
+            drug_run: lines(b'd'),
+            drug_run_end: b".".to_vec(),
+            drug_run_failed: lines(b'f'),
+            hit: lines(b'h'),
+            hit_victim_end: b"-".to_vec(),
+            hit_end: b".".to_vec(),
+            hit_failed: lines(b'm'),
+            loan_repaid: lines(b'r'),
+            loan_unpaid: lines(b'u'),
+            end_of_road: lines(b'e'),
+            too_slow: lines(b't'),
         }
     }
 
