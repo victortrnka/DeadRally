@@ -667,6 +667,81 @@ const PREVIEW_SHOTS: [(u64, &str); 24] = [
     (2828, "preview-03"),
 ];
 
+/// The keys of `scripts/reference/race-start.scenario` in the run of `docs/verification/m4b.md`:
+/// the preview run on to the race.
+const RACE_START_KEYS: [(u64, Key); 10] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2783, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview held,
+/// its fade, the race's intro and its countdown.
+const RACE_START_SHOTS: [(u64, &str); 55] = [
+    (2864, "r01"),
+    (2871, "r02"),
+    (2878, "r03"),
+    (2885, "r04"),
+    (2892, "r05"),
+    (2899, "r06"),
+    (2906, "r07"),
+    (2913, "r08"),
+    (2920, "r09"),
+    (2927, "r10"),
+    (2934, "r11"),
+    (2941, "r12"),
+    (2948, "r13"),
+    (2955, "r14"),
+    (2962, "r15"),
+    (2969, "r16"),
+    (2976, "r17"),
+    (2983, "r18"),
+    (2990, "r19"),
+    (2998, "r20"),
+    (3005, "r21"),
+    (3011, "r22"),
+    (3019, "r23"),
+    (3026, "r24"),
+    (3033, "r25"),
+    (3041, "r26"),
+    (3048, "r27"),
+    (3054, "r28"),
+    (3061, "r29"),
+    (3068, "r30"),
+    (3076, "r31"),
+    (3083, "r32"),
+    (3090, "r33"),
+    (3098, "r34"),
+    (3105, "r35"),
+    (3112, "r36"),
+    (3119, "r37"),
+    (3126, "r38"),
+    (3133, "r39"),
+    (3140, "r40"),
+    (3147, "r41"),
+    (3155, "r42"),
+    (3162, "r43"),
+    (3169, "r44"),
+    (3176, "r45"),
+    (3183, "r46"),
+    (3189, "r47"),
+    (3196, "r48"),
+    (3205, "r49"),
+    (3212, "r50"),
+    (3219, "r51"),
+    (3226, "r52"),
+    (3233, "r53"),
+    (3240, "r54"),
+    (3248, "r55"),
+];
+
 /// The keys of `scripts/reference/sabotage.scenario` in the run of `docs/verification/m3c.md`
 /// (its sabotage's clock fixed at 31375): the test game, the sabotage bought in the Underground
 /// Market, the sign-up and the sabotage's popup.
@@ -970,6 +1045,25 @@ fn the_preview_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("preview-run.sha256", &lines, "the preview run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_start_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the preview held and faded, the race's tilted zoom, the
+    // player's car's flash, the colours' return, the lights' countdown, the pedestrians.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &[]),
+        &RACE_START_SHOTS,
+        3_260,
+        slots,
+    );
+    check_manifest("race-start-run.sha256", &lines, "the race-start run");
 }
 
 #[test]

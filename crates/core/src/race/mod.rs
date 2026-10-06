@@ -6,8 +6,10 @@ mod buffer;
 mod cars;
 mod hud;
 mod intro;
+mod pedestrians;
 mod raster;
 mod scene;
+mod semaphore;
 
 use deadrally_gamedata::image::Palette;
 use deadrally_gamedata::race::{RaceArchives, RaceError, Track};
@@ -130,6 +132,44 @@ pub(crate) struct Race {
     shown: Palette,
     screen: Vec<u8>,
     stage: Stage,
+    semaphore: semaphore::Semaphore,
+    pedestrians: pedestrians::Pedestrians,
+    clock: Clock,
+}
+
+/// The race's clocks: its frame count (`raceFrame` 0x481E14, the countdown under 190), the
+/// ticks the timer has counted (0x503500, and at the HUD's last frame 0x4A7CFC), the ticks
+/// between the HUD's last two frames (0x4A9EA4), and the ticks since the loop last looked
+/// (0x4A9EAC), which the timer counts to 14 and back to 0.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Clock {
+    /// The timer's ticks since the game started (`sub_43C760`), which pedestrians step by.
+    timer: u32,
+    frame: i32,
+    ticks: i32,
+    seen: i32,
+    between: i32,
+    waiting: i32,
+}
+
+impl Clock {
+    /// A tick of the timer (`sub_4138A0`).
+    fn tick(&mut self) {
+        self.timer = self.timer.wrapping_add(1);
+        self.waiting = if self.waiting + 1 >= 15 {
+            0
+        } else {
+            self.waiting + 1
+        };
+        self.ticks += 1;
+    }
+
+    /// The clocks from 0 (0x4053E0, and again at the start 0x415079).
+    fn restart(&mut self) {
+        self.waiting = 0;
+        self.ticks = 0;
+        self.seen = 0;
+    }
 }
 
 /// Where the race is: at the race loop's wait for the next tick (`0x4173A0`), the frame drawn
@@ -178,6 +218,14 @@ impl Race {
         let mut shade = [0; 256];
         let table = archives.engine.read("VARJO.TAB")?;
         shade[..table.len().min(256)].copy_from_slice(&table[..table.len().min(256)]);
+        let pedestrians = pedestrians::Pedestrians::new(
+            &track.info,
+            hud::decoded(&archives.engine, "PEDESTR.BPK")?,
+            [
+                hud::decoded(&archives.engine, "SPLAT3.BPK")?,
+                hud::decoded(&archives.engine, "SPLAT4.BPK")?,
+            ],
+        );
         let mut palette = track.palette.clone();
         for (driver, &first) in drivers.iter().zip(&RAMPS) {
             car_ramp(&mut palette, first, driver.colour);
@@ -200,17 +248,37 @@ impl Race {
             shown: Palette::BLACK,
             screen: vec![0; VIEW_WIDTH * VIEW_HEIGHT],
             stage: Stage::Loop { first: true },
+            semaphore: semaphore::Semaphore::new(hud::decoded(&archives.engine, "GEN-LAM.BPK")?),
+            pedestrians,
+            // The timer has run for minutes by any race; what counts is that it is past the
+            // pedestrians' first step, which comes on the first frame as in the original.
+            clock: Clock {
+                timer: 1000,
+                ..Clock::default()
+            },
         })
     }
 
     /// The race loop's first frame, up to its wait.
     pub(crate) fn begin(&mut self) {
+        self.frame();
+    }
+
+    /// A pass of the race loop up to its wait: a step of the race for each tick waited, then
+    /// the frame drawn into the buffer.
+    fn frame(&mut self) {
+        let steps = self.clock.waiting;
+        self.clock.waiting = 0;
+        for _ in 0..steps {
+            self.clock.frame += 1;
+        }
         self.draw();
     }
 
     /// From this wait to the next: the frame drawn onto the screen and, on the first, the
     /// intro; or the intro's next step, and once it is over the loop's next frame.
     pub(crate) fn tick(&mut self) {
+        self.clock.tick();
         match &mut self.stage {
             Stage::Loop { first } => {
                 let first = *first;
@@ -236,10 +304,11 @@ impl Race {
                 if going {
                     return;
                 }
+                self.clock.restart();
             }
         }
         self.stage = Stage::Loop { first: false };
-        self.draw();
+        self.frame();
     }
 
     /// The palette as shown.
@@ -300,6 +369,12 @@ impl Race {
             let at = (row * STRIDE + LEFT) as i64 + HUD_WIDTH;
             self.buffer.copy(at, &image[from..end]);
         }
+        let car = (self.cars[self.player].x, self.cars[self.player].y);
+        let view = (x as i32, y as i32);
+        let left = HUD_WIDTH as i32;
+        let now = self.clock.timer;
+        self.pedestrians
+            .draw(&mut self.buffer, now, car, view, left);
         self.draw_cars();
         self.draw_shadows();
         let (x, y) = self.camera();
@@ -314,6 +389,16 @@ impl Race {
             cull,
             left,
         );
+        if self.clock.frame < 290 {
+            let event = self
+                .semaphore
+                .draw(&mut self.buffer, self.clock.frame, self.clock.between);
+            if event == Some(semaphore::Event::Go) {
+                self.clock.restart();
+            }
+        }
+        self.clock.between = self.clock.ticks - self.clock.seen;
+        self.clock.seen = self.clock.ticks;
         let player = &self.cars[self.player];
         let gauge = hud::Player {
             speed: player.speed,
