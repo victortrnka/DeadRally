@@ -894,7 +894,11 @@ fn through_a_new_game(game: &mut Game) {
     step(game, Key::Escape);
     run(game, 4);
     step(game, Key::Space);
+    // The shop fades in with the welcome to it, deaf for its first eleven passes; Escape
+    // there closes it, then leaves the shop.
     run(game, 120);
+    step(game, Key::Escape);
+    run(game, 30);
     step(game, Key::Escape);
     run(game, 60);
 }
@@ -1395,6 +1399,19 @@ fn a_quick_save_happens_once_however_long_f2_is_held() {
         pressed: false,
     });
     assert!(game.take_saved_game().is_none(), "saved once");
+}
+
+#[test]
+fn a_loan_due_leaves_the_way_on_without_its_border() {
+    // 0x42914B: the shop draws the continue item's border only when no popup of its own is
+    // due (the welcome, a sponsor's, a deal's or a loan due): the border would show around
+    // the way on beside the popup the original shows without one.
+    let border_line = |loan_races: i32| {
+        let game = in_shop(saved_game_with(5000, &[(52, 0), (56, loan_races)]));
+        pixel(&game, (450, 245))
+    };
+    assert_eq!(border_line(3), 0x16, "the border with the loan not yet due");
+    assert_ne!(border_line(4), 0x16, "no border with the loan due");
 }
 
 #[test]

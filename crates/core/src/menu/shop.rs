@@ -176,12 +176,15 @@ impl Menu {
     }
 
     /// `drawShopAnimationAndRightSide`: the title, the side panel, the continue item's
-    /// border, then every item's box, each drawing its description over the last.
+    /// border unless one of the shop's own popups is flagged (0x42914B), then every item's
+    /// box, each drawing its description over the last.
     pub(super) fn draw_shop(&mut self, canvas: &mut Canvas) {
         self.shop.continue_seen |= self.shop.selected == CONTINUE;
         canvas.draw(&self.assets.menu.shop_title, at(0, 92), true);
         self.draw_side_panel(canvas);
-        self.item_border(canvas, CONTINUE);
+        if !self.campaign.shop_popup_flagged() {
+            self.item_border(canvas, CONTINUE);
+        }
         for item in [CAR, ENGINE, TIRES, ARMOUR, REPAIR, CONTINUE] {
             self.draw_item(canvas, item);
         }

@@ -178,6 +178,14 @@ impl Campaign {
         })
     }
 
+    /// Whether one of the popups the campaign itself flags is due (0x42914B, where the shop's
+    /// drawing leaves the continue item's border out then): the welcome, a sponsor's, a
+    /// deal's outcome or a loan due; not the player lapped nor the end of the road.
+    pub(crate) fn shop_popup_flagged(&self) -> bool {
+        self.popup_due(false, false)
+            .is_some_and(|popup| popup != Popup::EndOfRoad)
+    }
+
     /// What `popup` pays or takes as it is drawn: the sponsors' money by the player's car,
     /// the deals' pay or loss by their level, the loan's debt.
     pub(crate) fn settle_popup(&mut self, popup: Popup) {
