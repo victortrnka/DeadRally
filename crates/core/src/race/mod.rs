@@ -970,7 +970,7 @@ impl Race {
     /// From this wait to the next: the frame drawn onto the screen and, on the first, the
     /// intro; or the intro's next step, and once it is over the loop's next frame.
     pub(crate) fn tick(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) -> Outcome {
-        self.samples[self.sampled] = sample(keys, &self.controls);
+        self.samples[self.sampled] = sample(keys, &self.controls, &self.pads);
         self.sampled = (self.sampled + 1) % 16;
         self.clock.tick();
         match &mut self.stage {
@@ -1660,8 +1660,9 @@ const RADIANS: f64 = 0.017_453_292_519_944_444;
 /// controls' scancodes in `dr.cfg` (accelerate, brake, left, right, turbo, gun, mine and horn)
 /// and the arrows, which always drive; the arrows count for the controls set to their
 /// extended codes. The mine control's key is let go once seen; the horn holds the brake and
-/// the mine bits together.
-fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
+/// the mine bits together. Then, with the gamepad on, the seven controls' gamepad inputs
+/// (`pads`, no horn among them).
+fn sample(keys: &mut Keys, controls: &[u32; 8], pads: &[u32; 7]) -> u32 {
     let held = |keys: &Keys, code: u32| u8::try_from(code).is_ok_and(|code| keys.held(code));
     let mut bits = 0;
     let arrows = [
@@ -1701,6 +1702,23 @@ fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
     }
     if held(keys, controls[7]) {
         bits |= driving::MINE | driving::BRAKE;
+    }
+    // 0x413A3E: the gamepad, after the mine key has taken the brake away; the pad's mine is
+    // seen every tick it is held (its letting the mine key go again changes nothing: the key
+    // was let go above when held).
+    let pad_bits = [
+        driving::ACCELERATE,
+        driving::BRAKE,
+        driving::LEFT,
+        driving::RIGHT,
+        driving::TURBO,
+        guns::GUN,
+        driving::MINE,
+    ];
+    for (&input, bit) in pads.iter().zip(pad_bits) {
+        if keys.pad_held(input) {
+            bits |= bit;
+        }
     }
     if bits & driving::TURBO != 0 {
         bits |= driving::ACCELERATE;
@@ -1777,6 +1795,8 @@ mod tests {
     /// The defaults `dr.cfg` gets: A, Z, the arrows' extended codes, left shift, left
     /// control, left alt and space.
     const DEFAULT_CONTROLS: [u32; 8] = [0x1E, 0x2C, 0xCB, 0xCD, 0x2A, 0x1D, 0x38, 0x39];
+    /// No gamepad input for any control.
+    const NO_PADS: [u32; 7] = [0; 7];
 
     fn holding(held: &[Key]) -> Keys {
         let mut keys = Keys::default();
@@ -1792,12 +1812,12 @@ mod tests {
     fn the_arrows_always_drive_and_the_turbo_accelerates() {
         let mut keys = holding(&[Key::Up, Key::Left]);
         assert_eq!(
-            sample(&mut keys, &DEFAULT_CONTROLS),
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
             driving::ACCELERATE | driving::LEFT
         );
         let mut keys = holding(&[Key::Down, Key::Right, Key::LeftShift]);
         assert_eq!(
-            sample(&mut keys, &DEFAULT_CONTROLS),
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
             driving::BRAKE | driving::RIGHT | driving::TURBO | driving::ACCELERATE
         );
     }
@@ -1807,13 +1827,89 @@ mod tests {
     #[test]
     fn a_mine_key_counts_once_and_takes_the_brake() {
         let mut keys = holding(&[Key::Z, Key::LeftAlt]);
-        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS), driving::MINE);
-        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS), driving::BRAKE);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
+            driving::MINE
+        );
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
+            driving::BRAKE
+        );
         let mut keys = holding(&[Key::Space]);
         assert_eq!(
-            sample(&mut keys, &DEFAULT_CONTROLS),
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
             driving::MINE | driving::BRAKE
         );
+    }
+
+    /// Gamepad inputs for the seven controls: the stick up, down, left and right, buttons 1
+    /// to 3 (Define Gamepad's numbers).
+    const PADS: [u32; 7] = [3, 4, 1, 2, 5, 6, 7];
+
+    fn pad(keys: &mut Keys, events: &[InputEvent]) {
+        for &event in events {
+            keys.event(event);
+        }
+    }
+
+    /// With the gamepad switched on in Configure, each control also answers to its gamepad
+    /// input in `dr.cfg`; switched off, a pad in the player's hands does nothing in a race.
+    #[test]
+    fn the_gamepad_drives_through_the_inputs_dr_cfg_gives_the_controls() {
+        use crate::input::{PadAxis, PadButton};
+        let mut keys = Keys::default();
+        let events = [
+            InputEvent::PadConnected { connected: true },
+            InputEvent::PadAxis {
+                axis: PadAxis::StickX,
+                value: -20_000,
+            },
+            InputEvent::PadButton {
+                button: PadButton::B,
+                pressed: true,
+            },
+        ];
+        pad(&mut keys, &events);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), 0);
+        keys.set_pad_on(true);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &PADS),
+            driving::LEFT | guns::GUN
+        );
+        pad(
+            &mut keys,
+            &[InputEvent::PadButton {
+                button: PadButton::A,
+                pressed: true,
+            }],
+        );
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &PADS),
+            driving::LEFT | guns::GUN | driving::TURBO | driving::ACCELERATE
+        );
+    }
+
+    /// The gamepad is read after the keyboard's mine has taken the brake away: unlike the
+    /// mine key, the pad's mine keeps a brake held with it (the horn's two bits), and counts
+    /// every tick it is held rather than once a press.
+    #[test]
+    fn the_gamepads_mine_counts_every_tick_and_keeps_the_brake() {
+        use crate::input::PadButton;
+        let mut keys = holding(&[Key::Z]);
+        keys.set_pad_on(true);
+        let press = |pressed| InputEvent::PadButton {
+            button: PadButton::X,
+            pressed,
+        };
+        pad(
+            &mut keys,
+            &[InputEvent::PadConnected { connected: true }, press(true)],
+        );
+        let both = driving::BRAKE | driving::MINE;
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), both);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), both);
+        pad(&mut keys, &[press(false)]);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), driving::BRAKE);
     }
 
     fn horn_car(slot: usize, model: usize, x: f32) -> Car {

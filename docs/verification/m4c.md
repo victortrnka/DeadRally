@@ -59,7 +59,7 @@ The checks of the M4 spec (section 4) for its third part, the player driving, ru
 - **The race's results** after the view has tilted away, and what they read: the places, the money picked up, the bonus power-up's flag (0x4A7AAC); lap records kept for the session.
 - **The effect power-up's view** (kind 4): the player's view drawn wavering by `sub_404730` while its 560 ticks run down by the ticks between frames; DeadRally counts nothing yet, so the power-up only plays its call. With the power-ups' other effects in M5.
 - **The race's other keys** the help lists: TAB (the status bar), F2 and F3 (music and effects on and off), F4 and F5 (textures and shadows), P (the "game paused" box over the calmer music).
-- **The gamepad's part of the keys' sampling** (`sub_4138A0`).
+- **The gamepad's part of the keys' sampling** (`sub_4138A0`): done in [M5](m5.md), from the binary; no run of the original, whose runner has no gamepad.
 - **Two things the original keeps from race to race:** the rocket flames' phase (0x456AFC) and the mines' slots' times; DeadRally starts each race afresh, which shows at most as a flame's first picture.
 - **The tilt's other branch:** done in [M5](m5.md). It is the end with the status bar hidden (TAB), not a race abandoned in a pause before the intro; such a race runs the intro and then tilts away as usual, which DeadRally now does too.
 - **Sounds not yet checked by ear:** the race's end call, the help's music, the horns, the mines.
