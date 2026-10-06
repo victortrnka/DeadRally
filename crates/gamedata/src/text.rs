@@ -122,6 +122,7 @@ const EMPTY_SLOT: u32 = 0x44_3D18;
 const QUICKSAVE_SLOT: u32 = 0x44_3444;
 const GAME_LOADED: u32 = 0x44_3CE0;
 const GAME_SAVED: u32 = 0x44_3D24;
+const GAME_NOT_FOUND: u32 = 0x44_417C;
 const SAVE_PROMPT: u32 = 0x44_3D30;
 /// The shop's texts (`reloadCarAnimation2` 0x420250 and the functions after it): six lines of
 /// 40 bytes for each item. The car's own and its engine levels' sit in the car's record (at
@@ -184,6 +185,22 @@ const LOAN_REFUSED: u32 = 0x45_29D8;
 const LOAN_PAID: u32 = 0x45_2BB8;
 const MARKET_WELCOME: u32 = 0x44_BE88;
 const LOANS: u32 = 5;
+/// The sabotage's popup: its first line, the pieces before and after the damage, before and
+/// after the victim's name, its last three lines.
+const SABOTAGE: [u32; 8] = [
+    0x45_2CA8, 0x45_2CD0, 0x44_3CBC, 0x45_2CF8, 0x44_3CA0, 0x45_2D20, 0x45_2D48, 0x45_2D70,
+];
+/// The drug dealer's offer: two lines, the pieces before and after the pay, seven lines.
+const DRUG_OFFER: [u32; 11] = [
+    0x45_2D98, 0x45_2DE8, 0x45_2E38, 0x44_3FD8, 0x45_2E88, 0x45_2ED8, 0x45_2F28, 0x45_2F78,
+    0x45_2FC8, 0x45_3018, 0x45_3068,
+];
+/// The hitman's offer: five lines, the pieces before and after the victim's name, a line,
+/// the piece before the pay (a full stop follows it), two lines.
+const HITMAN_OFFER: [u32; 11] = [
+    0x45_30B8, 0x45_3108, 0x45_3158, 0x45_31A8, 0x45_31F8, 0x45_3248, 0x44_3FC4, 0x45_3298,
+    0x45_32E8, 0x45_3338, 0x45_3388,
+];
 /// The Start Racing menu's question before it ends a game (`startRacingMenu`, 0x439E97).
 const END_GAME: u32 = 0x44_4280;
 
@@ -311,6 +328,13 @@ pub struct CampaignTexts {
     pub game_loaded: Vec<u8>,
     pub game_saved: Vec<u8>,
     pub save_prompt: Vec<u8>,
+    /// The popups after a sign-up (`sabotageScreen` 0x42DD10, the offer 0x431B30), in
+    /// [`SABOTAGE`], [`DRUG_OFFER`] and [`HITMAN_OFFER`]'s order.
+    pub sabotage: Vec<Vec<u8>>,
+    /// What a quick load says when there is no quicksave (0x4221A0).
+    pub game_not_found: Vec<u8>,
+    pub drug_offer: Vec<Vec<u8>>,
+    pub hitman_offer: Vec<Vec<u8>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -540,6 +564,19 @@ impl Texts {
                 game_loaded: shown(GAME_LOADED, MAX_LINE)?,
                 game_saved: shown(GAME_SAVED, MAX_LINE)?,
                 save_prompt: shown(SAVE_PROMPT, MAX_LINE)?,
+                game_not_found: text(GAME_NOT_FOUND, MAX_LINE)?,
+                sabotage: SABOTAGE
+                    .iter()
+                    .map(|&address| text(address, 79))
+                    .collect::<Result<_, _>>()?,
+                drug_offer: DRUG_OFFER
+                    .iter()
+                    .map(|&address| text(address, 79))
+                    .collect::<Result<_, _>>()?,
+                hitman_offer: HITMAN_OFFER
+                    .iter()
+                    .map(|&address| text(address, 79))
+                    .collect::<Result<_, _>>()?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
                     .map(|warning| {

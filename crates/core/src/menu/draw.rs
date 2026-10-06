@@ -489,6 +489,10 @@ pub(crate) mod tests {
                 no_sign_up: b"0".to_vec(),
                 race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
                 speeds: vec![[55, 60, 65, 70, 75]; 6],
+                sabotage: vec![b"s".to_vec(); 8],
+                game_not_found: b"?".to_vec(),
+                drug_offer: vec![b"d".to_vec(); 11],
+                hitman_offer: vec![b"h".to_vec(); 11],
             },
             shop: shop_texts(),
         }

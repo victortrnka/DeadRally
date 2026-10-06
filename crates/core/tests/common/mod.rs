@@ -48,6 +48,9 @@ pub const TURNING: u8 = 231;
 pub const SIGN_UP: u8 = 239;
 /// The shop's pictures from 53 on.
 pub const SHOP: u8 = 53;
+/// The drug dealer's and the hitman's pictures in their offers.
+pub const DRUG_DEALER: u8 = SHOP + 30;
+pub const HITMAN: u8 = SHOP + 31;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -165,6 +168,10 @@ fn texts() -> Texts {
             no_sign_up: b"0".to_vec(),
             race_warnings: vec![vec![b"x".to_vec(); 5]; 2],
             speeds: vec![[55, 60, 65, 70, 75]; 6],
+            sabotage: vec![b"s".to_vec(); 8],
+            game_not_found: b"?".to_vec(),
+            drug_offer: vec![b"d".to_vec(); 11],
+            hitman_offer: vec![b"h".to_vec(); 11],
         },
         shop: shop_texts(),
     }
@@ -295,5 +302,7 @@ pub fn menu_assets() -> MenuAssets {
         loan_shark: solid(96, 96, SHOP + 17),
         weapons: (0..12).map(|k| solid(96, 96, SHOP + 18 + k)).collect(),
         market_prices: vec![[150, 200, 275, 250]; 6],
+        drug_dealer: solid(104, 128, DRUG_DEALER),
+        hitman: solid(104, 128, HITMAN),
     }
 }

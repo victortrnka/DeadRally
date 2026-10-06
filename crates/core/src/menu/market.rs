@@ -276,6 +276,41 @@ impl Menu {
         if !second {
             return State::Market { second: true };
         }
+        let next = self.market_pass();
+        if next == (State::Market { second: false })
+            && let Some(quick) = self.quick_keys()
+        {
+            return self.market_after_quick(quick);
+        }
+        next
+    }
+
+    /// After a quick save or load (0x436E00): the market drawn afresh at full brightness, the
+    /// selected item's border and box, the panel, then the confirmation.
+    fn market_after_quick(&mut self, quick: super::slots::Quick) -> State {
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_market(&mut screen);
+        self.screen = screen;
+        self.compose_palette();
+        self.palette.show_composed(32..256);
+        for item in [WAY_ON, LOAN_SHARK, 1, 2, 3, 4] {
+            self.remove_market_border(item);
+        }
+        let selected = self.shop.market;
+        let mut screen = std::mem::take(&mut self.screen);
+        self.market_border(&mut screen, selected);
+        self.screen = screen;
+        self.draw_market_item(selected);
+        let mut screen = std::mem::take(&mut self.screen);
+        self.graphics.panel_frame(&mut screen, 0, 371, 639, 109);
+        self.graphics.panel_text(&mut screen, &self.panel);
+        self.screen = screen;
+        self.shown = self.screen.clone();
+        self.quick_confirm(quick, true)
+    }
+
+    /// The rest of a pass: a message giving way, the flag, the key.
+    fn market_pass(&mut self) -> State {
         self.shop.message_passes = self.shop.message_passes.saturating_sub(1);
         let selected = self.shop.market;
         if selected == WAY_ON {

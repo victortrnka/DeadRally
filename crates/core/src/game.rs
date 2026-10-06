@@ -55,6 +55,15 @@ impl Game {
         }
     }
 
+    /// Fixes the clock the sabotage seeds `rand()` from at `ms` (`SDL_GetTicks()` at 0x42DEE1),
+    /// as `scripts/reference-run.sh --sabotage-clock` fixes the original's, so a reference run
+    /// can be repeated; for a game that has not reached its menu yet.
+    pub fn fix_sabotage_clock(&mut self, ms: u32) {
+        if let Scene::Startup(startup) = &mut self.scene {
+            startup.sabotage_clock = Some(ms);
+        }
+    }
+
     /// A game the player saved since the last call: its slot and the file to write, which
     /// the host keeps out of the game folder.
     pub fn take_saved_game(&mut self) -> Option<(usize, Vec<u8>)> {

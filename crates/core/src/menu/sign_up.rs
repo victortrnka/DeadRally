@@ -8,7 +8,7 @@
 use super::draw::Focus;
 use super::hall_of_fame::Wipe;
 use super::{MOVE_SOUND, Menu, State};
-use crate::campaign::{PLAYER, SignUp};
+use crate::campaign::{Offer, PLAYER, SignUp};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
@@ -38,6 +38,16 @@ const LINGER_WAITS: u32 = 280;
 /// The hitman's chance rises by 2 % a sign-up without him, up to 97 % (0x431B30).
 const HITMAN_RISE: i32 = 2;
 const HITMAN_TOP: i32 = 97;
+/// The clock's milliseconds a tick.
+const TICK_MS: u32 = 14;
+/// What the drug run and the hit pay by the player's car, Vagabond first.
+const DRUG_PAY: [i32; 6] = [1000, 2000, 4000, 6000, 8000, 12_000];
+const HIT_PAY: [i32; 6] = [500, 1000, 2000, 3000, 4000, 6000];
+/// The offer's voice (effect 5 on the voice channel) after 50 waits, the question after 20
+/// more.
+const OFFER_VOICE: u8 = 5;
+const OFFER_VOICE_WAITS: u32 = 50;
+const OFFER_QUESTION_WAITS: u32 = 70;
 
 /// What follows `drawPopupCursor_42C780`'s wait.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +56,8 @@ pub(crate) enum PopupThen {
     SignUp,
     /// The Underground Market after its first visit's popup.
     Market,
+    /// The race after the sabotage's popup.
+    Race,
 }
 
 /// What happens on the sign-up screen between its waits.
@@ -255,6 +267,7 @@ impl Menu {
         match then {
             PopupThen::SignUp => self.after_welcome(),
             PopupThen::Market => self.after_market_welcome(),
+            PopupThen::Race => self.race_stand_in(),
         }
     }
 
@@ -463,28 +476,171 @@ impl Menu {
         self.race_stand_in()
     }
 
-    /// Every race is full: the entrants sorted, the other drivers' damage repaired
-    /// (`sabotageScreen` 0x42DD10), the hitman's chance (0x431B30), then the screen lingers.
+    /// Every race is full: the entrants sorted, then the sabotage's popup or an offer, else
+    /// the screen lingers (0x435F88).
     fn signed_up(&mut self) -> State {
-        let campaign = &mut self.campaign;
-        campaign
+        self.campaign
             .sign_up
             .as_mut()
             .expect("a sign-up is on")
             .sort_entrants();
+        if let Some(state) = self.sabotage() {
+            return state;
+        }
+        if let Some(state) = self.offer() {
+            return state;
+        }
+        State::Linger { waits: 0 }
+    }
+
+    /// The player's race's four drivers.
+    fn race_entrants(&self) -> [usize; 4] {
+        let race = self.campaign.entered_race.expect("the player is in a race");
+        self.sign_up().entrants[race]
+    }
+
+    /// `sabotageScreen` (0x42DD10): every other driver's car repaired; with the sabotage
+    /// bought and the player not leading, the best-ranked rival in the player's race is
+    /// damaged by 25 to 49 % (`rand()` seeded again from the clock) and the popup says so.
+    fn sabotage(&mut self) -> Option<State> {
+        let campaign = &mut self.campaign;
         for (index, driver) in campaign.drivers.iter_mut().enumerate() {
             if index != PLAYER {
                 driver.damage = 0;
             }
         }
-        if campaign.rand.next() % 100 < campaign.hitman_chance && campaign.use_weapons {
-            // The hitman's offer comes with the Underground Market (M3c); until then his
-            // visit is skipped after the original's first draw.
-            campaign.hitman_chance = 5;
-        } else if campaign.hitman_chance < HITMAN_TOP {
-            campaign.hitman_chance += HITMAN_RISE;
+        let player = *campaign.player();
+        if campaign.player_leads() || !campaign.use_weapons || player.sabotage != 1 {
+            return None;
         }
-        State::Linger { waits: 0 }
+        let entrants = self.race_entrants();
+        let rank = |driver: usize| self.campaign.drivers[driver].rank;
+        let best = entrants
+            .iter()
+            .map(|&driver| rank(driver))
+            .filter(|&r| r != player.rank)
+            .min()?;
+        let victim = entrants[entrants.iter().position(|&d| rank(d) == best)?];
+        let campaign = &mut self.campaign;
+        let now = campaign.fixed_clock.unwrap_or(
+            campaign
+                .clock
+                .wrapping_add(TICK_MS.wrapping_mul(self.ticks)),
+        );
+        campaign.rand = crate::campaign::Rand::new(now);
+        let damage = campaign.rand.next() % 25 + 25;
+        campaign.drivers[victim].damage = damage;
+        let texts = &self.assets.menu.texts.campaign.sabotage;
+        let name = self.campaign.drivers[victim].name().to_vec();
+        let damage_line = [&texts[1][..], damage.to_string().as_bytes(), &texts[2]].concat();
+        let name_line = [&texts[3][..], &name, &texts[4]].concat();
+        let lines = [
+            (&texts[0], 205),
+            (&damage_line, 221),
+            (&name_line, 237),
+            (&texts[5], 253),
+            (&texts[6], 269),
+            (&texts[7], 280),
+        ];
+        self.graphics
+            .popup(&mut self.screen, 45, 165, 458, 195, Focus::Focused);
+        for (text, y) in lines {
+            self.graphics.write_text(&mut self.screen, text, at(101, y));
+        }
+        let word = &self.assets.menu.texts.campaign.continue_word;
+        self.graphics
+            .big_a
+            .draw(&mut self.screen, word, at(192, 315));
+        self.shown = self.screen.clone();
+        Some(self.popup_wait_start(PopupThen::Race))
+    }
+
+    /// The offer after a sign-up (0x431B30): with weapons, at the hitman's chance, the drug
+    /// dealer's or the hitman's popup in turn of a coin, his pay by the player's car; the
+    /// chance falls back to 5 %, or rises by 2 % when he does not come.
+    fn offer(&mut self) -> Option<State> {
+        let campaign = &mut self.campaign;
+        if campaign.rand.next() % 100 >= campaign.hitman_chance || !campaign.use_weapons {
+            if campaign.hitman_chance < HITMAN_TOP {
+                campaign.hitman_chance += HITMAN_RISE;
+            }
+            return None;
+        }
+        campaign.hitman_chance = 5;
+        let car = (campaign.player().car.clamp(0, 5)) as usize;
+        let level = 6 - car as i32;
+        let drugs = campaign.rand.next() % 100 < 50;
+        let texts = &self.assets.menu.texts.campaign;
+        let (picture, lines) = if drugs {
+            campaign.offer = Some(Offer::Drugs { level });
+            let t = &texts.drug_offer;
+            let pay = [&t[2][..], DRUG_PAY[car].to_string().as_bytes(), &t[3]].concat();
+            let mut lines = vec![t[0].clone(), t[1].clone(), pay];
+            lines.extend(t[4..].iter().cloned());
+            (&self.assets.menu.drug_dealer, lines)
+        } else {
+            let entrants = self.race_entrants();
+            let victim = loop {
+                let driver = entrants[(self.campaign.rand.next() % 4) as usize];
+                if driver != PLAYER {
+                    break driver;
+                }
+            };
+            self.campaign.offer = Some(Offer::Hit { level, victim });
+            let t = &self.assets.menu.texts.campaign.hitman_offer;
+            let name = self.campaign.drivers[victim].name().to_vec();
+            let named = [&t[5][..], &name, &t[6]].concat();
+            let pay = [&t[8][..], HIT_PAY[car].to_string().as_bytes(), b"."].concat();
+            let mut lines = t[..5].to_vec();
+            lines.extend([named, t[7].clone(), pay, t[9].clone(), t[10].clone()]);
+            (&self.assets.menu.hitman, lines)
+        };
+        self.graphics
+            .popup(&mut self.screen, 33, 131, 482, 230, Focus::Focused);
+        self.screen.draw(picture, at(45, 168), true);
+        for (line, text) in lines.iter().enumerate() {
+            self.graphics
+                .write_text(&mut self.screen, text, at(161, 168 + 16 * line));
+        }
+        self.shown = self.screen.clone();
+        Some(State::OfferWait { waits: 0 })
+    }
+
+    /// A wait before the offer's question: the dealer speaks after 50, the question after 70.
+    pub(super) fn offer_wait(&mut self, waits: u32) -> State {
+        self.palette.after_wait();
+        let waits = waits + 1;
+        if waits == OFFER_VOICE_WAITS {
+            let volume = self.config.effects_volume();
+            self.sound.trigger_at(
+                super::licence::VOICE_CHANNEL,
+                OFFER_VOICE,
+                volume,
+                super::licence::VOICE_PITCH,
+            );
+        }
+        if waits < OFFER_QUESTION_WAITS {
+            return State::OfferWait { waits };
+        }
+        self.yes_no_open(super::Question::Offer, true)
+    }
+
+    /// "Yes" takes the deal; either way the voice stops and the race comes.
+    pub(super) fn offer_answer(&mut self, answer: Option<bool>) -> State {
+        let campaign = &mut self.campaign;
+        if answer == Some(true) {
+            match campaign.offer {
+                Some(Offer::Drugs { level }) => campaign.drug_deal = level,
+                Some(Offer::Hit { level, victim }) => {
+                    campaign.hit = level;
+                    campaign.hit_victim = victim;
+                }
+                None => {}
+            }
+        }
+        campaign.offer = None;
+        self.sound.stop_channel(super::licence::VOICE_CHANNEL);
+        self.race_stand_in()
     }
 
     /// A wait after the sign-up: a key or the 280th wait ends it.

@@ -141,6 +141,10 @@ pub struct MenuAssets {
     pub loan_shark: Image,
     pub weapons: Vec<Image>,
     pub market_prices: Vec<[i32; 4]>,
+    /// The offers after a sign-up (0x431B30): the drug dealer `DRUGDEAL`, the hitman
+    /// `EVENT_2`.
+    pub drug_dealer: Image,
+    pub hitman: Image,
 }
 
 #[derive(Debug)]
@@ -447,6 +451,8 @@ fn menu_assets(
         loan_shark: frames(menu, "DEALER2B.BPK")?.remove(0),
         weapons: frames(menu, "MARKET1E.BPK")?,
         market_prices: market_prices(&exe).map_err(AssetError::Machine)?,
+        drug_dealer: frames(menu, "DRUGDEAL.BPK")?.remove(0),
+        hitman: frames(menu, "EVENT_2.BPK")?.remove(0),
     })
 }
 

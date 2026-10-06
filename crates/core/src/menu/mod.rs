@@ -156,6 +156,10 @@ enum State {
     Linger {
         waits: u32,
     },
+    /// An offer after the sign-up, its 70 waits before the question (a voice after 50).
+    OfferWait {
+        waits: u32,
+    },
     /// `confirmationPopup`'s wait for a key.
     Confirm {
         then: slots::Confirmed,
@@ -237,6 +241,8 @@ enum Question {
     Exit,
     Weapons,
     EndGame,
+    /// The drug dealer's or the hitman's offer after a sign-up.
+    Offer,
 }
 
 impl Question {
@@ -245,7 +251,14 @@ impl Question {
             Question::Exit => EXIT_QUESTION,
             Question::Weapons => (193, 323),
             Question::EndGame => (180, 258),
+            Question::Offer => (161, 321),
         }
+    }
+
+    /// Whether Escape answers: `drawYesNoMenu` (0x42E310) ignores it when its third
+    /// argument is 0, as the offers pass.
+    fn escapes(self) -> bool {
+        self != Question::Offer
     }
 }
 
@@ -312,6 +325,8 @@ pub(crate) struct Menu {
     save_slot: usize,
     written_slot: Option<(usize, Vec<u8>)>,
     shop: shop::Shop,
+    /// Ticks since the menu took over, the clock the sabotage seeds `rand()` from.
+    ticks: u32,
 }
 
 impl Menu {
@@ -324,7 +339,7 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        (seed, slot_files): (u32, Vec<Option<Vec<u8>>>),
+        (seed, slot_files, sabotage_clock): (u32, Vec<Option<Vec<u8>>>, Option<u32>),
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -365,7 +380,10 @@ impl Menu {
             cursor: 0,
             state: State::TitleToBlack { step: 0 },
             assets,
-            campaign: Campaign::new(seed),
+            campaign: Campaign {
+                fixed_clock: sabotage_clock,
+                ..Campaign::new(seed)
+            },
             nickname: licence::Nickname::default(),
             saved_name: [0; NAME_BYTES],
             blink: 0,
@@ -375,6 +393,7 @@ impl Menu {
             save_slot: 0,
             written_slot: None,
             shop: shop::Shop::default(),
+            ticks: 0,
         }
     }
 
@@ -388,6 +407,7 @@ impl Menu {
     }
 
     pub(crate) fn tick(&mut self) {
+        self.ticks = self.ticks.wrapping_add(1);
         self.keys.tick();
         self.state = self.run();
         self.sound.render(AUDIO_FRAMES_PER_TICK, &mut self.audio);
@@ -487,7 +507,7 @@ impl Menu {
                 yes,
             } => {
                 self.palette.after_wait();
-                match self.yes_no_key(question.at(), yes) {
+                match self.yes_no_key(question, yes) {
                     Ok(yes) => State::YesNo {
                         question,
                         second: false,
@@ -497,6 +517,7 @@ impl Menu {
                         Question::Exit => self.exit_answer(answer),
                         Question::Weapons => self.weapons_answer(answer),
                         Question::EndGame => self.end_game_answer(answer),
+                        Question::Offer => self.offer_answer(answer),
                     },
                 }
             }
@@ -514,6 +535,7 @@ impl Menu {
             State::NoSignUp => self.no_sign_up_tick(),
             State::NoSignUpFade { step } => self.no_sign_up_fade(step),
             State::Linger { waits } => self.linger_tick(waits),
+            State::OfferWait { waits } => self.offer_wait(waits),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
@@ -790,7 +812,8 @@ impl Menu {
 
     /// The end of a pass of `drawYesNoMenu`: the cursor beside the selected answer, then the
     /// key. `Ok` with the side selected to go on; `Err` with the answer, `None` for Escape.
-    fn yes_no_key(&mut self, (x, y): (usize, usize), yes: bool) -> Result<bool, Option<bool>> {
+    fn yes_no_key(&mut self, question: Question, yes: bool) -> Result<bool, Option<bool>> {
+        let (x, y) = question.at();
         let cursor_x = if yes { x + 7 } else { x + 177 };
         let cursor_at = at(cursor_x, y);
         self.screen.fill(cursor_at, 20, 20, POPUP_FILL);
@@ -813,7 +836,7 @@ impl Menu {
                 self.draw_yes_no((x, y), left);
                 return Ok(left);
             }
-            keys::ESCAPE => None,
+            keys::ESCAPE if question.escapes() => None,
             keys::ENTER | 0x9C => Some(yes),
             _ => return Ok(yes),
         };

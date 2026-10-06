@@ -4,7 +4,7 @@
 # tool here: nothing reaches a monitor or the speakers, and the game install is never written to.
 #
 #   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
-#                            SCENARIO OUT_DIR
+#                            [--sabotage-clock N] SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -19,7 +19,11 @@
 #
 # With --save (repeatable) the original starts with FILE as its saved game DR.SG<SLOT>.
 #
-# SCENARIO is a text file of lines "at <ms> key <name>" (an xdotool key name, e.g. space) and
+# With --sabotage-clock the sabotage after a sign-up seeds its random numbers with N instead of
+# the clock (spec M3c section 3); DeadRally's clock there is the seed plus 14 ms a tick.
+#
+# SCENARIO is a text file of lines "at <ms> key <name>" (an xdotool key name, e.g. space; also
+# "keydown" and "keyup" to hold a key, as the quick save's F2 must be) and
 # "at <ms> shot <label>", in time order; times count from the moment the window appears, and
 # '#' starts a comment. OUT_DIR gets <label>.png per shot and run.log. Keep it under captures/:
 # screenshots of the original's art are never committed.
@@ -30,7 +34,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -38,6 +42,7 @@ data_args=()
 sound=false
 cfg=
 seed=
+sabotage_clock=
 saves=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -63,6 +68,11 @@ while [[ "${1:-}" == --* ]]; do
         --seed)
             [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || usage
             seed=$2
+            shift 2
+            ;;
+        --sabotage-clock)
+            [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || usage
+            sabotage_clock=$2
             shift 2
             ;;
         *) usage ;;
@@ -134,6 +144,20 @@ data[offset:offset + 5] = b"\xb8" + struct.pack("<I", seed & 0xFFFFFFFF)
 open(path, "wb").write(data)
 PATCH
     echo "seed: $seed" >>"$log"
+fi
+if [[ -n "$sabotage_clock" ]]; then
+    # sabotageScreen (0x42DD10) calls SDL_GetTicks at 0x42DEE1 for srand; the same patch.
+    python3 - "$run/dr.exe" "$sabotage_clock" <<'PATCH'
+import struct, sys
+path, clock = sys.argv[1], int(sys.argv[2])
+data = bytearray(open(path, "rb").read())
+offset = 0x42DEE1 - 0x400000
+if data[offset:offset + 5] != bytes.fromhex("e800190100"):
+    sys.exit("error: dr.exe has no SDL_GetTicks call before srand at 0x42DEE1")
+data[offset:offset + 5] = b"\xb8" + struct.pack("<I", clock & 0xFFFFFFFF)
+open(path, "wb").write(data)
+PATCH
+    echo "sabotage clock: $sabotage_clock" >>"$log"
 fi
 
 display_fd=$(mktemp)
@@ -222,6 +246,8 @@ while read -r at ms action arg rest; do
     taken_ms=$(( ($(date +%s%N) - start) / 1000000 ))
     case "$action" in
         key) xdotool key "$arg" ;;
+        keydown) xdotool keydown "$arg" ;;
+        keyup) xdotool keyup "$arg" ;;
         shot)
             xwd -silent -id "$window" -out "$out/$arg.xwd"
             shots+=("$arg")

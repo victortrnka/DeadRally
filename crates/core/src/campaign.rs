@@ -276,6 +276,26 @@ pub(crate) struct Campaign {
     /// The Underground Market's mines, spikes, rocket fuel and sabotage (0x45EFF0..0x45EFFC):
     /// 1 on sale, 0 sold out, −1 locked (the shareware's; the Windows version sets none).
     pub(crate) stock: [i32; 4],
+    /// What `SDL_GetTicks()` gave `mainMenu`'s `srand`; the sabotage seeds `rand()` again
+    /// from the clock (0x42DEE1), which runs on 14 ms a tick from there.
+    pub(crate) clock: u32,
+    /// The clock fixed instead, as the reference runner fixes the original's.
+    pub(crate) fixed_clock: Option<u32>,
+    /// The deals taken after a sign-up: the drug run's level (0x456BB4), and the hitman's
+    /// (0x456BB8) with his victim (0x456BBC); 0 for none. Races settle them (M5).
+    pub(crate) drug_deal: i32,
+    pub(crate) hit: i32,
+    pub(crate) hit_victim: usize,
+    /// The offer on screen, waiting for its answer.
+    pub(crate) offer: Option<Offer>,
+}
+
+/// An offer after a sign-up (0x431B30): its level (1 with the best car to 6 with the
+/// Vagabond) and, for the hitman, his victim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Offer {
+    Drugs { level: i32 },
+    Hit { level: i32, victim: usize },
 }
 
 impl Campaign {
@@ -296,6 +316,12 @@ impl Campaign {
             entered_race: None,
             hitman_chance: 5,
             stock: [1; 4],
+            clock: seed,
+            fixed_clock: None,
+            drug_deal: 0,
+            hit: 0,
+            hit_victim: 0,
+            offer: None,
         }
     }
 

@@ -297,6 +297,43 @@ impl Menu {
         if !second {
             return State::Shop { second: true };
         }
+        let next = self.shop_pass();
+        if next == (State::Shop { second: false })
+            && let Some(quick) = self.quick_keys()
+        {
+            return self.shop_after_quick(quick);
+        }
+        next
+    }
+
+    /// After a quick save or load (0x439891): the shop drawn afresh at full brightness, the
+    /// selected item's border and box, the panel, then the confirmation.
+    fn shop_after_quick(&mut self, quick: super::slots::Quick) -> State {
+        self.screen
+            .restore(&self.graphics.background, at(0, 96), 640, 267);
+        let mut screen = std::mem::take(&mut self.screen);
+        self.draw_shop(&mut screen);
+        self.screen = screen;
+        self.compose_palette();
+        self.palette.show_composed(32..256);
+        for item in [CONTINUE, CAR, ENGINE, TIRES, ARMOUR, REPAIR] {
+            self.remove_item_border(item);
+        }
+        let selected = self.shop.selected;
+        let mut screen = std::mem::take(&mut self.screen);
+        self.item_border(&mut screen, selected);
+        self.screen = screen;
+        self.redraw_item(selected);
+        let mut screen = std::mem::take(&mut self.screen);
+        self.graphics.panel_frame(&mut screen, 0, 371, 639, 109);
+        self.graphics.panel_text(&mut screen, &self.panel);
+        self.screen = screen;
+        self.shown = self.screen.clone();
+        self.quick_confirm(quick, false)
+    }
+
+    /// The rest of a pass: a message giving way, the selected item's loop, the key.
+    fn shop_pass(&mut self) -> State {
         self.shop.message_passes = self.shop.message_passes.saturating_sub(1);
         self.turn_selected();
         if self.shop.message_passes == 1 && self.shop.selected <= ARMOUR {

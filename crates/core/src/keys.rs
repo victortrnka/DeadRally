@@ -15,6 +15,8 @@ pub(crate) const LEFT: u8 = 0x4B;
 pub(crate) const RIGHT: u8 = 0x4D;
 pub(crate) const Y: u8 = 0x15;
 pub(crate) const N: u8 = 0x31;
+pub(crate) const F2: u8 = 0x3C;
+pub(crate) const F3: u8 = 0x3D;
 /// The joystick's codes are DirectInput's: set-1 with the extended bit.
 pub(crate) const PAD_LEFT: u8 = 0xCB;
 pub(crate) const PAD_RIGHT: u8 = 0xCD;
@@ -153,6 +155,8 @@ pub(crate) struct Keys {
     pad_connected: bool,
     /// 0x456B00: set while Define Gamepad waits, so `eventDetected` leaves the gamepad to it.
     calibrating: bool,
+    /// `keysRead` (0x45E0C0): the keys held down, by scancode.
+    held: [u64; 4],
 }
 
 impl Keys {
@@ -162,6 +166,7 @@ impl Keys {
         match event {
             InputEvent::Key { key, pressed: true } => {
                 self.remembered = scancode(key);
+                self.set_held(scancode(key), true);
                 if repeats(key) {
                     self.repeat = Some(Repeat {
                         key,
@@ -174,6 +179,7 @@ impl Keys {
                 key,
                 pressed: false,
             } => {
+                self.set_held(scancode(key), false);
                 if self.repeat.is_some_and(|repeat| repeat.key == key) {
                     self.repeat = None;
                 }
@@ -189,6 +195,20 @@ impl Keys {
             }
             InputEvent::PadConnected { connected } => self.pad_connected = connected,
         }
+    }
+
+    fn set_held(&mut self, code: u8, down: bool) {
+        let (word, bit) = (usize::from(code / 64), code % 64);
+        if down {
+            self.held[word] |= 1 << bit;
+        } else {
+            self.held[word] &= !(1 << bit);
+        }
+    }
+
+    /// Whether the key with scancode `code` is held down.
+    pub(crate) fn held(&self, code: u8) -> bool {
+        self.held[usize::from(code / 64)] & (1 << (code % 64)) != 0
     }
 
     pub(crate) fn set_pad_on(&mut self, on: bool) {
