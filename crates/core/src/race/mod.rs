@@ -422,15 +422,19 @@ enum Stage {
         first: bool,
         ending: bool,
     },
-    /// The help (F1), and the music's order it interrupted.
+    /// The help (F1), the music's order it interrupted, and whether it came in the loop's
+    /// first pass, before the intro.
     Help {
         help: Box<help::Help>,
         order: usize,
+        first: bool,
     },
-    /// The game paused (P): the box, and the music's order it interrupted.
+    /// The game paused (P): the box, the music's order it interrupted, and whether it came in
+    /// the loop's first pass.
     Paused {
         pause: Box<pause::Pause>,
         order: usize,
+        first: bool,
     },
     /// The race ended, abandoned or over: the loop's last frame shown, the view tilting away
     /// from the next tick.
@@ -715,11 +719,12 @@ impl Race {
 
     /// The race's sound set up (0x416215: the menu's stopped, the track's music started at
     /// the configured volumes but silent until the intro raises it, the player's engine), then
-    /// the race loop's first frame, up to its wait.
+    /// the race loop's first pass, its keys checked as every pass's are, up to its wait.
     pub(crate) fn begin(
         &mut self,
         sound: &mut Sound,
         (music_volume, effects_volume): (u32, u32),
+        keys: &mut Keys,
         rand: &mut Rand,
     ) {
         sound.stop();
@@ -738,7 +743,7 @@ impl Race {
         let car = self.drivers[self.player].car as u8;
         sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
         self.frame(sound, rand);
-        self.draw(sound);
+        self.keys_and_draw(sound, keys, rand);
     }
 
     /// A pass of the race loop up to its wait (0x416390): the player's keys of the ticks
@@ -1162,7 +1167,7 @@ impl Race {
                     return Outcome::Racing;
                 }
             }
-            Stage::Help { help, order } => {
+            Stage::Help { help, order, first } => {
                 let waiting = help.waiting();
                 let pressed = waiting && (0..=255).any(|code| keys.held(code));
                 let going = help.wait(pressed);
@@ -1176,18 +1181,22 @@ impl Race {
                 }
                 // 0x416CC2: the music back where it was, at full volume, and the engine; then
                 // the pass the help came in is drawn.
-                let order = *order;
+                let (order, first) = (*order, *first);
                 keys.release_all();
                 sound.set_music_order(order);
                 sound.set_mask(FULL_MASK);
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                self.stage = Stage::Loop { first: false };
+                self.stage = Stage::Loop { first };
                 self.keys_then_draw(sound, keys, rand);
                 return Outcome::Racing;
             }
-            Stage::Paused { pause, order } => {
-                let order = *order;
+            Stage::Paused {
+                pause,
+                order,
+                first,
+            } => {
+                let (order, first) = (*order, *first);
                 let mut asked = Vec::new();
                 let step = pause.wait(|code| keys.held(code), rand, &mut asked);
                 self.screen.copy_from_slice(pause.screen());
@@ -1208,7 +1217,7 @@ impl Race {
                 sound.set_mask(FULL_MASK);
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                self.stage = Stage::Loop { first: false };
+                self.stage = Stage::Loop { first };
                 self.draw_pass(sound, keys, rand);
                 return Outcome::Racing;
             }
@@ -1235,14 +1244,24 @@ impl Race {
         }
         self.stage = Stage::Loop { first: false };
         self.frame(sound, rand);
-        // 0x416B21: F1 opens the help before the pass is drawn.
+        self.keys_and_draw(sound, keys, rand);
+        Outcome::Racing
+    }
+
+    /// A pass after its logic (0x416B21): F1 opens the help before the pass is drawn, else
+    /// the race's other keys, then the drawing.
+    fn keys_and_draw(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
         if keys.held(HELP_KEY) || self.help_asked {
             self.help_asked = false;
             self.start_help(sound);
-            return Outcome::Racing;
+            return;
         }
         self.keys_then_draw(sound, keys, rand);
-        Outcome::Racing
+    }
+
+    /// Whether the pass under way is the loop's first, before the intro.
+    fn first_pass(&self) -> bool {
+        matches!(self.stage, Stage::Loop { first: true })
     }
 
     /// The race's other keys before the pass is drawn (0x416D13): TAB turns the status bar
@@ -1295,6 +1314,7 @@ impl Race {
         self.stage = Stage::Help {
             help: Box::new(help),
             order,
+            first: self.first_pass(),
         };
     }
 
@@ -1390,8 +1410,13 @@ impl Race {
         }
         sound.set_mask(HELP_MASK);
         let lines = self.paused_lines.clone();
+        let first = self.first_pass();
         let (pause, asked) = self.open_box(&lines, keys, rand);
-        self.stage = Stage::Paused { pause, order };
+        self.stage = Stage::Paused {
+            pause,
+            order,
+            first,
+        };
         Self::pause_sounds(sound, &asked);
     }
 

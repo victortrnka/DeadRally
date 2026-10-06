@@ -266,7 +266,12 @@ impl Menu {
         match race {
             Ok(mut race) => {
                 let volumes = (self.config.music_volume(), self.config.effects_volume());
-                race.begin(&mut self.sound, volumes, &mut self.campaign.rand);
+                race.begin(
+                    &mut self.sound,
+                    volumes,
+                    &mut self.keys,
+                    &mut self.campaign.rand,
+                );
                 self.race = Some(race);
                 State::Race { ticks: 0 }
             }

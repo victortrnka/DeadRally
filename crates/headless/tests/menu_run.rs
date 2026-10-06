@@ -2720,6 +2720,323 @@ const ABORT_EARLY_SHOTS: [(u64, &str); 74] = [
     (3491, "e84"),
 ];
 
+/// The keys held in `scripts/reference/pause-early.scenario`'s run: P held through the race's
+/// load, so the loop's first pass pauses the game before the intro, then Enter; in the race F2
+/// twice, F3 twice, then P and Enter (the race's frames from the original's memory).
+const PAUSE_EARLY_HELD: [Held; 8] = [
+    (2990, Key::P, 40),
+    (3213, Key::Enter, 7),
+    (3820, Key::F2, 7),
+    (4034, Key::F2, 7),
+    (4248, Key::F3, 7),
+    (4463, Key::F3, 7),
+    (4676, Key::P, 7),
+    (4962, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the preview's fade,
+/// the box flying in and apart over the black palette, the intro, the race, the game paused.
+const PAUSE_EARLY_SHOTS: [(u64, &str); 131] = [
+    (2974, "e11"),
+    (2981, "e12"),
+    (2988, "e13"),
+    (2996, "e14"),
+    (3003, "e15"),
+    (3009, "e16"),
+    (3016, "e17"),
+    (3023, "e18"),
+    (3030, "e19"),
+    (3037, "e20"),
+    (3044, "e21"),
+    (3051, "e22"),
+    (3058, "e23"),
+    (3065, "e24"),
+    (3072, "e25"),
+    (3079, "e26"),
+    (3086, "e27"),
+    (3093, "e28"),
+    (3100, "e29"),
+    (3107, "e30"),
+    (3114, "e31"),
+    (3121, "e32"),
+    (3128, "e33"),
+    (3135, "e34"),
+    (3142, "e35"),
+    (3150, "e36"),
+    (3157, "e37"),
+    (3164, "e38"),
+    (3171, "e39"),
+    (3178, "e40"),
+    (3185, "e41"),
+    (3192, "e42"),
+    (3199, "e43"),
+    (3206, "e44"),
+    (3213, "e45"),
+    (3220, "e46"),
+    (3227, "e47"),
+    (3234, "e48"),
+    (3241, "e49"),
+    (3248, "e50"),
+    (3255, "e51"),
+    (3262, "e52"),
+    (3269, "e53"),
+    (3276, "e54"),
+    (3283, "e55"),
+    (3290, "e56"),
+    (3297, "e57"),
+    (3305, "e58"),
+    (3312, "e59"),
+    (3319, "e60"),
+    (3326, "e61"),
+    (3333, "e62"),
+    (3340, "e63"),
+    (3347, "e64"),
+    (3354, "e65"),
+    (3362, "e66"),
+    (3369, "e67"),
+    (3376, "e68"),
+    (3383, "e69"),
+    (3390, "e70"),
+    (3398, "e71"),
+    (3405, "e72"),
+    (3412, "e73"),
+    (3419, "e74"),
+    (3426, "e75"),
+    (3433, "e76"),
+    (3440, "e77"),
+    (3447, "e78"),
+    (3454, "e79"),
+    (3462, "e80"),
+    (3469, "e81"),
+    (3476, "e82"),
+    (3483, "e83"),
+    (3490, "e84"),
+    (3497, "e85"),
+    (3504, "e86"),
+    (3512, "e87"),
+    (3519, "e88"),
+    (3526, "e89"),
+    (3533, "e90"),
+    (3540, "e91"),
+    (3547, "e92"),
+    (3554, "e93"),
+    (3561, "e94"),
+    (3569, "e95"),
+    (3604, "s00"),
+    (3640, "s01"),
+    (3676, "s02"),
+    (3712, "s03"),
+    (3747, "s04"),
+    (3783, "s05"),
+    (3819, "s06"),
+    (3855, "s07"),
+    (3890, "s08"),
+    (3926, "s09"),
+    (3962, "s10"),
+    (3998, "s11"),
+    (4033, "s12"),
+    (4069, "s13"),
+    (4105, "s14"),
+    (4140, "s15"),
+    (4176, "s16"),
+    (4212, "s17"),
+    (4248, "s18"),
+    (4283, "s19"),
+    (4319, "s20"),
+    (4355, "s21"),
+    (4390, "s22"),
+    (4426, "s23"),
+    (4462, "s24"),
+    (4497, "s25"),
+    (4533, "s26"),
+    (4569, "s27"),
+    (4605, "s28"),
+    (4641, "s29"),
+    (4676, "s30"),
+    (4712, "s31"),
+    (4747, "s32"),
+    (4783, "s33"),
+    (4819, "s34"),
+    (4854, "s35"),
+    (4890, "s36"),
+    (4926, "s37"),
+    (4961, "s38"),
+    (4997, "s39"),
+    (5033, "s40"),
+    (5068, "s41"),
+    (5104, "s42"),
+    (5140, "s43"),
+    (5175, "s44"),
+    (5211, "s45"),
+];
+
+/// The keys held in `scripts/reference/help-early.scenario`'s run: F1 held through the race's
+/// load, so the loop's first pass opens the help before the intro, then Enter on each page.
+const HELP_EARLY_HELD: [Held; 3] = [
+    (2990, Key::F1, 40),
+    (3321, Key::Enter, 7),
+    (3607, Key::Enter, 7),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the race's load, the
+/// help's pages fading in and out over the black palette, the intro and the countdown.
+const HELP_EARLY_SHOTS: [(u64, &str); 154] = [
+    (3010, "e16"),
+    (3017, "e17"),
+    (3024, "e18"),
+    (3031, "e19"),
+    (3038, "e20"),
+    (3046, "e21"),
+    (3053, "e22"),
+    (3060, "e23"),
+    (3067, "e24"),
+    (3074, "e25"),
+    (3080, "e26"),
+    (3087, "e27"),
+    (3096, "e28"),
+    (3102, "e29"),
+    (3109, "e30"),
+    (3116, "e31"),
+    (3123, "e32"),
+    (3130, "e33"),
+    (3138, "e34"),
+    (3145, "e35"),
+    (3152, "e36"),
+    (3159, "e37"),
+    (3167, "e38"),
+    (3174, "e39"),
+    (3181, "e40"),
+    (3188, "e41"),
+    (3195, "e42"),
+    (3202, "e43"),
+    (3209, "e44"),
+    (3216, "e45"),
+    (3223, "e46"),
+    (3231, "e47"),
+    (3238, "e48"),
+    (3245, "e49"),
+    (3252, "e50"),
+    (3259, "e51"),
+    (3266, "e52"),
+    (3273, "e53"),
+    (3280, "e54"),
+    (3288, "e55"),
+    (3295, "e56"),
+    (3302, "e57"),
+    (3309, "e58"),
+    (3316, "e59"),
+    (3323, "e60"),
+    (3330, "e61"),
+    (3336, "e62"),
+    (3343, "e63"),
+    (3350, "e64"),
+    (3357, "e65"),
+    (3364, "e66"),
+    (3371, "e67"),
+    (3378, "e68"),
+    (3385, "e69"),
+    (3393, "e70"),
+    (3400, "e71"),
+    (3407, "e72"),
+    (3414, "e73"),
+    (3421, "e74"),
+    (3428, "e75"),
+    (3436, "e76"),
+    (3443, "e77"),
+    (3451, "e78"),
+    (3458, "e79"),
+    (3465, "e80"),
+    (3473, "e81"),
+    (3480, "e82"),
+    (3487, "e83"),
+    (3494, "e84"),
+    (3501, "e85"),
+    (3508, "e86"),
+    (3515, "e87"),
+    (3522, "e88"),
+    (3530, "e89"),
+    (3537, "e90"),
+    (3544, "e91"),
+    (3551, "e92"),
+    (3558, "e93"),
+    (3565, "e94"),
+    (3572, "e95"),
+    (3579, "e96"),
+    (3586, "e97"),
+    (3594, "e98"),
+    (3601, "e99"),
+    (3608, "e100"),
+    (3616, "e101"),
+    (3621, "e102"),
+    (3628, "e103"),
+    (3635, "e104"),
+    (3643, "e105"),
+    (3650, "e106"),
+    (3657, "e107"),
+    (3664, "e108"),
+    (3672, "e109"),
+    (3679, "e110"),
+    (3686, "e111"),
+    (3693, "e112"),
+    (3700, "e113"),
+    (3707, "e114"),
+    (3715, "e115"),
+    (3722, "e116"),
+    (3729, "e117"),
+    (3735, "e118"),
+    (3743, "e119"),
+    (3750, "e120"),
+    (3757, "e121"),
+    (3764, "e122"),
+    (3771, "e123"),
+    (3778, "e124"),
+    (3786, "e125"),
+    (3793, "e126"),
+    (3800, "e127"),
+    (3807, "e128"),
+    (3814, "e129"),
+    (3821, "e130"),
+    (3828, "e131"),
+    (3835, "e132"),
+    (3842, "e133"),
+    (3850, "e134"),
+    (3857, "e135"),
+    (3864, "e136"),
+    (3871, "e137"),
+    (3878, "e138"),
+    (3886, "e139"),
+    (3893, "e140"),
+    (3900, "e141"),
+    (3907, "e142"),
+    (3914, "e143"),
+    (3921, "e144"),
+    (3928, "e145"),
+    (3936, "e146"),
+    (3943, "e147"),
+    (3950, "e148"),
+    (3957, "e149"),
+    (3964, "e150"),
+    (3971, "e151"),
+    (3979, "e152"),
+    (3986, "e153"),
+    (3993, "e154"),
+    (4000, "e155"),
+    (4007, "e156"),
+    (4014, "e157"),
+    (4021, "e158"),
+    (4029, "e159"),
+    (4036, "e160"),
+    (4043, "e161"),
+    (4050, "e162"),
+    (4057, "e163"),
+    (4064, "e164"),
+    (4071, "e165"),
+    (4079, "e166"),
+    (4086, "e167"),
+    (4093, "e168"),
+    (4100, "e169"),
+];
+
 /// The keys of `scripts/reference/reversed.scenario` in the run of `docs/verification/m4b.md`:
 /// the preview run with the medium race chosen (Right at the sign-up), circuit 17.
 const REVERSED_KEYS: [(u64, Key); 11] = [
@@ -3716,6 +4033,89 @@ fn the_abort_early_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("abort-early-run.sha256", &lines, "the abort-early run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pause_early_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, every frame
+    // of the race's state equalled the original's memory and the recording measured as ours
+    // (docs/verification/m5.md): P held as the race loads must pause the game before the
+    // intro, with the music's calmer order at half volume; F2, F3 and P in the race silence
+    // the music, the effects and the race as the original does.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PAUSE_EARLY_HELD),
+        &PAUSE_EARLY_SHOTS,
+        5_300,
+        slots,
+    );
+    check_manifest("pause-early-run.sha256", &lines, "the pause-early run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_help_early_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run from the race's load on equalled our frame at
+    // its tick (docs/verification/m5.md): F1 held as the race loads must open the help before
+    // the intro, its pages fading in and out over the black palette.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &HELP_EARLY_HELD),
+        &HELP_EARLY_SHOTS,
+        4_300,
+        slots,
+    );
+    check_manifest("help-early-run.sha256", &lines, "the help-early run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn p_held_while_the_race_loads_pauses_the_game_before_the_intro() {
+    // The race loop's first pass checks the race's keys before its drawing as every pass
+    // does (0x416D13): P held through the race's load opens the "game paused" box before the
+    // intro, over the palette still black. A player pressing P as the race comes must find
+    // the game paused, not the race started without them.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::with_seed(assets, config, SEED);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    let held: [Held; 2] = [(2990, Key::P, 40), (3400, Key::Enter, 7)];
+    let mut black_until = None;
+    for done in 0..3_600 {
+        for &(_, key) in RACE_START_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in &held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        let lit = game.frame().palette.iter().any(|&colour| colour != [0; 3]);
+        if game.race_trace().is_some() && lit && black_until.is_none() {
+            black_until = Some(done);
+        }
+    }
+    let lit = black_until.expect("the race's intro came");
+    assert!(
+        lit > 3400,
+        "the intro waited for the box's Enter (lit at {lit})"
+    );
 }
 
 #[test]
