@@ -44,7 +44,7 @@ pub(crate) struct HudImages {
     boards: Vec<u8>,
     damage: Vec<u8>,
     big_digits: Vec<u8>,
-    small_font: Vec<u8>,
+    pub(super) small_font: Vec<u8>,
     own_place: Vec<u8>,
     other_place: Vec<u8>,
     flag: Vec<u8>,

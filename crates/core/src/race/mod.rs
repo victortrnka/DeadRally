@@ -6,7 +6,9 @@ mod buffer;
 mod cars;
 mod hud;
 mod intro;
+mod pause;
 mod pedestrians;
+mod power_ups;
 mod raster;
 mod scene;
 mod semaphore;
@@ -18,6 +20,8 @@ use deadrally_gamedata::sound;
 use deadrally_gamedata::xm::Bank;
 
 use crate::audio::Sound;
+use crate::campaign::Rand;
+use crate::keys::Keys;
 
 use self::buffer::{Buffer, LEFT, STRIDE};
 
@@ -143,6 +147,9 @@ pub(crate) struct Race {
     /// The track's music and the race's sounds (`GEN-EFE.CMF`).
     music: Module,
     effects: Bank,
+    /// The pause's box (`GEN-MES.BPK`, 0x479688) and its nine lines.
+    pause_box: Vec<u8>,
+    pause_lines: Vec<Vec<u8>>,
 }
 
 /// The sounds' channels and pitches (16.16) in the race's calls of `loadMenuSoundEffect`.
@@ -197,22 +204,49 @@ impl Clock {
 /// first frame.
 #[derive(Debug)]
 enum Stage {
-    Loop { first: bool },
+    Loop {
+        first: bool,
+    },
     Intro(Box<intro::Intro>),
+    /// The pause; whether it came before the intro.
+    Pause {
+        pause: Box<pause::Pause>,
+        first: bool,
+    },
 }
+
+/// What a tick of the race came to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Outcome {
+    Racing,
+    /// The player answered Y to the pause's question.
+    Aborted,
+}
+
+/// Escape's scancode, which pauses the race.
+const ESCAPE: u8 = 0x01;
+/// The channels the pause silences first (1 to 13), and the one its own sounds play on.
+const CHANNELS: usize = 13;
+const PAUSE_CHANNEL: usize = 5;
+const PAUSE_PITCH: u32 = 0x2_8000;
 
 impl Race {
     /// The race on circuit `circuit` (`TRn` with n = circuit % 9 + 1) over `laps` laps, the
-    /// drivers in their places, the player in place `player`.
+    /// drivers in their places, the player in place `player`; `pause_lines` the pause box's.
     pub(crate) fn new(
         archives: &RaceArchives,
         (circuit, laps): (usize, i32),
         drivers: Vec<Driver>,
-        player: usize,
-        weapons: bool,
+        (player, weapons): (usize, bool),
+        pause_lines: Vec<Vec<u8>>,
+        rand: &mut Rand,
     ) -> Result<Race, RaceError> {
         let number = circuit % 9 + 1;
-        let track = Track::load(&archives.tracks[number], number)?;
+        let mut track = Track::load(&archives.tracks[number], number)?;
+        let obstacles = hud::decoded(&archives.engine, "OBSTACLE.BPK")?;
+        let spots = track.info.power_ups;
+        // The power-ups' values matter once the race picks them up (M4c).
+        power_ups::place(&mut track.image, &spots, &obstacles, rand);
         let scene = scene::Setup::new(&track.scene);
         let cars = drivers
             .iter()
@@ -282,6 +316,8 @@ impl Race {
             },
             music,
             effects,
+            pause_box: hud::decoded(&archives.engine, "GEN-MES.BPK")?,
+            pause_lines,
         })
     }
 
@@ -312,25 +348,20 @@ impl Race {
 
     /// From this wait to the next: the frame drawn onto the screen and, on the first, the
     /// intro; or the intro's next step, and once it is over the loop's next frame.
-    pub(crate) fn tick(&mut self, sound: &mut Sound) {
+    pub(crate) fn tick(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) -> Outcome {
         self.clock.tick();
         match &mut self.stage {
             Stage::Loop { first } => {
                 let first = *first;
                 self.show_buffer();
+                // 0x417517: Escape pauses the race.
+                if keys.held(ESCAPE) {
+                    self.pause(sound, keys, rand, first);
+                    return Outcome::Racing;
+                }
                 if first {
-                    let mut view = Vec::with_capacity(VIEW_HEIGHT * TRACK_VIEW_WIDTH as usize);
-                    let mut hud = Vec::with_capacity(VIEW_HEIGHT * HUD_WIDTH as usize);
-                    for y in 0..VIEW_HEIGHT {
-                        let columns = HUD_WIDTH as usize..VIEW_WIDTH;
-                        view.extend(columns.map(|x| self.buffer.pixel(x, y)));
-                        hud.extend((0..HUD_WIDTH as usize).map(|x| self.buffer.pixel(x, y)));
-                    }
-                    let intro = intro::Intro::new(&self.palette, self.player, &view, &hud);
-                    sound.set_mask(intro.volume() >> 8);
-                    self.show_intro(&intro);
-                    self.stage = Stage::Intro(Box::new(intro));
-                    return;
+                    self.start_intro(sound);
+                    return Outcome::Racing;
                 }
             }
             Stage::Intro(intro) => {
@@ -339,13 +370,101 @@ impl Race {
                 self.screen.copy_from_slice(intro.screen());
                 self.shown = intro.palette().clone();
                 if going {
-                    return;
+                    return Outcome::Racing;
                 }
                 self.clock.restart();
+            }
+            Stage::Pause { pause, first } => {
+                let first = *first;
+                let mut asked = Vec::new();
+                let step = pause.wait(|code| keys.held(code), rand, &mut asked);
+                self.screen.copy_from_slice(pause.screen());
+                Self::pause_sounds(sound, &asked);
+                let answer = match step {
+                    pause::Step::Waiting => return Outcome::Racing,
+                    pause::Step::Leaving => {
+                        keys.release_all();
+                        return Outcome::Racing;
+                    }
+                    pause::Step::Over(answer) => answer,
+                };
+                self.clock.restart();
+                if answer == pause::Answer::Abort {
+                    return Outcome::Aborted;
+                }
+                // 0x41771D: the engine again; the help F1 asks for comes with the race's keys.
+                let car = self.drivers[self.player].car as u8;
+                sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
+                if first {
+                    // The pause came before the intro, which now runs on the same frame.
+                    self.start_intro(sound);
+                    return Outcome::Racing;
+                }
             }
         }
         self.stage = Stage::Loop { first: false };
         self.frame(sound);
+        Outcome::Racing
+    }
+
+    /// The intro (0x41787C), over the loop's first frame, up to its first wait.
+    fn start_intro(&mut self, sound: &mut Sound) {
+        let mut view = Vec::with_capacity(VIEW_HEIGHT * TRACK_VIEW_WIDTH as usize);
+        let mut hud = Vec::with_capacity(VIEW_HEIGHT * HUD_WIDTH as usize);
+        for y in 0..VIEW_HEIGHT {
+            let columns = HUD_WIDTH as usize..VIEW_WIDTH;
+            view.extend(columns.map(|x| self.buffer.pixel(x, y)));
+            hud.extend((0..HUD_WIDTH as usize).map(|x| self.buffer.pixel(x, y)));
+        }
+        let intro = intro::Intro::new(&self.palette, self.player, &view, &hud);
+        sound.set_mask(intro.volume() >> 8);
+        self.show_intro(&intro);
+        self.stage = Stage::Intro(Box::new(intro));
+    }
+
+    /// The pause (0x417544): every channel silenced, the box with its lines, up to its first
+    /// wait.
+    fn pause(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand, first: bool) {
+        for channel in 1..=CHANNELS {
+            sound.stop_channel(channel);
+        }
+        let mut picture = self.pause_box.clone();
+        picture.resize(204 * 76, 0);
+        for (line, text) in self.pause_lines.iter().enumerate() {
+            for (column, &c) in text.iter().enumerate() {
+                let start = 36 * usize::from(c.saturating_sub(32));
+                let glyph = self.hud.small_font.get(start..start + 36).unwrap_or(&[]);
+                let at = 6 * (272 * line + column + 205);
+                for (row, pixels) in glyph.chunks(6).enumerate() {
+                    for (x, &pixel) in pixels.iter().enumerate() {
+                        if pixel != 0
+                            && let Some(slot) = picture.get_mut(at + row * 204 + x)
+                        {
+                            *slot = pixel;
+                        }
+                    }
+                }
+            }
+        }
+        keys.release_all();
+        let (pause, asked) = pause::Pause::new(&self.screen, picture, rand);
+        Self::pause_sounds(sound, &asked);
+        self.screen.copy_from_slice(pause.screen());
+        self.stage = Stage::Pause {
+            pause: Box::new(pause),
+            first,
+        };
+    }
+
+    fn pause_sounds(sound: &mut Sound, asked: &[pause::Sound]) {
+        for &ask in asked {
+            match ask {
+                pause::Sound::Play(effect) => {
+                    sound.trigger_at(PAUSE_CHANNEL, effect, FULL, PAUSE_PITCH);
+                }
+                pause::Sound::Stop => sound.stop_channel(PAUSE_CHANNEL),
+            }
+        }
     }
 
     /// The palette as shown.

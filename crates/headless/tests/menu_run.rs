@@ -742,6 +742,83 @@ const RACE_START_SHOTS: [(u64, &str); 55] = [
     (3248, "r55"),
 ];
 
+/// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
+/// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
+/// read the keys held.
+const PAUSE_HELD: [Held; 2] = [(3395, Key::Escape, 7), (3610, Key::N, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the box flying in,
+/// landed, flying apart, and the race going on.
+const PAUSE_SHOTS: [(u64, &str); 50] = [
+    (3403, "e01"),
+    (3409, "e02"),
+    (3416, "e03"),
+    (3423, "e04"),
+    (3430, "e05"),
+    (3437, "e06"),
+    (3444, "e07"),
+    (3451, "e08"),
+    (3458, "e09"),
+    (3466, "e10"),
+    (3473, "e11"),
+    (3480, "e12"),
+    (3487, "e13"),
+    (3494, "e14"),
+    (3501, "e15"),
+    (3509, "e16"),
+    (3516, "e17"),
+    (3523, "e18"),
+    (3530, "e19"),
+    (3537, "e20"),
+    (3544, "e21"),
+    (3551, "e22"),
+    (3558, "e23"),
+    (3565, "e24"),
+    (3572, "e25"),
+    (3617, "n01"),
+    (3623, "n02"),
+    (3630, "n03"),
+    (3637, "n04"),
+    (3644, "n05"),
+    (3651, "n06"),
+    (3658, "n07"),
+    (3666, "n08"),
+    (3673, "n09"),
+    (3680, "n10"),
+    (3687, "n11"),
+    (3694, "n12"),
+    (3702, "n13"),
+    (3709, "n14"),
+    (3716, "n15"),
+    (3723, "n16"),
+    (3730, "n17"),
+    (3737, "n18"),
+    (3744, "n19"),
+    (3751, "n20"),
+    (3758, "n21"),
+    (3765, "n22"),
+    (3772, "n23"),
+    (3779, "n24"),
+    (3786, "n25"),
+];
+
+/// The keys held in `scripts/reference/abort.scenario`'s run: Escape, then Y.
+const ABORT_HELD: [Held; 2] = [(3397, Key::Escape, 7), (3576, Key::Y, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the box landed, and
+/// flying apart before the race ends.
+const ABORT_SHOTS: [(u64, &str); 9] = [
+    (3555, "box"),
+    (3584, "a01"),
+    (3589, "a02"),
+    (3597, "a03"),
+    (3604, "a04"),
+    (3611, "a05"),
+    (3618, "a06"),
+    (3625, "a07"),
+    (3632, "a08"),
+];
+
 /// The keys of `scripts/reference/sabotage.scenario` in the run of `docs/verification/m3c.md`
 /// (its sabotage's clock fixed at 31375): the test game, the sabotage bought in the Underground
 /// Market, the sign-up and the sabotage's popup.
@@ -1064,6 +1141,43 @@ fn the_race_start_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("race-start-run.sha256", &lines, "the race-start run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pause_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the box's tiles from their random starts, the box landed,
+    // N, the tiles thrown apart and falling, the race going on.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PAUSE_HELD),
+        &PAUSE_SHOTS,
+        3_800,
+        slots,
+    );
+    check_manifest("pause-run.sha256", &lines, "the pause run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_abort_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4b.md): the box landed, Y, the tiles flying apart.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &ABORT_HELD),
+        &ABORT_SHOTS,
+        3_640,
+        slots,
+    );
+    check_manifest("abort-run.sha256", &lines, "the abort run");
 }
 
 #[test]

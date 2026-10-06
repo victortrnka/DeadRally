@@ -193,7 +193,16 @@ impl Menu {
             .collect();
         let laps = LAPS[race];
         let weapons = self.campaign.use_weapons;
-        match crate::race::Race::new(&self.assets.race, (circuit, laps), drivers, player, weapons) {
+        let lines = self.assets.menu.texts.campaign.abort_race.clone();
+        let race = crate::race::Race::new(
+            &self.assets.race,
+            (circuit, laps),
+            drivers,
+            (player, weapons),
+            lines,
+            &mut self.campaign.rand,
+        );
+        match race {
             Ok(mut race) => {
                 let volumes = (self.config.music_volume(), self.config.effects_volume());
                 race.begin(&mut self.sound, volumes);
@@ -209,11 +218,12 @@ impl Menu {
         let Some(race) = self.race.as_mut() else {
             return self.race_stand_in();
         };
-        race.tick(&mut self.sound);
+        let outcome = race.tick(&mut self.sound, &mut self.keys, &mut self.campaign.rand);
         race.present(self.shown.pixels_mut());
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
-        if self.keys.take() == crate::keys::ESCAPE {
+        if outcome == crate::race::Outcome::Aborted {
+            // The race's end (the zoom out, the results) comes with M4c and M5.
             self.race = None;
             return self.race_stand_in();
         }

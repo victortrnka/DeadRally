@@ -211,6 +211,11 @@ impl Keys {
         self.set_held(code, false);
     }
 
+    /// Forgets every key held (`memset(keysRead, 0)`), until each goes down again.
+    pub(crate) fn release_all(&mut self) {
+        self.held = [0; 4];
+    }
+
     /// Whether the key with scancode `code` is held down.
     pub(crate) fn held(&self, code: u8) -> bool {
         self.held[usize::from(code / 64)] & (1 << (code % 64)) != 0

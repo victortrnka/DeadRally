@@ -176,6 +176,7 @@ fn texts() -> Texts {
             hitman_offer: vec![b"h".to_vec(); 11],
             laps: b"L".to_vec(),
             prize: b"P".to_vec(),
+            abort_race: vec![b"A".to_vec(); 9],
         },
         shop: shop_texts(),
     }
