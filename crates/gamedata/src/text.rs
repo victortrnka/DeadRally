@@ -248,6 +248,7 @@ const LABEL_SEPARATOR: u32 = 0x44_35F8;
 const HEADLINES: u32 = 0x45_5150;
 const HEADLINE_COUNT: u32 = 19;
 const PRESS_ENTER: u32 = 0x44_24D4;
+const GAME_PAUSED: u32 = 0x44_24F8;
 const BOX_LINE: usize = 32;
 const PRIZE: u32 = 0x44_4078;
 
@@ -420,6 +421,9 @@ pub struct CampaignTexts {
     /// The box at the race's end (0x4172EF): its nine lines, blank but for the fourth, the
     /// race over, and the ninth, how to go on.
     pub race_over: Vec<Vec<u8>>,
+    /// The box when P pauses the race (0x416FC3): blank but for the fourth line, the game
+    /// paused, and the ninth, how to go on.
+    pub game_paused: Vec<Vec<u8>>,
     /// The results: each race's title, the points of its first three places, the waits'
     /// lines and the statistics' title.
     pub results_titles: Vec<Vec<u8>>,
@@ -716,6 +720,12 @@ impl Texts {
                     })
                     .collect::<Result<_, _>>()?,
                 race_over: [BOX_BLANK, BOX_BLANK, BOX_BLANK, RACE_OVER]
+                    .into_iter()
+                    .chain([BOX_BLANK; 4])
+                    .chain([PRESS_ENTER])
+                    .map(|address| text(address, BOX_LINE))
+                    .collect::<Result<_, _>>()?,
+                game_paused: [BOX_BLANK, BOX_BLANK, BOX_BLANK, GAME_PAUSED]
                     .into_iter()
                     .chain([BOX_BLANK; 4])
                     .chain([PRESS_ENTER])

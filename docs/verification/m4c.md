@@ -55,10 +55,10 @@ The checks of the M4 spec (section 4) for its third part, the player driving, ru
 ## Left for later
 
 - **A lap against the original:** done in [M5](m5.md), by the opponents' driving: their laps and places equal the original's memory frame by frame in the opponents' run.
-- **The HUD's last lap time in races without weapons** (`drawLeftRaceBar_414220` from 0x414B82: the lap's time for 210 ticks after each lap), with the laps.
+- **The HUD's last lap time in races without weapons** (`drawLeftRaceBar_414220` from 0x414B82: the lap's time for 210 ticks after each lap): done in [M5](m5.md), with a whole lap of the player's car driven in the original.
 - **The race's results** after the view has tilted away, and what they read: the places, the money picked up, the bonus power-up's flag (0x4A7AAC); lap records kept for the session.
-- **The effect power-up's view** (kind 4): the player's view drawn wavering by `sub_404730` while its 560 ticks run down by the ticks between frames; DeadRally counts nothing yet, so the power-up only plays its call. With the power-ups' other effects in M5.
-- **The race's other keys** the help lists: TAB (the status bar), F2 and F3 (music and effects on and off), F4 and F5 (textures and shadows), P (the "game paused" box over the calmer music).
+- **The effect power-up's view** (kind 4): the player's view drawn wavering by `sub_404730` while its 560 ticks run down by the ticks between frames: done in [M5](m5.md).
+- **The race's other keys** the help lists: TAB (the status bar), F2 and F3 (music and effects on and off), F4 and F5 (textures and shadows), P (the "game paused" box over the calmer music): done in [M5](m5.md), the pictures checked against the original; the sound of F2, F3 and P not recorded.
 - **The gamepad's part of the keys' sampling** (`sub_4138A0`): done in [M5](m5.md), from the binary; no run of the original, whose runner has no gamepad.
 - **Two things the original keeps from race to race:** done in [M5](m5.md). The rocket flames' phase (0x456AFC) is kept, now in DeadRally too, checked in the original's memory over two races; the mines' slots' times are not kept (`initRaceValues` sets them for each race), as DeadRally already did.
 - **The tilt's other branch:** done in [M5](m5.md). It is the end with the status bar hidden (TAB), not a race abandoned in a pause before the intro; such a race runs the intro and then tilts away as usual, which DeadRally now does too.

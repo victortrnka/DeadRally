@@ -5,7 +5,7 @@
 use crate::campaign::Rand;
 
 /// The box: 204x76 (`GEN-MES.BPK`), lines of text 8 rows apart from row 6 and column 6, and
-/// where it lands on the screen.
+/// where it lands on the screen beside no HUD (0x406175).
 const BOX_WIDTH: usize = 204;
 const BOX_HEIGHT: usize = 76;
 const BOX_LEFT: i32 = 57;
@@ -111,6 +111,8 @@ pub(crate) struct Pause {
     /// Landed this frame (0x479270), frames since the last (0x5034F0).
     landed: i32,
     steps: i32,
+    /// Where the box lands across: half the HUD's width right of its place beside no HUD.
+    left: i32,
     /// Y pressed (0x464F68 from -1 to 1), F1 pressed.
     abort: bool,
     help: bool,
@@ -119,8 +121,14 @@ pub(crate) struct Pause {
 
 impl Pause {
     /// The pause over `frame` (the race's 320x200), the box `picture` (204x76, its text
-    /// drawn), up to its first wait: 100 `rand()` calls for the tiles' starts.
-    pub(crate) fn new(frame: &[u8], picture: Vec<u8>, rand: &mut Rand) -> (Pause, Vec<Sound>) {
+    /// drawn), beside a HUD `left` pixels wide (0x456AA0), up to its first wait: 100 `rand()`
+    /// calls for the tiles' starts.
+    pub(crate) fn new(
+        frame: &[u8],
+        picture: Vec<u8>,
+        left: i32,
+        rand: &mut Rand,
+    ) -> (Pause, Vec<Sound>) {
         let tile = Tile {
             x: 0,
             y: 0,
@@ -143,6 +151,7 @@ impl Pause {
             started: 0,
             landed: 0,
             steps: 0,
+            left: BOX_LEFT + (left >> 1),
             abort: false,
             help: false,
             phase: Phase::In {
@@ -276,7 +285,7 @@ impl Pause {
         }
         let x = self.starts[self.next_start] << 16;
         let y = START_ROW << 16;
-        let to_x = (BOX_LEFT + 32 + self.column) << 16;
+        let to_x = (self.left + self.column) << 16;
         let to_y = (self.row + BOX_TOP) << 16;
         self.tiles[index] = Tile {
             x,
@@ -387,10 +396,15 @@ mod tests {
     use super::*;
 
     fn paused(rand: &mut Rand) -> Pause {
+        paused_at(rand, 64)
+    }
+
+    /// The pause with the HUD `left` pixels wide.
+    fn paused_at(rand: &mut Rand, left: i32) -> Pause {
         let picture = (0..BOX_WIDTH * BOX_HEIGHT)
             .map(|i| (i % 7) as u8 + 1)
             .collect();
-        Pause::new(&vec![0; PIXELS], picture, rand).0
+        Pause::new(&vec![0; PIXELS], picture, left, rand).0
     }
 
     /// Runs the pause with `key` held from pass `at` on; the passes it took and its answer.
@@ -443,6 +457,22 @@ mod tests {
         // Landed, the box shows where it belongs: its top left tile at (89, 64).
         assert_eq!(
             &pause.shown[64 * WIDTH + 89..64 * WIDTH + 93],
+            &[1, 2, 3, 4]
+        );
+    }
+
+    /// The box lands in the middle of the track's view: with the status bar slid away (no
+    /// HUD) 32 pixels further left than beside the HUD.
+    #[test]
+    fn the_box_lands_in_the_middle_of_the_view() {
+        let mut rand = Rand::new(1);
+        let mut pause = paused_at(&mut rand, 0);
+        let mut sounds = Vec::new();
+        for _ in 0..121 {
+            pause.wait(|_| false, &mut rand, &mut sounds);
+        }
+        assert_eq!(
+            &pause.shown[64 * WIDTH + 57..64 * WIDTH + 61],
             &[1, 2, 3, 4]
         );
     }

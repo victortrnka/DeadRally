@@ -6,11 +6,19 @@ bytes each), as hex, and the rocket flames' picture (0x456AFC). Reading another 
 memory needs it to be a descendant
 (kernel.yama.ptrace_scope 1), so this script starts the game itself.
 
-    scripts/reference-watch.py OUT_FILE -- COMMAND...
+    scripts/reference-watch.py OUT_FILE [--drive PATH:FROM:TO] -- COMMAND...
+
+With --drive the player's car is driven along PATH (a file of "x y" lines on the track) from
+the race's frame FROM until it is past the path's point TO, by holding the arrows with xdotool
+on the game's display as a player would (spec M5): Up, and Left or Right towards a point 40
+pixels further along the path. The keys the original then saw are in the log, so a run of
+DeadRally can be given the same.
 
 Only memory is read; nothing in the game is changed.
 """
+import math
 import os
+import struct
 import subprocess
 import sys
 import time
@@ -21,6 +29,66 @@ CARS = (0x4A7D00, 4 * 0x360)
 HANDLING = (0x4A6880, 4 * 0x94)
 # The rocket flames' picture, which no race sets back.
 FLAME_PHASE = 0x456AFC
+# The player's place on the grid, and where a car keeps its angle, speed and place (floats).
+PLAYER = 0x4A9EA8
+ANGLE, SPEED, X, Y = 0xAC, 0xB0, 0xB4, 0xB8
+
+
+class Driver:
+    """Holds the arrows towards a point `LOOK` pixels along the path ahead of the car, a key
+    changed at most every `HOLD` frames; Up is let go in turns sharper than `SLOW` degrees."""
+
+    LOOK, DEAD, SLOW, HOLD = 40.0, 6.0, 40.0, 2
+
+    def __init__(self, spec):
+        path, first, last = spec.rsplit(":", 2)
+        self.path = [tuple(map(float, line.split())) for line in open(path) if line.strip()]
+        self.first, self.last = int(first), int(last)
+        self.index = 0
+        self.held = {"Up": False, "Left": False, "Right": False}
+        self.changed = {key: -100 for key in self.held}
+        self.done = False
+
+    def press(self, changes):
+        """The keys changed on the focused window, the game's, as the scenario's keys are."""
+        command = ["xdotool"]
+        for key, down in changes:
+            command += ["keydown" if down else "keyup", key]
+        subprocess.Popen(command)
+
+    def step(self, frame, cars):
+        """The keys for the player's car (`cars` its bytes) at the race's `frame`."""
+        if self.done or frame < self.first:
+            return
+        x, y, angle, speed = (struct.unpack_from("<f", cars, at)[0] for at in (X, Y, ANGLE, SPEED))
+        ahead = range(self.index, min(self.index + 60, len(self.path)))
+        self.index = min(ahead, key=lambda i: math.hypot(self.path[i][0] - x, self.path[i][1] - y))
+        want = {key: False for key in self.held}
+        if self.index < self.last:
+            target = self.index
+            while target + 1 < len(self.path) and math.hypot(
+                self.path[target][0] - x, self.path[target][1] - y
+            ) < self.LOOK:
+                target += 1
+            dx, dy = self.path[target][0] - x, self.path[target][1] - y
+            r = math.radians(angle)
+            hx, hy = -math.sin(r), -math.cos(r)
+            error = math.degrees(math.atan2(hx * dy - hy * dx, hx * dx + hy * dy))
+            want["Up"] = abs(error) <= self.SLOW
+            want["Left"] = error < -self.DEAD
+            want["Right"] = error > self.DEAD
+        else:
+            self.done = True
+        changes = [
+            (key, down)
+            for key, down in want.items()
+            if down != self.held[key] and (self.done or frame - self.changed[key] >= self.HOLD)
+        ]
+        for key, down in changes:
+            self.held[key] = down
+            self.changed[key] = frame
+        if changes:
+            self.press(changes)
 
 
 def descendants(root):
@@ -61,6 +129,8 @@ def game_pid(root):
 
 def main():
     out, command = sys.argv[1], sys.argv[sys.argv.index("--") + 1:]
+    options = sys.argv[2:sys.argv.index("--")]
+    driver = Driver(options[options.index("--drive") + 1]) if "--drive" in options else None
     child = subprocess.Popen(command)
     start = time.monotonic()
     mem = None
@@ -92,6 +162,10 @@ def main():
                     log.write(f"{ms} {frame} {cars.hex()} {handling.hex()} {phase}\n")
                     log.flush()
                     last = frame
+                    if driver is not None:
+                        mem.seek(PLAYER)
+                        player = int.from_bytes(mem.read(4), "little")
+                        driver.step(frame, cars[player * 0x360:(player + 1) * 0x360])
             except OSError:
                 mem = None
             time.sleep(0.0005)

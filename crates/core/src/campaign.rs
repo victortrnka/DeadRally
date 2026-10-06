@@ -306,6 +306,8 @@ pub(crate) struct Campaign {
     /// The rocket flames' picture (0x456AFC), which only a flame's turn sets: the next race's
     /// flames go on from the last race's.
     pub(crate) flame_phase: usize,
+    /// The race's switches and the effect power-up's waves, which no race sets back either.
+    pub(crate) race_session: crate::race::Session,
 }
 
 /// A driver in the race as the preview sets them up (0x432F46): the opponents' weapons are
@@ -357,6 +359,7 @@ impl Campaign {
             clean_race: false,
             all_wrecked: false,
             flame_phase: 0,
+            race_session: crate::race::Session::default(),
         }
     }
 
