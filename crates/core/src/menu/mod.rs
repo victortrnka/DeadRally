@@ -343,8 +343,9 @@ pub(crate) struct Menu {
     ticks: u32,
     /// The palette `drawToBlackScreen` fades from.
     saved_palette: deadrally_gamedata::image::Palette,
-    /// The race under way.
+    /// The race under way, and what the last race left for the next.
     race: Option<crate::race::Race>,
+    race_session: crate::race::Session,
 }
 
 impl Menu {
@@ -420,6 +421,7 @@ impl Menu {
             ticks: 0,
             saved_palette: deadrally_gamedata::image::Palette::BLACK,
             race: None,
+            race_session: crate::race::Session::default(),
         }
     }
 

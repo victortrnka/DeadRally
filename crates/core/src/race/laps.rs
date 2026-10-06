@@ -68,6 +68,25 @@ pub(super) struct Laps {
     pub(super) lapped: bool,
 }
 
+impl Laps {
+    /// The time a race without weapons shows (0x414B82): the last lap's while it is shown
+    /// (0x4A9EB0 above 0), else the lap's clock.
+    pub(super) fn time_shown(&self) -> i32 {
+        if self.shown > 0 {
+            self.last_lap
+        } else {
+            self.lap_clock
+        }
+    }
+
+    /// The last lap's time shown for `between` ticks less (0x414C61), down to 0.
+    pub(super) fn count_down(&mut self, between: i32) {
+        if self.shown > 0 {
+            self.shown = (self.shown - between).max(0);
+        }
+    }
+}
+
 /// The race's calls on channel 2 (pitch 0x50000): the last lap, a lap record, the player
 /// lapped, the tough driver winning.
 pub(super) const LAST_LAP: u8 = 2;
@@ -387,6 +406,32 @@ mod tests {
     #[test]
     fn lap_times_count_seventy_ticks_a_second() {
         assert_eq!(time(70 * 61 + 35), [1, 1, 49]);
+    }
+
+    /// After each of the player's laps a race without weapons shows that lap's time for 210
+    /// ticks of the frames, then the new lap's clock again. A time left up too long, or never
+    /// shown, misleads the player about the lap.
+    #[test]
+    fn a_lap_s_time_shows_for_210_ticks_then_the_clock_again() {
+        let mut cars = vec![car(0)];
+        let mut laps = Laps {
+            lap_clock: 70 * 33,
+            ..Laps::default()
+        };
+        assert_eq!(laps.time_shown(), 70 * 33, "the clock before the first lap");
+        cars[0].zone = 3;
+        put(&mut cars[0], 28.0);
+        check(&mut cars, &zones(), &mut laps, &race(4));
+        laps.lap_clock = 5;
+        assert_eq!(laps.time_shown(), 70 * 33, "the lap's time");
+        for _ in 0..104 {
+            laps.count_down(2);
+        }
+        assert_eq!(laps.time_shown(), 70 * 33, "2 ticks still to go");
+        laps.count_down(3);
+        assert_eq!((laps.shown, laps.time_shown()), (0, 5), "the clock again");
+        laps.count_down(3);
+        assert_eq!(laps.shown, 0);
     }
 
     /// The race ends 300 ticks after the player is done: a tick counts once the player has

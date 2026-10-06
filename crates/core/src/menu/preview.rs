@@ -252,6 +252,7 @@ impl Menu {
             weapons,
             pause_lines: lines,
             race_over_lines: self.assets.menu.texts.campaign.race_over.clone(),
+            paused_lines: self.assets.menu.texts.campaign.game_paused.clone(),
             help: self.assets.menu.texts.help.clone(),
             pads: std::array::from_fn(|control| self.config.pad(control)),
             still: self.campaign.still_opponents,
@@ -262,6 +263,7 @@ impl Menu {
                 .record(circuit, record.car.clamp(0, 5) as usize)
                 .1
                 .map(|part| part as i32),
+            session: self.race_session,
         };
         let race =
             crate::race::Race::new(&self.assets.race, setup, drivers, &mut self.campaign.rand);
@@ -286,6 +288,7 @@ impl Menu {
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
         if outcome != crate::race::Outcome::Racing {
+            self.race_session = race.session();
             // The race's results come with M5.
             self.race = None;
             return self.after_race();
