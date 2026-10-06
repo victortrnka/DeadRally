@@ -888,7 +888,12 @@ fn through_a_new_game(game: &mut Game) {
     run(game, 4);
     step(game, Key::Escape);
     step(game, Key::Space);
-    // The fade to black, then the shop wiped in.
+    // The fade to black and the results fading in; Escape adds the races' points without
+    // their pages, then the statistics; a key, the results fading out and the shop in.
+    run(game, 120);
+    step(game, Key::Escape);
+    run(game, 4);
+    step(game, Key::Space);
     run(game, 120);
     step(game, Key::Escape);
     run(game, 60);

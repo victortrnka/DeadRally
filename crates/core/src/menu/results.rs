@@ -55,6 +55,8 @@ const PRESS_STRIP: (usize, usize, usize, usize) = (354, 452, 270, 16);
 const PRESS_PANEL_ROWS: std::ops::Range<usize> = 369..386;
 const BLINK_B: u32 = 30;
 const BLINK_A: u32 = 60;
+/// The music's volume a step of the fade in raises it by, when it does.
+const FADE_IN_VOLUME_STEP: u32 = 0x51E;
 /// The fade in's 50 steps of 2 % and the way out's 51 waits (100 % down to 0).
 const FADE_IN_STEPS: u32 = 50;
 const OUT_STEPS: u32 = 51;
@@ -84,8 +86,33 @@ fn clock_total([minutes, seconds, hundredths]: [i32; 3]) -> i32 {
 }
 
 impl Menu {
-    /// `postRaceMain(0)`: the standings and the easy race's page drawn under a black palette,
-    /// then faded in.
+    /// The results after signing up for no race (0x4356AB): every race filled with the other
+    /// drivers, four places drawn for the cars (unused, but `rand()` moves on), then
+    /// `postRaceMain(1)`, which leaves the shop's loading out.
+    pub(super) fn results_without_race(&mut self) -> State {
+        let campaign = &mut self.campaign;
+        let drivers = campaign.drivers;
+        campaign
+            .sign_up
+            .as_mut()
+            .expect("a sign-up is on")
+            .fill_at_once(&mut campaign.rand, &drivers);
+        let mut taken = [false; PLACES];
+        for _ in 0..PLACES {
+            loop {
+                let place = (campaign.rand.next() % PLACES as i32) as usize;
+                if !taken[place] {
+                    taken[place] = true;
+                    break;
+                }
+            }
+        }
+        self.results_after_race = false;
+        self.open_results()
+    }
+
+    /// `postRaceMain(0)` after a race, `postRaceMain(1)` after none: the standings and the easy
+    /// race's page drawn under a black palette, then faded in.
     pub(super) fn open_results(&mut self) -> State {
         let mut screen = std::mem::take(&mut self.screen);
         self.draw_results_frame(&mut screen);
@@ -98,6 +125,10 @@ impl Menu {
     /// A step of the fade in, each after a wait: the composed palette at 2 % a step, up to
     /// 98 %.
     pub(super) fn results_fade_in(&mut self, step: u32) -> State {
+        if self.shop.market_escaped {
+            // 0x42B774: the music comes back up with the screen after signing up for no race.
+            self.sound.set_mask((FADE_IN_VOLUME_STEP * step) >> 8);
+        }
         self.palette.fade(2 * i64::from(step));
         if step + 1 < FADE_IN_STEPS {
             return State::ResultsFadeIn { step: step + 1 };
@@ -150,6 +181,13 @@ impl Menu {
         let mut screen = std::mem::take(&mut self.screen);
         self.draw_statistics(&mut screen);
         self.draw_standings(&mut screen);
+        if !self.results_after_race {
+            // 0x42B9C6: no shop to load after no race.
+            self.screen = screen;
+            self.draw_press(0);
+            self.shown = self.screen.clone();
+            return State::ResultsWait { page: 4 };
+        }
         self.clear_press(&mut screen);
         let wait = self.assets.menu.texts.campaign.please_wait.clone();
         self.graphics.small[0].draw(&mut screen, &wait, at(PRESS.0, PRESS.1));
@@ -193,6 +231,10 @@ impl Menu {
             };
         }
         self.keys.take();
+        if !self.results_after_race {
+            // 0x4357B3: the sabotage on sale again unless the player leads.
+            self.campaign.stock[3] = i32::from(!self.campaign.player_leads());
+        }
         if fade {
             return self.shop_again();
         }
@@ -407,11 +449,11 @@ impl Menu {
     /// others by their cars, the best first (`sub_424510` sorts the entries by car, lowest
     /// first, in the sign-up itself, and the page reads them backwards).
     fn race_places(&mut self, race: usize) -> [usize; PLACES] {
-        let player_race = self.campaign.entered_race.unwrap_or(0);
+        let player_race = self.campaign.entered_race;
         let drivers = self.campaign.drivers;
         let sign_up = self.campaign.sign_up.as_mut().expect("a sign-up is on");
         let entrants = &mut sign_up.entrants[race];
-        if race == player_race {
+        if player_race == Some(race) {
             let mut places = *entrants;
             for (car, &driver) in entrants.iter().enumerate() {
                 let place = self.outcome.finishes.get(car).map_or(0, |f| f.place);

@@ -1668,6 +1668,103 @@ const CHEATS_SHOTS: [(u64, &str); 5] = [
     (2740, "drop"),
 ];
 
+/// The keys of `scripts/reference/no-sign-up.scenario`'s run of `docs/verification/m5.md`:
+/// the race start's way into the sign-up, no choice until every race is full, Enter on the
+/// popup saying so, then Enter on each results screen.
+const NO_SIGN_UP_KEYS: [(u64, Key); 13] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (4693, Key::Enter),
+    (4976, Key::Enter),
+    (5190, Key::Enter),
+    (5404, Key::Enter),
+    (5623, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the sign-up filling,
+/// the popup, the fade, the three races' pages (none of them the player's), the statistics,
+/// and the screen kept after the last key (s036, caught as the hard race's page came in, left
+/// out; docs/verification/m5.md).
+const NO_SIGN_UP_SHOTS: [(u64, &str); 71] = [
+    (3879, "w20"),
+    (3882, "w21"),
+    (4158, "w22"),
+    (4161, "w23"),
+    (4298, "w24"),
+    (4372, "w25"),
+    (4375, "w26"),
+    (4379, "s000"),
+    (4371, "s001"),
+    (4585, "s002"),
+    (4602, "s003"),
+    (4586, "s004"),
+    (4604, "s005"),
+    (4656, "s006"),
+    (4672, "s007"),
+    (4653, "s008"),
+    (4710, "s009"),
+    (4727, "s010"),
+    (132, "s011"),
+    (4763, "s012"),
+    (4781, "s013"),
+    (4799, "s014"),
+    (4799, "s015"),
+    (4835, "s016"),
+    (4832, "s017"),
+    (4870, "s018"),
+    (4830, "s019"),
+    (4838, "s020"),
+    (4822, "s021"),
+    (4874, "s022"),
+    (4826, "s023"),
+    (4980, "s024"),
+    (4995, "s025"),
+    (5011, "s026"),
+    (5031, "s027"),
+    (5043, "s028"),
+    (5033, "s029"),
+    (5075, "s030"),
+    (5035, "s031"),
+    (5040, "s032"),
+    (5070, "s033"),
+    (5038, "s034"),
+    (5174, "s035"),
+    (5210, "s037"),
+    (5228, "s038"),
+    (5245, "s039"),
+    (5263, "s040"),
+    (5281, "s041"),
+    (5299, "s042"),
+    (5249, "s043"),
+    (5301, "s044"),
+    (5284, "s045"),
+    (5266, "s046"),
+    (5248, "s047"),
+    (5297, "s048"),
+    (5416, "s049"),
+    (5432, "s050"),
+    (5414, "s051"),
+    (5409, "s052"),
+    (5427, "s053"),
+    (5429, "s054"),
+    (5531, "s055"),
+    (5549, "s056"),
+    (5545, "s057"),
+    (5527, "s058"),
+    (5602, "s059"),
+    (5622, "s060"),
+    (5622, "s061"),
+    (5622, "s062"),
+    (5623, "s063"),
+    (5694, "s064"),
+];
+
 /// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
 /// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
 /// menu, Up to "See current statistics", Enter, and Enter on the statistics.
@@ -3633,6 +3730,25 @@ fn the_cheats_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("cheats-run.sha256", &lines, "the cheats run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_no_sign_up_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
+    // signing up for no race fills every race with the others, draws the cars' places, and
+    // shows the three races' results, every one placed by car, then the statistics.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&NO_SIGN_UP_KEYS, &[]),
+        &NO_SIGN_UP_SHOTS,
+        5_700,
+        slots,
+    );
+    check_manifest("no-sign-up-run.sha256", &lines, "the no sign-up run");
 }
 
 #[test]
