@@ -1043,6 +1043,54 @@ const GUNS_SHOTS: [(u64, &str); 23] = [
     (3753, "g20"),
 ];
 
+/// The keys held in `scripts/reference/mines.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched, the test game with three mines): the mine key, again inside
+/// its wait, Down backing over the mine, the mine key, then the accelerator with the horn.
+const MINES_HELD: [Held; 6] = [
+    (3640, Key::LeftAlt, 7),
+    (3654, Key::LeftAlt, 7),
+    (3697, Key::Down, 50),
+    (3797, Key::LeftAlt, 7),
+    (3812, Key::Up, 64),
+    (3826, Key::Space, 43),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the mine behind the
+/// car, the blast's pictures, the crater, the mines left in the HUD, the horn's drive.
+const MINES_SHOTS: [(u64, &str); 31] = [
+    (3324, "race"),
+    (3610, "m00"),
+    (3647, "m01"),
+    (3661, "m02"),
+    (3682, "m03"),
+    (3703, "m04"),
+    (3710, "m05"),
+    (3718, "m06"),
+    (3725, "m07"),
+    (3732, "m08"),
+    (3739, "m09"),
+    (3746, "m10"),
+    (3753, "m11"),
+    (3760, "m12"),
+    (3767, "m13"),
+    (3775, "m14"),
+    (3782, "m15"),
+    (3804, "h0"),
+    (3811, "h1"),
+    (3818, "h2"),
+    (3826, "h3"),
+    (3832, "h4"),
+    (3839, "h5"),
+    (3846, "h6"),
+    (3853, "h7"),
+    (3860, "h8"),
+    (3869, "h9"),
+    (3876, "h10"),
+    (3882, "h11"),
+    (3889, "h12"),
+    (3896, "h13"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1629,6 +1677,25 @@ fn the_pedestrian_run_matches_the_committed_manifest() {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_mines_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // mine in the wrong place, a wrong blast or a horn that brakes shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(armed_save(&assets.menu.texts, 3));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &MINES_HELD),
+        &MINES_SHOTS,
+        3_900,
+        slots,
+    );
+    check_manifest("mines-run.sha256", &lines, "the mines run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_guns_run_matches_the_committed_manifest() {
     // Written after every screenshot of the run equalled our frame at its tick, and every
     // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
@@ -1736,6 +1803,11 @@ fn the_shop_purchases_run_matches_the_committed_manifest() {
 /// loads the same file): seed 1's drivers as `initDrivers` sets them up, recomputed here, and
 /// a player part-way through a game.
 fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    armed_save(texts, 0)
+}
+
+/// The test game with the player's `mines` (`captures/test.sg` with its mines changed).
+fn armed_save(texts: &deadrally_gamedata::text::Texts, mines: i32) -> Vec<u8> {
     let campaign = &texts.campaign;
     let mut state: u32 = 1;
     let mut rand = || {
@@ -1807,7 +1879,8 @@ fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
     drivers.extend(record(
         b"Tester",
         [
-            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, 0, 0, 0, 0,
+            37, 1, 1, 0, 1, 0, 0, 0, 60, 23456, -1, -1, price, 5, 41, 12, 0, 0, 0, 0, mines, 0, 0,
+            0,
         ],
     ));
     let mut name = [0; 15];

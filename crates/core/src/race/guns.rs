@@ -279,6 +279,7 @@ mod tests {
             weapons_bar: 102_400,
             turbo: 102_400,
             rocket_used: false,
+            mines: 0,
             money: 0,
             weapons: true,
             guns,

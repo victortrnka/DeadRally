@@ -11,6 +11,7 @@ mod hud;
 mod intro;
 mod laps;
 mod marks;
+mod mines;
 mod pause;
 mod pedestrians;
 mod power_ups;
@@ -187,6 +188,8 @@ pub(crate) struct Race {
     sparks: Vec<u8>,
     gun_damage: Vec<f32>,
     gun_hits: guns::Shared,
+    /// The mines dropped (`MINES1A.BPK`) and their blasts (`BLOWI.BPK`).
+    mines: mines::Mines,
 }
 
 /// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
@@ -477,6 +480,10 @@ impl Race {
             sparks: hud::decoded(&archives.engine, "SHOTS.BPK")?,
             gun_damage: archives.handling.gun_damage.clone(),
             gun_hits: guns::Shared::default(),
+            mines: mines::Mines::new(
+                hud::decoded(&archives.engine, "MINES1A.BPK")?,
+                hud::decoded(&archives.engine, "BLOWI.BPK")?,
+            ),
             wrecks: Vec::new(),
             tough,
         })
@@ -520,6 +527,19 @@ impl Race {
         for k in 0..steps {
             at = (at + 15) % 16;
             self.cars[self.player].keys[steps - 1 - k] = self.samples[at];
+        }
+        if self.clock.frame > START_FRAME {
+            for horn in horns(&mut self.cars, steps, self.player) {
+                match horn {
+                    Horn::Start {
+                        channel,
+                        effect,
+                        volume,
+                        pitch,
+                    } => sound.trigger_at(channel, effect, volume, pitch),
+                    Horn::Stop(channel) => sound.stop_channel(channel),
+                }
+            }
         }
         self.power_ups.step(
             &mut self.track.image,
@@ -598,6 +618,28 @@ impl Race {
         }
         let spikes: Vec<bool> = self.drivers.iter().map(|driver| driver.spikes).collect();
         collisions::collide(&mut self.cars, &self.sprites, &spikes);
+        // `sub_40F6A0` for each car: the mines it drops and sets off.
+        let width = self.track.info.width as i32;
+        for slot in 0..self.cars.len() {
+            let keys = self.cars[slot].keys[tick];
+            let mut track = mines::Track {
+                image: &mut self.track.image.pixels,
+                width,
+            };
+            let blasts = self.mines.step(
+                &mut self.cars,
+                slot,
+                keys,
+                self.clock.frame,
+                &self.sprites,
+                &mut track,
+                self.player,
+                rand,
+            );
+            for (channel, effect, volume) in blasts {
+                sound.trigger_at(channel, effect, volume, PICKUP_PITCH);
+            }
+        }
         // `sub_410FA0` for each car: the pedestrians it runs over.
         for slot in 0..self.cars.len() {
             let player = &self.cars[self.player];
@@ -913,7 +955,7 @@ impl Race {
             line += &format!(
                 " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
                  g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
-                 e{:08x} dm{} tb{}",
+                 e{:08x} dm{} tb{} mc{} hn{} mn{}",
                 car.zone,
                 car.direction,
                 car.sprite,
@@ -940,6 +982,9 @@ impl Race {
                 h.engine.to_bits(),
                 h.damage,
                 h.turbo,
+                car.mine_cooldown,
+                i32::from(car.horn),
+                h.mines,
             );
         }
         line
@@ -1045,6 +1090,7 @@ impl Race {
             );
         }
         self.draw_cars();
+        self.mines.draw(&mut self.buffer, view, left, now);
         self.draw_shadows();
         for car in &mut self.cars {
             guns::draw_flash(&mut self.buffer, car, &self.flashes, view, left);
@@ -1113,7 +1159,7 @@ impl Race {
             weapons: self.weapons,
             weapons_bar: player.handling.weapons_bar,
             turbo_bar: player.handling.turbo,
-            mines: self.drivers[self.player].mines,
+            mines: player.handling.mines,
         };
         let boards = self.boards();
         hud::draw(
@@ -1242,9 +1288,10 @@ impl Race {
 const RADIANS: f64 = 0.017_453_292_519_944_444;
 
 /// `sub_4138A0`: the race's keys as the timer samples them each tick, from the eight
-/// controls' scancodes in `dr.cfg` (accelerate, brake, left, right, turbo, gun, and the two
-/// that drop a mine) and the arrows, which always drive; the arrows count for the
-/// controls set to their extended codes. The first mine control's key is let go once seen.
+/// controls' scancodes in `dr.cfg` (accelerate, brake, left, right, turbo, gun, mine and horn)
+/// and the arrows, which always drive; the arrows count for the controls set to their
+/// extended codes. The mine control's key is let go once seen; the horn holds the brake and
+/// the mine bits together.
 fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
     let held = |keys: &Keys, code: u32| u8::try_from(code).is_ok_and(|code| keys.held(code));
     let mut bits = 0;
@@ -1292,6 +1339,67 @@ fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
     bits
 }
 
+/// The horn's keys (the brake and the mine), the channel of car 0's horn (the others' follow
+/// it), and its sound for the first two cars (the others' is the next).
+const HORN: u32 = driving::BRAKE | driving::MINE;
+const HORN_CHANNEL: usize = 11;
+const HORN_SOUND: u8 = 33;
+
+/// What the horns ask of the sound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Horn {
+    Start {
+        channel: usize,
+        effect: u8,
+        volume: u32,
+        pitch: u32,
+    },
+    Stop(usize),
+}
+
+/// `sub_413500`, once a pass from the start: a car holding the brake and the mine key
+/// together in a tick of the pass sounds its horn, and those keys do nothing else; it starts
+/// once while held, the player's at full volume and another's 88 less a pixel away, and stops
+/// when let go or the car has finished.
+fn horns(cars: &mut [Car], steps: usize, player: usize) -> Vec<Horn> {
+    let mut asked = Vec::new();
+    for slot in 0..cars.len() {
+        let car = &mut cars[slot];
+        let mut pressed = false;
+        for keys in &mut car.keys[..steps] {
+            if *keys & HORN == HORN {
+                *keys &= 0xBD;
+                pressed = true;
+            }
+        }
+        let channel = HORN_CHANNEL + slot;
+        if pressed && !car.finished {
+            if car.horn {
+                continue;
+            }
+            car.horn = true;
+            let effect = HORN_SOUND + u8::from(car.handling.car > 1);
+            let volume = if slot == player {
+                FULL as i32
+            } else {
+                0x9500 - 88 * cars[slot].distance(&cars[player])
+            };
+            if volume > 0 {
+                asked.push(Horn::Start {
+                    channel,
+                    effect,
+                    volume: volume as u32,
+                    pitch: (slot as u32 + 0x21) << 12,
+                });
+            }
+        } else if car.horn {
+            car.horn = false;
+            asked.push(Horn::Stop(channel));
+        }
+    }
+    asked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1325,8 +1433,8 @@ mod tests {
         );
     }
 
-    /// The first mine control is seen once a press and cancels the brake held with it; the
-    /// second holds both bits, which drops a mine.
+    /// The mine control is seen once a press and cancels the brake held with it; the horn
+    /// holds both bits, which `horns` takes for the horn.
     #[test]
     fn a_mine_key_counts_once_and_takes_the_brake() {
         let mut keys = holding(&[Key::Z, Key::LeftAlt]);
@@ -1337,6 +1445,67 @@ mod tests {
             sample(&mut keys, &DEFAULT_CONTROLS),
             driving::MINE | driving::BRAKE
         );
+    }
+
+    fn horn_car(slot: usize, model: usize, x: f32) -> Car {
+        let handling = driving::Handling {
+            car: model,
+            engine: 2.5,
+            engine_backup: 2.5,
+            tires: 0.5,
+            size: 9.0,
+            steering: 2.5,
+            damage: 0x1_0000,
+            armour: 400,
+            rocket: 0,
+            weapons_bar: 102_400,
+            turbo: 102_400,
+            rocket_used: false,
+            mines: 3,
+            money: 0,
+            weapons: true,
+            guns: Default::default(),
+        };
+        Car::new((x, 100.0, 0), slot, handling, 0)
+    }
+
+    /// Brake and mine held together are the horn: it starts on the car's own channel at its
+    /// own pitch, the player's at full volume and another's fainter with distance, and the
+    /// two keys do nothing else in the pass; it sounds once while held, stops when let go,
+    /// and a finished car's horn stops.
+    #[test]
+    fn brake_and_mine_together_sound_the_horn_until_let_go() {
+        let both = driving::BRAKE | driving::MINE;
+        let mut cars = vec![horn_car(0, 1, 100.0), horn_car(1, 4, 200.0)];
+        cars[0].keys[1] = both | driving::ACCELERATE;
+        cars[1].keys[0] = both;
+        let asked = horns(&mut cars, 2, 0);
+        assert_eq!(
+            asked,
+            vec![
+                Horn::Start {
+                    channel: 11,
+                    effect: 33,
+                    volume: 0x1_0000,
+                    pitch: 0x2_1000
+                },
+                Horn::Start {
+                    channel: 12,
+                    effect: 34,
+                    volume: 0x9500 - 88 * 100,
+                    pitch: 0x2_2000
+                },
+            ]
+        );
+        assert_eq!(cars[0].keys[1], driving::ACCELERATE);
+        assert_eq!(cars[1].keys[0], 0);
+        cars[0].keys[0] = both;
+        cars[1].finished = true;
+        cars[1].keys[0] = both;
+        assert_eq!(horns(&mut cars, 1, 0), vec![Horn::Stop(12)]);
+        cars[0].keys[0] = 0;
+        assert_eq!(horns(&mut cars, 1, 0), vec![Horn::Stop(11)]);
+        assert!(horns(&mut cars, 1, 0).is_empty());
     }
 
     /// The original checks a shadow's corners, not its area: one stretched across the whole

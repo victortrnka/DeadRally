@@ -58,6 +58,8 @@ pub(super) struct Handling {
     pub(super) weapons_bar: i32,
     pub(super) turbo: i32,
     pub(super) rocket_used: bool,
+    /// The mines it has left (0x4A68A8).
+    pub(super) mines: i32,
     /// The money power-ups picked up in the race (0x4A68D0).
     pub(super) money: i32,
     /// Whether the race has weapons (0x4A68AC), and the car's machine guns.
@@ -106,6 +108,7 @@ impl Handling {
             weapons_bar: FULL_BAR,
             turbo: FULL_BAR,
             rocket_used: false,
+            mines: setup.mines,
             money: 0,
             weapons,
             guns: tables.guns.get(setup.car).cloned().unwrap_or_default(),
@@ -202,6 +205,10 @@ pub(super) struct Car {
     pub(super) shake_reach: i32,
     pub(super) shake_count: i32,
     pub(super) finished: bool,
+    /// The ticks before it may drop another mine (0x4A7EA8), and whether its horn sounds
+    /// (0x4A8058).
+    pub(super) mine_cooldown: i32,
+    pub(super) horn: bool,
     /// Where it was a tick ago (0x4A7E50).
     pub(super) previous: [f32; 3],
     /// The keys it holds in each tick of the race loop's pass (0x4A7D20).
@@ -263,6 +270,8 @@ impl Car {
             shake_reach: 0,
             shake_count: 0,
             finished: false,
+            mine_cooldown: 0,
+            horn: false,
             previous: [x, y, angle],
             keys: [0; 16],
             lap: 1,
@@ -278,6 +287,14 @@ impl Car {
             puffs: [[[0; 3]; super::marks::PUFFS]; 2],
             handling,
         }
+    }
+
+    /// The whole pixels to `other` as the sounds measure them: each axis and the root
+    /// truncated.
+    pub(super) fn distance(&self, other: &Car) -> i32 {
+        let dx = ftol(f64::from(self.x) - f64::from(other.x));
+        let dy = ftol(f64::from(self.y) - f64::from(other.y));
+        ftol(f64::from(dx * dx + dy * dy).sqrt())
     }
 
     /// `calculateUserMovements` (0x40BAB0) for the car in place `slot` holding `keys`; for
@@ -673,6 +690,7 @@ mod tests {
             weapons_bar: FULL_BAR,
             turbo: FULL_BAR,
             rocket_used: false,
+            mines: 0,
             money: 0,
             weapons: true,
             guns: Guns::default(),

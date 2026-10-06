@@ -509,6 +509,7 @@ mod tests {
             weapons_bar: FULL_BAR,
             turbo: FULL_BAR,
             rocket_used: false,
+            mines: 0,
             money: 0,
             weapons: true,
             guns: Guns::default(),
