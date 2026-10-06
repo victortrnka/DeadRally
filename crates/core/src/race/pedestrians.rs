@@ -139,6 +139,22 @@ impl Pedestrians {
         screams
     }
 
+    /// A shot's point at (`x`, `y`) meeting every fifth pedestrian from `first`
+    /// (`sub_40E180`): those within 2 pixels of it, from their corner 8 pixels in, fall; how
+    /// many fell.
+    pub(crate) fn shot(&mut self, first: usize, (x, y): (i32, i32)) -> usize {
+        let mut fallen = 0;
+        for person in self.people.iter_mut().skip(first).step_by(5) {
+            if person.dead || (x - person.x - 8).abs() >= 3 || (y - person.y - 8).abs() >= 3 {
+                continue;
+            }
+            person.dead = true;
+            person.frame = 0;
+            fallen += 1;
+        }
+        fallen
+    }
+
     /// A frame of them at timer tick `now`, the player's car at `car`, the view's top left at
     /// `camera` on the track and `left` from the screen's left.
     pub(crate) fn draw(
@@ -232,6 +248,7 @@ impl Pedestrians {
 mod hit_tests {
     use super::*;
     use crate::race::driving::{FRAME as CAR_FRAME, FRAMES, Handling};
+    use deadrally_gamedata::handling::Guns;
 
     /// A car over a pedestrian runs them over: they lie dead, the car is hurt by its armour
     /// short of 1024 three times, keeps a tenth of its speed backwards and leaves red tracks;
@@ -262,6 +279,8 @@ mod hit_tests {
             turbo: 102_400,
             rocket_used: false,
             money: 0,
+            weapons: true,
+            guns: Guns::default(),
         };
         let mut car = Car::new((100.0, 100.0, 72), 0, handling, 0);
         car.speed = 2.0;

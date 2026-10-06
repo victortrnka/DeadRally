@@ -339,6 +339,8 @@ pub fn race_archives() -> deadrally_gamedata::race::RaceArchives {
             size: vec![9.0; 6],
             tough: b"TOUGH\0".to_vec(),
             balance: vec![0.1; 12],
+            guns: vec![deadrally_gamedata::handling::Guns::default(); 6],
+            gun_damage: vec![0.5; 7],
         },
     }
 }

@@ -489,6 +489,7 @@ mod tests {
     #[test]
     fn a_car_over_a_power_up_takes_it() {
         use crate::race::driving::{FRAME, FRAMES, Handling};
+        use deadrally_gamedata::handling::Guns;
         let mut spots = [[0; 2]; 16];
         spots[0] = [30, 30];
         let mut rand = Rand::new(5);
@@ -509,6 +510,8 @@ mod tests {
             turbo: FULL_BAR,
             rocket_used: false,
             money: 0,
+            weapons: true,
+            guns: Guns::default(),
         };
         let sprites = vec![5u8; FRAMES * FRAME];
         let mut far = Car::new((48.0, 30.0, 72), 0, handling.clone(), 0);

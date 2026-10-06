@@ -6,6 +6,7 @@ mod buffer;
 mod cars;
 mod collisions;
 mod driving;
+mod guns;
 mod hud;
 mod intro;
 mod laps;
@@ -180,6 +181,12 @@ pub(crate) struct Race {
     /// The race chosen at the sign-up, and the balance's fractions.
     race: usize,
     balance: Vec<f32>,
+    /// The machine guns' muzzle flashes by kind (`FLAME1.BPK` to `FLAME6.BPK`), their hits'
+    /// sparks (`SHOTS.BPK`), what a hit takes off by the shooter's car, and the last hit.
+    flashes: Vec<Vec<u8>>,
+    sparks: Vec<u8>,
+    gun_damage: Vec<f32>,
+    gun_hits: guns::Shared,
 }
 
 /// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
@@ -372,7 +379,8 @@ impl Race {
                         rotation - 48
                     };
                 }
-                let handling = driving::Handling::new(&archives.handling, driver, slot == player);
+                let handling =
+                    driving::Handling::new(&archives.handling, driver, slot == player, weapons);
                 Car::new(
                     (x as f32, y as f32, rotation),
                     slot,
@@ -463,6 +471,12 @@ impl Race {
             bonus: false,
             race,
             balance: archives.handling.balance.clone(),
+            flashes: (1..=6)
+                .map(|kind| hud::decoded(&archives.engine, &format!("FLAME{kind}.BPK")))
+                .collect::<Result<_, _>>()?,
+            sparks: hud::decoded(&archives.engine, "SHOTS.BPK")?,
+            gun_damage: archives.handling.gun_damage.clone(),
+            gun_hits: guns::Shared::default(),
             wrecks: Vec::new(),
             tough,
         })
@@ -617,6 +631,36 @@ impl Race {
                         sound.trigger_at(CALL_CHANNEL, EFFECT_CALL, FULL, CALL_PITCH);
                     }
                 }
+            }
+        }
+        // `sub_40E180` for each car: its machine guns.
+        let ground = (
+            self.track.mask.pixels.as_slice(),
+            self.track.info.width as i32,
+            self.track.info.height as i32,
+        );
+        for slot in 0..self.cars.len() {
+            let keys = self.cars[slot].keys[tick];
+            let shots = guns::fire(
+                &mut self.cars,
+                slot,
+                keys,
+                self.clock.frame,
+                &self.sprites,
+                ground,
+                &mut self.pedestrians,
+                self.player,
+                &mut self.gun_hits,
+                &self.gun_damage,
+                rand,
+            );
+            for (channel, effect, volume) in shots {
+                let pitch = if channel == 3 {
+                    SCREAM_PITCH
+                } else {
+                    PICKUP_PITCH
+                };
+                sound.trigger_at(channel, effect, volume, pitch);
             }
         }
     }
@@ -1002,6 +1046,9 @@ impl Race {
         }
         self.draw_cars();
         self.draw_shadows();
+        for car in &mut self.cars {
+            guns::draw_flash(&mut self.buffer, car, &self.flashes, view, left);
+        }
         let (x, y) = self.camera();
         let camera = (x as i32, y as i32);
         let cull = self.number != 0;
@@ -1015,6 +1062,15 @@ impl Race {
             left,
         );
         let camera = (self.view.0 as i32, self.view.1 as i32);
+        for car in &mut self.cars {
+            guns::draw_sparks(
+                &mut self.buffer,
+                car,
+                &self.sparks,
+                camera,
+                HUD_WIDTH as i32,
+            );
+        }
         self.power_ups.draw_notes(
             &mut self.buffer,
             &self.hud.small_font,

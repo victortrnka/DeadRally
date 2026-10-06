@@ -228,6 +228,7 @@ pub(super) fn place_wrecks(cars: &mut [Car], wrecks: &mut Vec<usize>) {
 mod tests {
     use super::*;
     use crate::race::driving::Handling;
+    use deadrally_gamedata::handling::Guns;
 
     /// A 4-zone loop on a 40x8 pixel track: zones 1 to 4 along a row, 4 the last.
     const MAP: [u8; 10 * 2] = [1, 1, 2, 2, 3, 3, 4, 4, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 0, 0];
@@ -255,6 +256,8 @@ mod tests {
             turbo: 102_400,
             rocket_used: false,
             money: 0,
+            weapons: true,
+            guns: Guns::default(),
         };
         Car::new((2.0, 2.0, 72), slot, handling, 0)
     }

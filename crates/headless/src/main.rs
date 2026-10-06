@@ -502,8 +502,9 @@ struct Press {
 }
 
 /// The keys `--key-at T:KEY` can name; `T` alone presses Space.
-const KEY_NAMES: [(&str, Key); 10] = [
+const KEY_NAMES: [(&str, Key); 11] = [
     ("space", Key::Space),
+    ("ctrl", Key::LeftCtrl),
     ("enter", Key::Enter),
     ("escape", Key::Escape),
     ("up", Key::Up),

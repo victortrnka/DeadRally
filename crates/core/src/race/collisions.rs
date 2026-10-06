@@ -161,6 +161,7 @@ fn meet(a: &mut Car, b: &mut Car, sprites: &[u8], spiked: bool) {
 mod tests {
     use super::*;
     use crate::race::driving::{FRAME, FRAMES, Handling};
+    use deadrally_gamedata::handling::Guns;
 
     fn car(slot: usize, x: f32) -> Car {
         let handling = Handling {
@@ -177,6 +178,8 @@ mod tests {
             turbo: 102_400,
             rocket_used: false,
             money: 0,
+            weapons: true,
+            guns: Guns::default(),
         };
         Car::new((x, 100.0, 72), slot, handling, 0)
     }

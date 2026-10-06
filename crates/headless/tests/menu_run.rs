@@ -1010,6 +1010,39 @@ const PEDESTRIAN_SHOTS: [(u64, &str); 66] = [
     (3824, "h65"),
 ];
 
+/// The keys held in `scripts/reference/guns.scenario`'s run of `docs/verification/m4c.md`
+/// (`--no-ai`, its state watched): Left from before the start for 96 ticks, turning the
+/// standing car half round, then the gun key for 60.
+const GUNS_HELD: [Held; 2] = [(3360, Key::Left, 96), (3625, Key::LeftCtrl, 60)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the car turned, its
+/// gun firing at the car behind it, the flashes and the sparks, the target's damage.
+const GUNS_SHOTS: [(u64, &str); 23] = [
+    (3323, "race"),
+    (3467, "turned"),
+    (3610, "g00"),
+    (3617, "g01"),
+    (3623, "g02"),
+    (3630, "g03"),
+    (3638, "g04"),
+    (3645, "g05"),
+    (3652, "g06"),
+    (3659, "g07"),
+    (3666, "g08"),
+    (3674, "g09"),
+    (3681, "g10"),
+    (3687, "g11"),
+    (3695, "g12"),
+    (3703, "g13"),
+    (3710, "g14"),
+    (3717, "g15"),
+    (3723, "g16"),
+    (3731, "g17"),
+    (3738, "g18"),
+    (3745, "g19"),
+    (3753, "g20"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1592,6 +1625,25 @@ fn the_pedestrian_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("pedestrian-run.sha256", &lines, "the pedestrian run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_guns_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong muzzle, spread or damage shows within a frame of the first shot.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &GUNS_HELD),
+        &GUNS_SHOTS,
+        3_760,
+        slots,
+    );
+    check_manifest("guns-run.sha256", &lines, "the guns run");
 }
 
 #[test]

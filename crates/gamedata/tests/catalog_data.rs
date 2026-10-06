@@ -271,6 +271,23 @@ fn the_startup_assets_load_with_their_documented_shapes() {
         (handling.armour_upgrade[0], handling.armour_upgrade[19]),
         (360, 440)
     );
+    let guns: Vec<_> = handling
+        .guns
+        .iter()
+        .map(|g| (g.count, g.angle, g.reach, g.flash))
+        .collect();
+    assert_eq!(
+        guns,
+        [
+            (1, [22, 0], [8, 0], [0, 0]),
+            (1, [-18, 0], [17, 0], [1, 0]),
+            (1, [-40, 0], [7, 0], [2, 0]),
+            (2, [16, -17], [20, 20], [3, 3]),
+            (2, [16, -17], [19, 19], [4, 4]),
+            (2, [16, -17], [20, 20], [5, 5]),
+        ]
+    );
+    assert_eq!(handling.gun_damage, [0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 0.95]);
     assert_eq!(
         handling.balance,
         [

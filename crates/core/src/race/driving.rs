@@ -6,7 +6,7 @@
 //! The original computes in the x87's 53-bit precision and stores floats: the arithmetic here
 //! is in `f64`, rounded to `f32` wherever the original stores a float, in the original's order.
 
-use deadrally_gamedata::handling::{CARS, HandlingTables, UPGRADES};
+use deadrally_gamedata::handling::{CARS, Guns, HandlingTables, UPGRADES};
 
 use crate::campaign::Rand;
 use crate::trig::{cos, sin};
@@ -60,12 +60,20 @@ pub(super) struct Handling {
     pub(super) rocket_used: bool,
     /// The money power-ups picked up in the race (0x4A68D0).
     pub(super) money: i32,
+    /// Whether the race has weapons (0x4A68AC), and the car's machine guns.
+    pub(super) weapons: bool,
+    pub(super) guns: Guns,
 }
 
 impl Handling {
     /// The handling `initParticipantValues` gives a driver's car (`player` for the player's);
     /// the tables' tough name gets its armour 2.2 times over.
-    pub(super) fn new(tables: &HandlingTables, setup: &Driver, player: bool) -> Handling {
+    pub(super) fn new(
+        tables: &HandlingTables,
+        setup: &Driver,
+        player: bool,
+        weapons: bool,
+    ) -> Handling {
         let row = setup.car + CARS * setup.level;
         let upgrade = |level: i32| row * UPGRADES + level.clamp(0, UPGRADES as i32 - 1) as usize;
         let float = |table: &[f32], index: usize| table.get(index).copied().unwrap_or(0.0);
@@ -99,6 +107,8 @@ impl Handling {
             turbo: FULL_BAR,
             rocket_used: false,
             money: 0,
+            weapons,
+            guns: tables.guns.get(setup.car).cloned().unwrap_or_default(),
         }
     }
 }
@@ -212,6 +222,8 @@ pub(super) struct Car {
     pub(super) zone: i32,
     /// The ticks a power-up's effect on the player's view lasts (0x4A8050).
     pub(super) effect: i32,
+    /// Its machine guns' shots, flashes and sparks.
+    pub(super) gunfire: super::guns::Gunfire,
     /// The smoke puffs off its rear wheels, left and right: age (0 for none) and place
     /// (0x4A7EE4, 0x4A7F20).
     pub(super) puffs: [[[i32; 3]; super::marks::PUFFS]; 2],
@@ -262,6 +274,7 @@ impl Car {
             skids: 0,
             zone: 0,
             effect: 0,
+            gunfire: super::guns::Gunfire::default(),
             puffs: [[[0; 3]; super::marks::PUFFS]; 2],
             handling,
         }
@@ -661,6 +674,8 @@ mod tests {
             turbo: FULL_BAR,
             rocket_used: false,
             money: 0,
+            weapons: true,
+            guns: Guns::default(),
         }
     }
 

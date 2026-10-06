@@ -32,6 +32,12 @@ pub struct HandlingTables {
     /// zone and two zones behind the player gains (`2 * level` and `2 * level + 1`) and, from
     /// 6 on, what one ahead loses.
     pub balance: Vec<f32>,
+    /// Each car's machine guns (`initParticipantValues` 0x401EC7): their count, and for each
+    /// its angle off the car's, its reach and its muzzle flash's kind.
+    pub guns: Vec<Guns>,
+    /// What a hit from each car's guns takes off, times the target's armour short of 1024
+    /// (0x4A6AE0, set at 0x401D79).
+    pub gun_damage: Vec<f32>,
     /// The driver whose armour counts 2.2 times (0x441250, 11 bytes with the NUL), as the
     /// upper-cased name in the race is compared with it.
     pub tough: Vec<u8>,
@@ -51,6 +57,24 @@ const TOUGH: (u32, usize) = (0x44_1250, 11);
 /// The stores of the balance's fractions on the stack (0x40B92A on), the first 4 bytes up.
 const BALANCE: (u32, u32) = (0x40_B92A, 0x40_B98A);
 const BALANCE_FRACTIONS: usize = 12;
+
+/// A car's machine guns.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Guns {
+    pub count: i32,
+    pub angle: [i32; 2],
+    pub reach: [i32; 2],
+    pub flash: [i32; 2],
+}
+
+/// The guns' setting-up for a car (eax its number, ebp the car's record), and where its
+/// fields lie in the record.
+const GUNS: (u32, u32) = (0x40_1E9F, 0x40_1F99);
+const GUN_RECORD: u32 = 0x0010_4000;
+const GUN_SCRATCH: u32 = 0x0010_5000;
+const GUN_FIELDS: (u32, u32, u32, u32) = (0x40, 0x48, 0x58, 0x68);
+/// The stores of the guns' damage factors, seven floats from 0x4A6AE0.
+const GUN_DAMAGE: (u32, u32, u32) = (0x40_1D79, 0x40_1DBF, 0x4A_6AE0);
 
 impl HandlingTables {
     /// The tables as `initParticipantValues` fills them.
@@ -93,6 +117,45 @@ impl HandlingTables {
             armour_upgrade: ints(ARMOUR_UPGRADE, LEVELS * UPGRADES)?,
             size: floats(SIZE, CARS)?,
             tough: machine.bytes(TOUGH.0, TOUGH.1)?,
+            guns: (0..CARS as u32)
+                .map(|car| {
+                    let mut guns = Machine::new(exe);
+                    // eax the car, edx 0; ebx a driver's record, read but not used here.
+                    guns.set_register(0, car);
+                    guns.set_register(2, 0);
+                    guns.set_register(3, GUN_SCRATCH);
+                    guns.set_register(5, GUN_RECORD);
+                    for offset in (0..0x40).step_by(4) {
+                        guns.poke(GUN_SCRATCH - 0x40 + offset, 0);
+                    }
+                    for offset in (0..0xA0).step_by(4) {
+                        guns.poke(GUN_RECORD - 0x20 + offset, 0);
+                    }
+                    guns.run(GUNS.0, GUNS.1)?;
+                    let int = |offset: u32| -> Result<i32, MachineError> {
+                        let b = guns.bytes(GUN_RECORD + offset, 4)?;
+                        Ok(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                    };
+                    let (count, angle, reach, flash) = GUN_FIELDS;
+                    Ok(Guns {
+                        count: int(count)?,
+                        angle: [int(angle)?, int(angle + 4)?],
+                        reach: [int(reach)?, int(reach + 4)?],
+                        flash: [int(flash)?, int(flash + 4)?],
+                    })
+                })
+                .collect::<Result<_, MachineError>>()?,
+            gun_damage: {
+                let mut stores = Machine::new(exe);
+                stores.run(GUN_DAMAGE.0, GUN_DAMAGE.1)?;
+                stores
+                    .bytes(GUN_DAMAGE.2, 4 * 7)?
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|&b| f32::from_le_bytes(b))
+                    .collect()
+            },
             balance: {
                 let mut balance = Machine::new(exe);
                 balance.run(BALANCE.0, BALANCE.1)?;
