@@ -934,6 +934,82 @@ const PICKUP_SHOTS: [(u64, &str); 36] = [
     (3860, "u35"),
 ];
 
+/// The keys held in `scripts/reference/pedestrian.scenario`'s run of
+/// `docs/verification/m4c.md` (`--no-ai`, its state watched): Up from before the start for
+/// 468 ticks, Right for 50 through the first U-turn.
+const PEDESTRIAN_HELD: [Held; 2] = [(3361, Key::Up, 468), (3511, Key::Right, 50)];
+
+/// The ticks after which our frame equalled each screenshot of that run: the U-turn, two
+/// pedestrians run over, the red tracks after them.
+const PEDESTRIAN_SHOTS: [(u64, &str); 66] = [
+    (3324, "race"),
+    (3367, "h01"),
+    (3374, "h02"),
+    (3382, "h03"),
+    (3389, "h04"),
+    (3396, "h05"),
+    (3403, "h06"),
+    (3410, "h07"),
+    (3417, "h08"),
+    (3424, "h09"),
+    (3432, "h10"),
+    (3439, "h11"),
+    (3446, "h12"),
+    (3453, "h13"),
+    (3460, "h14"),
+    (3467, "h15"),
+    (3474, "h16"),
+    (3482, "h17"),
+    (3489, "h18"),
+    (3496, "h19"),
+    (3503, "h20"),
+    (3511, "h21"),
+    (3517, "h22"),
+    (3524, "h23"),
+    (3532, "h24"),
+    (3539, "h25"),
+    (3546, "h26"),
+    (3553, "h27"),
+    (3562, "h28"),
+    (3567, "h29"),
+    (3574, "h30"),
+    (3582, "h31"),
+    (3589, "h32"),
+    (3596, "h33"),
+    (3603, "h34"),
+    (3610, "h35"),
+    (3617, "h36"),
+    (3625, "h37"),
+    (3632, "h38"),
+    (3639, "h39"),
+    (3647, "h40"),
+    (3653, "h41"),
+    (3660, "h42"),
+    (3667, "h43"),
+    (3675, "h44"),
+    (3682, "h45"),
+    (3689, "h46"),
+    (3696, "h47"),
+    (3703, "h48"),
+    (3710, "h49"),
+    (3717, "h50"),
+    (3725, "h51"),
+    (3732, "h52"),
+    (3739, "h53"),
+    (3746, "h54"),
+    (3753, "h55"),
+    (3760, "h56"),
+    (3767, "h57"),
+    (3774, "h58"),
+    (3782, "h59"),
+    (3789, "h60"),
+    (3796, "h61"),
+    (3803, "h62"),
+    (3810, "h63"),
+    (3817, "h64"),
+    (3824, "h65"),
+];
+
 /// The keys held in `scripts/reference/pause.scenario`'s run of `docs/verification/m4b.md`:
 /// Escape pauses the race, N ends the pause; held 100 ms (7 ticks), as the race and the pause
 /// read the keys held.
@@ -1497,6 +1573,25 @@ fn the_pickup_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("pickup-run.sha256", &lines, "the pickup run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_pedestrian_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick, and every
+    // frame's state of the cars equalled the original's memory (docs/verification/m4c.md): a
+    // wrong jolt or draw of `rand()` sends the car elsewhere after the first pedestrian.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &PEDESTRIAN_HELD),
+        &PEDESTRIAN_SHOTS,
+        3_900,
+        slots,
+    );
+    check_manifest("pedestrian-run.sha256", &lines, "the pedestrian run");
 }
 
 #[test]

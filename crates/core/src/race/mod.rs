@@ -230,6 +230,8 @@ const WALL_SOUNDS: [u8; 3] = [10, 15, 16];
 const MAX_HURT: i32 = 10_000;
 /// The countdown's frames: the cars move from the next.
 const START_FRAME: i32 = 190;
+/// A pedestrian's scream (`sub_410FA0`).
+const SCREAM_PITCH: u32 = 0x5_0000;
 /// A power-up picked up (`sub_410B90`), and the effect power-up's call.
 const PICKUP_SOUND: u8 = 18;
 const PICKUP_PITCH: u32 = 0x2_1000;
@@ -582,6 +584,17 @@ impl Race {
         }
         let spikes: Vec<bool> = self.drivers.iter().map(|driver| driver.spikes).collect();
         collisions::collide(&mut self.cars, &self.sprites, &spikes);
+        // `sub_410FA0` for each car: the pedestrians it runs over.
+        for slot in 0..self.cars.len() {
+            let player = &self.cars[self.player];
+            let near = (slot != self.player).then_some((player.x, player.y));
+            let screams = self
+                .pedestrians
+                .hit(&mut self.cars[slot], &self.sprites, near, rand);
+            for (channel, effect, volume) in screams {
+                sound.trigger_at(channel, effect, volume, SCREAM_PITCH);
+            }
+        }
         // `sub_410B90` for each car: the power-ups it drives over.
         let player = &self.cars[self.player];
         let player_at = (player.x, player.y);

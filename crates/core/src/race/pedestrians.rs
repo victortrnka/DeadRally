@@ -4,7 +4,11 @@
 
 use deadrally_gamedata::track::TrackInfo;
 
+use crate::campaign::Rand;
+
 use super::buffer::{Buffer, LEFT, STRIDE};
+use super::driving::Car;
+use super::raster::ftol;
 
 /// A sprite's side; three steps for each of four directions for each kind of pedestrian.
 const SIDE: usize = 16;
@@ -12,6 +16,9 @@ const FRAME: usize = SIDE * SIDE;
 /// The ticks between steps, and the splat's last frame.
 const STEP_TICKS: u32 = 5;
 const LAST_SPLAT: i32 = 7;
+/// The red tracks' ticks after a pedestrian, and the screams' channel.
+const BLOODY_TICKS: i32 = 45;
+const SCREAM_CHANNEL: usize = 3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Pedestrian {
@@ -70,6 +77,66 @@ impl Pedestrians {
             sprites,
             splats,
         }
+    }
+
+    /// `sub_410FA0` for one car: every pedestrian standing under its sprite (16 pixels from
+    /// their corner, a pixel of the car above colour 3 there) is run over: it lies dead, the
+    /// car is hurt by its armour short of 1024 three times over, jolted up to 3 pixels, spun,
+    /// thrown back a tenth of its speed and leaves red tracks for 45 ticks; and a scream plays,
+    /// as loud as the car is near the player's (`player`, `None` for the player's own car).
+    /// The sounds asked for: channel, effect, volume.
+    pub(crate) fn hit(
+        &mut self,
+        car: &mut Car,
+        sprites: &[u8],
+        player: Option<(f32, f32)>,
+        rand: &mut Rand,
+    ) -> Vec<(usize, u8, u32)> {
+        let f = f64::from;
+        let mut screams = Vec::new();
+        for person in &mut self.people {
+            if person.dead {
+                continue;
+            }
+            let dx = ftol(f(car.x)) - person.x - 8;
+            let dy = ftol(f(car.y)) - person.y - 8;
+            if dx.abs() >= 20 || dy.abs() >= 20 {
+                continue;
+            }
+            let under = usize::try_from(car.sprite as i32 + dy * 40 + dx + 0x334)
+                .ok()
+                .and_then(|at| sprites.get(at))
+                .is_some_and(|&pixel| pixel > 3);
+            if !under {
+                continue;
+            }
+            person.dead = true;
+            person.frame = 0;
+            let h = &mut car.handling;
+            if !car.finished {
+                h.damage += 3 * (h.armour - 0x400);
+            }
+            h.damage = h.damage.max(0);
+            car.x = (f64::from(rand.next() % 7 - 3) + f(car.x)) as f32;
+            car.y = (f64::from(rand.next() % 7 - 3) + f(car.y)) as f32;
+            car.spin = (rand.next() % 10 - 5) as f32;
+            car.speed = (f(car.speed) - f(car.speed) * 1.1) as f32;
+            car.bloody = BLOODY_TICKS;
+            let volume = match player {
+                None => Some(0x9000),
+                Some((x, y)) => {
+                    let dx = ftol(f(car.x) - f(x));
+                    let dy = ftol(f(car.y) - f(y));
+                    let distance = ftol(f64::from(dx * dx + dy * dy).sqrt());
+                    let volume = 0x1_0000 - 75 * distance;
+                    (volume > 0x1000).then_some(volume as u32)
+                }
+            };
+            if let Some(volume) = volume {
+                screams.push((SCREAM_CHANNEL, (rand.next() % 3 + 7) as u8, volume));
+            }
+        }
+        screams
     }
 
     /// A frame of them at timer tick `now`, the player's car at `car`, the view's top left at
@@ -158,6 +225,60 @@ impl Pedestrians {
             let picture = sprites.get(from..).unwrap_or(&[]);
             buffer.draw(picture, SIDE, rows.max(0) as usize, at);
         }
+    }
+}
+
+#[cfg(test)]
+mod hit_tests {
+    use super::*;
+    use crate::race::driving::{FRAME as CAR_FRAME, FRAMES, Handling};
+
+    /// A car over a pedestrian runs them over: they lie dead, the car is hurt by its armour
+    /// short of 1024 three times, keeps a tenth of its speed backwards and leaves red tracks;
+    /// the player's own car screams at full volume with one of three screams.
+    #[test]
+    fn a_car_over_a_pedestrian_runs_them_over() {
+        let mut info = TrackInfo {
+            width: 1000,
+            height: 1000,
+            zones: 0,
+            starts: [[0; 3]; 4],
+            power_ups: [[0; 2]; 16],
+            pedestrians: [[0; 4]; 20],
+        };
+        info.pedestrians[0] = [92, 92, 0, 0];
+        let mut pedestrians = Pedestrians::new(&info, false, vec![0; 4 * FRAME], [vec![], vec![]]);
+        let handling = Handling {
+            car: 0,
+            engine: 2.5,
+            engine_backup: 2.5,
+            tires: 0.5,
+            size: 9.0,
+            steering: 2.5,
+            damage: 0x1_0000,
+            armour: 400,
+            rocket: 0,
+            weapons_bar: 102_400,
+            turbo: 102_400,
+            rocket_used: false,
+            money: 0,
+        };
+        let mut car = Car::new((100.0, 100.0, 72), 0, handling, 0);
+        car.speed = 2.0;
+        let sprites = vec![5u8; FRAMES * CAR_FRAME];
+        let mut rand = Rand::new(9);
+        let screams = pedestrians.hit(&mut car, &sprites, None, &mut rand);
+        assert!(pedestrians.people[0].dead);
+        assert_eq!(car.handling.damage, 0x1_0000 - 3 * (0x400 - 400));
+        assert_eq!(car.speed, (2.0f64 - 2.0 * 1.1) as f32);
+        assert_eq!(car.bloody, BLOODY_TICKS);
+        assert_eq!(screams.len(), 1);
+        assert!(matches!(screams[0], (SCREAM_CHANNEL, 7..=9, 0x9000)));
+        assert!(
+            pedestrians
+                .hit(&mut car, &sprites, None, &mut rand)
+                .is_empty()
+        );
     }
 }
 
