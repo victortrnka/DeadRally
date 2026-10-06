@@ -290,6 +290,18 @@ pub(crate) struct Campaign {
     pub(crate) hit_victim: usize,
     /// The offer on screen, waiting for its answer.
     pub(crate) offer: Option<Offer>,
+    /// The race's drivers in their places on the grid.
+    pub(crate) racers: Vec<Racer>,
+}
+
+/// A driver in the race as the preview sets them up (0x432F46): the opponents' weapons are
+/// drawn for the race, the player's are the record's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Racer {
+    pub(crate) driver: usize,
+    pub(crate) rocket: i32,
+    pub(crate) spikes: i32,
+    pub(crate) mines: i32,
 }
 
 /// An offer after a sign-up (0x431B30): its level (1 with the best car to 6 with the
@@ -324,6 +336,7 @@ impl Campaign {
             hit: 0,
             hit_victim: 0,
             offer: None,
+            racers: Vec::new(),
         }
     }
 

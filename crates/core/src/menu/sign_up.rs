@@ -267,7 +267,7 @@ impl Menu {
         match then {
             PopupThen::SignUp => self.after_welcome(),
             PopupThen::Market => self.after_market_welcome(),
-            PopupThen::Race => self.race_stand_in(),
+            PopupThen::Race => self.open_preview(),
         }
     }
 
@@ -640,7 +640,7 @@ impl Menu {
         }
         campaign.offer = None;
         self.sound.stop_channel(super::licence::VOICE_CHANNEL);
-        self.race_stand_in()
+        self.open_preview()
     }
 
     /// A wait after the sign-up: a key or the 280th wait ends it.
@@ -650,13 +650,13 @@ impl Menu {
         if self.keys.take() == 0 && waits < LINGER_WAITS {
             return State::Linger { waits };
         }
-        self.race_stand_in()
+        self.open_preview()
     }
 
-    /// Until races exist (M4), the race the player signed up for ends at once: back to the
-    /// shop with nothing changed but the welcome, which the shop shows once after the first
-    /// race (spec M3a §2, M3b §2).
-    fn race_stand_in(&mut self) -> State {
+    /// Until races exist (M4b), the race the player signed up for ends once its preview is
+    /// shown: back to the shop with nothing changed but the welcome, which the shop shows once
+    /// after the first race (spec M3a §2, M3b §2).
+    pub(super) fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;
         self.compose_palette();

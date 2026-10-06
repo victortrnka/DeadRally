@@ -493,6 +493,8 @@ pub(crate) mod tests {
                 game_not_found: b"?".to_vec(),
                 drug_offer: vec![b"d".to_vec(); 11],
                 hitman_offer: vec![b"h".to_vec(); 11],
+                laps: b"L".to_vec(),
+                prize: b"P".to_vec(),
             },
             shop: shop_texts(),
         }

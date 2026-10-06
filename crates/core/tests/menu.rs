@@ -1275,7 +1275,8 @@ fn the_sabotage_damages_one_rival_by_25_to_49_percent() {
     let mut game = new_game_in_shop();
     to_a_race(&mut game, true, &[Key::Left, Key::Enter, Key::Right]);
     step(&mut game, Key::Enter);
-    run(&mut game, 60);
+    // The race's preview wipes in, then the shop.
+    run(&mut game, 150);
     assert_eq!(
         pixel(&game, (300, 95)),
         common::SHOP,
@@ -1420,4 +1421,19 @@ fn player_after_shopping_from(file: Vec<u8>, keys: &[Key]) -> Vec<u8> {
         step(&mut game, key);
     }
     saved_player(game)
+}
+
+#[test]
+fn the_race_s_preview_wipes_in_after_the_sign_up() {
+    // previewRaceScreen (0x4321B0): before the race the player sees the grid's four drivers
+    // and the circuit, its banner across the bottom; they wipe in over the sign-up.
+    let mut game = new_game_in_shop();
+    to_a_race(&mut game, true, &[]);
+    step(&mut game, Key::Space);
+    run(&mut game, 20);
+    assert_eq!(pixel(&game, (5, 450)), common::PREVIEW, "the banner's left on its way");
+    assert_ne!(pixel(&game, (600, 450)), common::PREVIEW, "its right still to come");
+    run(&mut game, 30);
+    assert_eq!(pixel(&game, (600, 450)), common::PREVIEW, "the banner");
+    assert_eq!(pixel(&game, (400, 200)), common::PREVIEW + 2, "the circuit");
 }

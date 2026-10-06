@@ -623,6 +623,50 @@ const OFFER_SHOTS: [(u64, &str); 24] = [
     (3058, "k10-left"),
 ];
 
+/// The keys of `scripts/reference/preview.scenario` in the run of `docs/verification/m4a.md`:
+/// the test game through the Underground Market to the sign-up, a race chosen, and the race's
+/// preview wiping in.
+const PREVIEW_KEYS: [(u64, Key); 10] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2608, Key::Enter),
+    (2784, Key::Space),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const PREVIEW_SHOTS: [(u64, &str); 24] = [
+    (1691, "idle"),
+    (1783, "k01-return"),
+    (1847, "k02-down"),
+    (1926, "k03-return"),
+    (2011, "k04-return"),
+    (2140, "k05-space"),
+    (2393, "k06-return"),
+    (2436, "k07-return"),
+    (2586, "sign-up"),
+    (2629, "k08-return"),
+    (2761, "filled"),
+    (2790, "wipe-01"),
+    (2797, "wipe-02"),
+    (2804, "wipe-03"),
+    (2811, "wipe-04"),
+    (2818, "wipe-05"),
+    (2825, "wipe-06"),
+    (2828, "wipe-07"),
+    (2828, "wipe-08"),
+    (2828, "wipe-09"),
+    (2828, "wipe-10"),
+    (2828, "preview-01"),
+    (2828, "preview-02"),
+    (2828, "preview-03"),
+];
+
 /// The keys of `scripts/reference/sabotage.scenario` in the run of `docs/verification/m3c.md`
 /// (its sabotage's clock fixed at 31375): the test game, the sabotage bought in the Underground
 /// Market, the sign-up and the sabotage's popup.
@@ -908,6 +952,24 @@ fn the_sabotage_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("sabotage-run.sha256", &lines, "the sabotage run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_preview_run_matches_the_committed_manifest() {
+    // Written after every screenshot of the run equalled our frame at its tick
+    // (docs/verification/m4a.md): the grid's drivers, the circuit, its laps and prize, the wipe.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&PREVIEW_KEYS, &[]),
+        &PREVIEW_SHOTS,
+        2_900,
+        slots,
+    );
+    check_manifest("preview-run.sha256", &lines, "the preview run");
 }
 
 #[test]

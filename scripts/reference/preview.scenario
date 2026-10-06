@@ -1,0 +1,37 @@
+# The race's preview (spec M4a): from the test game in slot 0, through the Underground Market
+# to the sign-up, a race chosen, the places filling, a key to end the screen's linger, and the
+# preview wiping in; a shot after every key and through the wipe.
+at 2000 key space
+at 24000 shot idle
+at 24500 key Return
+at 25300 shot k01-return
+at 25600 key Down
+at 26200 shot k02-down
+at 26500 key Return
+at 27300 shot k03-return
+at 27600 key Return
+at 28500 shot k04-return
+at 28800 key space
+at 30300 shot k05-space
+at 30600 key Return
+at 33850 shot k06-return
+at 34150 key Return
+at 34450 shot k07-return
+at 36550 shot sign-up
+at 36850 key Return
+at 37150 shot k08-return
+at 39000 shot filled
+at 39300 key space
+at 39400 shot wipe-01
+at 39500 shot wipe-02
+at 39600 shot wipe-03
+at 39700 shot wipe-04
+at 39800 shot wipe-05
+at 39900 shot wipe-06
+at 40000 shot wipe-07
+at 40100 shot wipe-08
+at 40200 shot wipe-09
+at 40300 shot wipe-10
+at 40500 shot preview-01
+at 41000 shot preview-02
+at 41500 shot preview-03

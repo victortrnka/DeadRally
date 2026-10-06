@@ -145,6 +145,11 @@ pub struct MenuAssets {
     /// `EVENT_2`.
     pub drug_dealer: Image,
     pub hitman: Image,
+    /// The race's preview (spec M4 §3): the banner `PREP4`, the grid's frame `PREPW1` and the
+    /// circuits' pictures `TSHAPE01`..`TSHAPE19`, by circuit (the last the Adversary's).
+    pub preview_banner: Image,
+    pub preview_grid: Image,
+    pub track_shapes: Vec<Image>,
 }
 
 #[derive(Debug)]
@@ -314,6 +319,30 @@ fn market_prices(exe: &Exe) -> Result<Vec<[i32; 4]>, crate::machine::MachineErro
         .collect()
 }
 
+/// The circuits' pictures in the race's preview, circuit 0 to 17 and the Adversary's
+/// (`previewRaceScreen` 0x4321B0, the names at 0x456798).
+const TRACK_SHAPES: [&str; 19] = [
+    "TSHAPE01.BPK",
+    "TSHAPE02.BPK",
+    "TSHAPE03.BPK",
+    "TSHAPE04.BPK",
+    "TSHAPE05.BPK",
+    "TSHAPE06.BPK",
+    "TSHAPE07.BPK",
+    "TSHAPE08.BPK",
+    "TSHAPE09.BPK",
+    "TSHAPE10.BPK",
+    "TSHAPE11.BPK",
+    "TSHAPE12.BPK",
+    "TSHAPE13.BPK",
+    "TSHAPE14.BPK",
+    "TSHAPE15.BPK",
+    "TSHAPE16.BPK",
+    "TSHAPE17.BPK",
+    "TSHAPE18.BPK",
+    "TSHAPE19.BPK",
+];
+
 /// The cars turning in the menus, car 0 to 5 (dRally `___24548h.c`).
 const CAR_TURNING: [&str; 6] = [
     "KUPLA.BPK",
@@ -453,6 +482,12 @@ fn menu_assets(
         market_prices: market_prices(&exe).map_err(AssetError::Machine)?,
         drug_dealer: frames(menu, "DRUGDEAL.BPK")?.remove(0),
         hitman: frames(menu, "EVENT_2.BPK")?.remove(0),
+        preview_banner: frames(menu, "PREP4.BPK")?.remove(0),
+        preview_grid: frames(menu, "PREPW1.BPK")?.remove(0),
+        track_shapes: TRACK_SHAPES
+            .iter()
+            .map(|name| Ok(frames(menu, name)?.remove(0)))
+            .collect::<Result<_, AssetError>>()?,
     })
 }
 
