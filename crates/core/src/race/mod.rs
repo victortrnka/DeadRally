@@ -207,8 +207,12 @@ pub(crate) struct Race {
     /// The laps' clocks, times and calls, and the wrecks in the order they were wrecked.
     laps_state: laps::Laps,
     wrecks: Vec<usize>,
-    /// The car of the driver whose armour counts 2.2 times, who has a call when winning.
+    /// The car of the driver whose armour counts 2.2 times, who has a call when winning;
+    /// whether it is the player's, who has a call when wrecked.
     tough: Option<usize>,
+    player_tough: bool,
+    /// The HUD's calls on the player's damage made this race.
+    damage_calls: hud::DamageCalls,
     /// What a money power-up is worth (0x4A7AB0), and whether the player took the bonus
     /// power-up (0x4A7AAC).
     pickup_money: i32,
@@ -599,12 +603,14 @@ impl Race {
                 hud::decoded(&archives.engine, "SPLAT4.BPK")?,
             ],
         );
-        let tough = drivers.iter().position(|driver| {
+        let is_tough = |driver: &Driver| {
             let tough = &archives.handling.tough;
             let mut name = driver.name.clone();
             name.push(0);
             name.get(..tough.len()) == Some(tough.as_slice())
-        });
+        };
+        let tough = drivers.iter().position(is_tough);
+        let player_tough = is_tough(&drivers[player]);
         let mut palette = track.palette.clone();
         for (driver, &first) in drivers.iter().zip(&RAMPS) {
             car_ramp(&mut palette, first, driver.colour);
@@ -693,6 +699,8 @@ impl Race {
             ],
             wrecks: Vec::new(),
             tough,
+            player_tough,
+            damage_calls: hud::DamageCalls::default(),
             waves: waver::Waves::default(),
             session,
         };
@@ -1724,12 +1732,12 @@ impl Race {
             // 0x414110: the status bar away, the last lap's time counted down a first time,
             // and only the small board.
             self.laps_state.count_down(self.clock.between);
-            self.draw_small_board();
+            self.draw_small_board(sound);
             return;
         }
         // 0x41430A: the status bar sliding, the small board under it.
         if left < HUD_WIDTH as i32 {
-            self.draw_small_board();
+            self.draw_small_board(sound);
         }
         let gauge = self.gauge();
         let boards = self.boards();
@@ -1741,8 +1749,18 @@ impl Race {
             &gauge,
             self.laps,
         );
+        self.damage_calls(sound);
         if !self.weapons {
             self.laps_state.count_down(self.clock.between);
+        }
+    }
+
+    /// The calls on the player's damage after the HUD's or the small board's damage
+    /// (0x414E28, 0x414028), on the race's calls' channel.
+    fn damage_calls(&mut self, sound: &mut Sound) {
+        let damage = self.cars[self.player].handling.damage;
+        for effect in self.damage_calls.check(damage, self.player_tough) {
+            sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
         }
     }
 
@@ -1760,11 +1778,13 @@ impl Race {
         }
     }
 
-    /// The small board (0x413C90), the last lap's time counted down as it shows it.
-    fn draw_small_board(&mut self) {
+    /// The small board (0x413C90), the last lap's time counted down as it shows it, and the
+    /// calls on the player's damage.
+    fn draw_small_board(&mut self, sound: &mut Sound) {
         let gauge = self.gauge();
         let damage = self.cars[self.player].handling.damage;
         hud::draw_small(&mut self.buffer, &self.hud, &gauge, damage);
+        self.damage_calls(sound);
         if !self.weapons {
             self.laps_state.count_down(self.clock.between);
         }

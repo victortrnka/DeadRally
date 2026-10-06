@@ -3456,6 +3456,71 @@ fn the_race_effects_sound_matches_the_committed_manifest() {
     check_manifest("race-effects-sound.sha256", &lines, "the race's effects");
 }
 
+/// The keys held in `scripts/reference/damage-calls.scenario`'s run, from the original's
+/// memory: each of the two mines dropped and the car backed over it.
+const DAMAGE_CALLS_HELD: [Held; 4] = [
+    (3631, Key::LeftAlt, 7),
+    (3688, Key::Down, 50),
+    (3793, Key::LeftAlt, 7),
+    (3850, Key::Down, 50),
+];
+
+/// `save` with the player renamed `name` (the first 12 bytes of the player's record).
+fn renamed(save: &[u8], name: &[u8]) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(save);
+    let at = usize::from(game.driver_id) * 108;
+    let record = &mut game.drivers[at..at + 12];
+    record.fill(0);
+    let length = name.len().min(11);
+    record[..length].copy_from_slice(&name[..length]);
+    game.encode(77)
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_damage_calls_sound_matches_the_committed_manifest() {
+    // Written after recordings of the original with the music off measured as ours
+    // (docs/verification/m5.md): the HUD's warning as the damage bar falls under a fifth and
+    // again under a tenth, each once a race, and the tough driver's own call when he is
+    // wrecked. A warning missing, repeated or late is what this pins.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let texts = &assets.menu.texts;
+    let mut quiet = assets.menu.default_config.clone();
+    quiet.set_music_volume(0);
+    let calls = run_sound(
+        armed_save(texts, 75, [2, 0, 0]),
+        &DAMAGE_CALLS_HELD,
+        4_100,
+        quiet.clone(),
+    );
+    // The tough driver's name as dr.exe keeps it, typed as a player would type it: only its
+    // words' first letters capitals, so the race's upper-casing counts too.
+    let tough = &assets.race.handling.tough;
+    let name: Vec<u8> = tough
+        .iter()
+        .take_while(|&&c| c != 0)
+        .enumerate()
+        .map(|(at, &c)| {
+            if at == 0 || tough[at - 1] == b' ' {
+                c
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
+        .collect();
+    let wreck = run_sound(
+        renamed(&armed_save(texts, 99, [1, 0, 0]), &name),
+        &WRECK_HELD,
+        4_300,
+        quiet,
+    );
+    let lines = format!(
+        "{calls}  the damage bar under a fifth and a tenth, the music off, 4100 ticks\n\
+         {wreck}  the tough driver wrecked, the music off, 4300 ticks\n"
+    );
+    check_manifest("damage-calls-sound.sha256", &lines, "the damage calls");
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_help_run_matches_the_committed_manifest() {
