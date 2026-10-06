@@ -73,6 +73,15 @@ impl Game {
         }
     }
 
+    /// Starts the race in the Arena at once, as Enter on the Adversary's screen does
+    /// (0x4354C1), wherever the menus stand: a test aid for runs checked against the original
+    /// until DeadRally has that screen (spec M6). Nothing in the game calls it.
+    pub fn start_arena_now(&mut self) {
+        if let Scene::Menu(menu) = &mut self.scene {
+            menu.start_arena_now();
+        }
+    }
+
     /// A game the player saved since the last call: its slot and the file to write, which
     /// the host keeps out of the game folder.
     pub fn take_saved_game(&mut self) -> Option<(usize, Vec<u8>)> {

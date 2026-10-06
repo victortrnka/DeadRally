@@ -254,6 +254,11 @@ pub(crate) struct Taken {
 }
 
 impl PowerUps {
+    /// The ticks before the next power-up may come (0x456AC4), for the race's trace.
+    pub(crate) fn wait(&self) -> i32 {
+        self.wait
+    }
+
     /// `sub_410B90` for one car: every power-up under its sprite (its middle within 16 pixels
     /// and one of the four pixels round the power-up's middle drawn in the car's sprite) is
     /// taken: its pixels put back, its kind's gift given, its note started, the places' waits

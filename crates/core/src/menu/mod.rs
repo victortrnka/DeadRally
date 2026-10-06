@@ -8,6 +8,7 @@
 
 mod configure;
 pub(crate) mod draw;
+mod ending;
 mod hall_of_fame;
 mod licence;
 mod market;
@@ -475,6 +476,12 @@ impl Menu {
     /// The race's state, while a race runs ([`crate::Game::race_trace`]).
     pub(crate) fn race_trace(&self) -> Option<String> {
         self.race.as_ref().map(crate::race::Race::trace)
+    }
+
+    /// [`crate::Game::start_arena_now`]: the menus leave whatever they wait at for the race in
+    /// the Arena.
+    pub(crate) fn start_arena_now(&mut self) {
+        self.state = self.start_arena();
     }
 
     pub(crate) fn quit_requested(&self) -> bool {
@@ -1071,26 +1078,32 @@ impl Menu {
     /// "Yes" ends the game: the menus as at the start, the drivers set up afresh.
     fn end_game_answer(&mut self, answer: Option<bool>) -> State {
         if answer == Some(true) {
-            let texts = &self.assets.menu.texts.campaign;
-            let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
-            self.graphics.set_row(START_MENU.text, 0, new);
-            self.graphics.set_row(MAIN_MENU.text, 0, racing);
-            let start = &mut self.submenus[Submenu::Start as usize];
-            for row in [1, 2, 4] {
-                start.active[row] = false;
-            }
-            // 0x439F7D: the highlight back on the first row.
-            start.selected = 0;
-            let campaign = &mut self.campaign;
-            campaign.warn_hard = false;
-            campaign.warn_medium = false;
-            campaign.underground_popup = false;
-            campaign.welcome = false;
-            campaign.started = false;
-            self.init_drivers();
-            self.palette.fade(100);
+            self.end_game();
         }
         self.start_pass()
+    }
+
+    /// The game ended, by the Start Racing menu's question or by winning in the Arena
+    /// (0x4354F9): the menus' rows as at the start, the flags reset, the drivers set up afresh.
+    fn end_game(&mut self) {
+        let texts = &self.assets.menu.texts.campaign;
+        let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
+        self.graphics.set_row(START_MENU.text, 0, new);
+        self.graphics.set_row(MAIN_MENU.text, 0, racing);
+        let start = &mut self.submenus[Submenu::Start as usize];
+        for row in [1, 2, 4] {
+            start.active[row] = false;
+        }
+        // 0x439F7D, 0x43559F: the highlight back on the first row.
+        start.selected = 0;
+        let campaign = &mut self.campaign;
+        campaign.warn_hard = false;
+        campaign.warn_medium = false;
+        campaign.underground_popup = false;
+        campaign.welcome = false;
+        campaign.started = false;
+        self.init_drivers();
+        self.palette.fade(100);
     }
 
     fn exit_answer(&mut self, answer: Option<bool>) -> State {

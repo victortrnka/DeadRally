@@ -311,14 +311,27 @@ pub(crate) struct Campaign {
 }
 
 /// A driver in the race as the preview sets them up (0x432F46): the opponents' weapons are
-/// drawn for the race, the player's are the record's.
+/// drawn for the race, the player's are the record's. The first racer is the Adversary when
+/// the player leads (0x433285): the record it was set up from is the grid's, but it races
+/// car 6 under its own name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Racer {
     pub(crate) driver: usize,
     pub(crate) rocket: i32,
     pub(crate) spikes: i32,
     pub(crate) mines: i32,
+    pub(crate) adversary: bool,
 }
+
+/// The race against the Adversary (`[0x462CE8]` 3, set by the Adversary's screen at
+/// 0x4354C8): the Arena, two cars, the player's record in both places of the grid.
+pub(crate) const ARENA: usize = 3;
+/// An opponent carries each weapon at one chance in five, with weapons on (0x433102).
+const WEAPON_CHANCE: i32 = 5;
+/// The mines an opponent or the Adversary carries.
+const MINES: i32 = 8;
+/// The places drawn for the cars after a race the player leads (0x43476E).
+const PLACES: usize = 4;
 
 /// An offer after a sign-up (0x431B30): its level (1 with the best car to 6 with the
 /// Vagabond) and, for the hitman, his victim.
@@ -426,6 +439,110 @@ impl Campaign {
             player.sabotage != 1,
         ]
         .map(i32::from);
+    }
+
+    /// Whether the player has more points than drivers 0 to `cars` − 1 but themselves: the
+    /// preview's check (0x433241), which makes the first racer the Adversary and the money
+    /// power-ups worth $400. The standings keep the drivers sorted by points, so it is the
+    /// player leading everyone unless a saved game holds them in another order.
+    pub(crate) fn leads_first(&self, cars: usize) -> bool {
+        let best = self
+            .drivers
+            .iter()
+            .take(cars)
+            .enumerate()
+            .filter(|&(index, _)| index != self.player_index)
+            .map(|(_, driver)| driver.points)
+            .fold(0, i32::max);
+        self.player().points > best
+    }
+
+    /// The racers for the grid `entrants` (0x433017): each driver's record, the player's
+    /// weapons theirs and each opponent's rocket, spikes and mines drawn at one chance in five
+    /// (three `rand()` calls whether or not weapons are on); then, with the player ahead of
+    /// the first drivers, the first racer made the Adversary (0x433285): no damage, no rocket,
+    /// spiked wheels and, with weapons on, eight mines.
+    pub(crate) fn set_up_racers(&mut self, entrants: &[usize]) {
+        let weapons = self.use_weapons;
+        let me = self.player_index;
+        let rand = &mut self.rand;
+        let drivers = &self.drivers;
+        self.racers = entrants
+            .iter()
+            .map(|&driver| {
+                let record = drivers[driver];
+                if driver == me {
+                    return Racer {
+                        driver,
+                        rocket: record.rocket,
+                        spikes: record.spikes,
+                        mines: record.mines,
+                        adversary: false,
+                    };
+                }
+                let mut draw = |carried: i32| {
+                    if rand.next() % WEAPON_CHANCE == 0 && weapons {
+                        carried
+                    } else {
+                        0
+                    }
+                };
+                Racer {
+                    driver,
+                    rocket: draw(1),
+                    spikes: draw(1),
+                    mines: draw(MINES),
+                    adversary: false,
+                }
+            })
+            .collect();
+        if self.leads_first(entrants.len())
+            && let Some(first) = self.racers.first_mut()
+        {
+            *first = Racer {
+                rocket: 0,
+                spikes: 1,
+                mines: if weapons { MINES } else { 0 },
+                adversary: true,
+                ..*first
+            };
+        }
+    }
+
+    /// The player's place on the grid (0x45FC20): their entry among the racers; in the Arena,
+    /// whose first place holds the player's record too for the Adversary, the second
+    /// (0x4354D2).
+    pub(crate) fn player_racer(&self) -> usize {
+        self.racers
+            .iter()
+            .rposition(|racer| racer.driver == self.player_index)
+            .unwrap_or(0)
+    }
+
+    /// After a race the player leads (0x434737): the next three races drawn
+    /// (`calculateNextRaces`) and filled at once (`addParticipantToRace(1)` until every race is
+    /// full, at least once), and a place 1 to 4 drawn for each of four cars, none twice. No
+    /// page of the results shows those places (none of the races is the Arena), but their
+    /// draws move `rand()`.
+    pub(crate) fn fill_races_after_leading(&mut self, order: &[u8]) {
+        let mut sign_up = SignUp::new(
+            &mut self.rand,
+            order,
+            &mut self.last_circuits,
+            self.player_index,
+        );
+        sign_up.fill_at_once(&mut self.rand, &self.drivers);
+        self.sign_up = Some(sign_up);
+        let mut taken = [false; PLACES];
+        for _ in 0..PLACES {
+            loop {
+                let place = (self.rand.next() % PLACES as i32) as usize;
+                if !taken[place] {
+                    taken[place] = true;
+                    break;
+                }
+            }
+        }
     }
 
     pub(crate) fn player(&self) -> &Driver {
@@ -903,5 +1020,121 @@ mod tests {
             [1, 2, 3, 4, 5, 5, 5, 8],
             "equal points, equal rank"
         );
+    }
+
+    /// A game whose player (driver 0, as the standings put a leader) has more points than
+    /// everyone else, weapons on.
+    fn leading() -> Campaign {
+        let mut campaign = Campaign::new(7);
+        init_drivers(&mut campaign.drivers, &mut Rand::new(2), &cars(), &names());
+        campaign.drivers[PLAYER].points = 150;
+        campaign.rank_drivers();
+        campaign
+    }
+
+    /// In the Arena both places on the grid hold the player's record (0x43288D), and the
+    /// first is made the Adversary because the player leads (0x433285): its spiked wheels and
+    /// eight mines, no rocket; the player keeps their own weapons, and no opponent's weapons
+    /// are drawn, so `rand()` is not called. The player drives the second car (0x4354D2).
+    #[test]
+    fn the_arena_puts_the_adversary_first_and_the_player_second() {
+        let mut campaign = leading();
+        let me = campaign.player_index;
+        campaign.player_mut().rocket = 1;
+        let before = campaign.rand.clone();
+        campaign.set_up_racers(&[me, me]);
+        assert_eq!(campaign.rand, before, "no weapons drawn");
+        assert_eq!(
+            campaign.racers,
+            [
+                Racer {
+                    driver: me,
+                    rocket: 0,
+                    spikes: 1,
+                    mines: 8,
+                    adversary: true,
+                },
+                Racer {
+                    driver: me,
+                    rocket: 1,
+                    spikes: 0,
+                    mines: 0,
+                    adversary: false,
+                },
+            ]
+        );
+        assert_eq!(campaign.player_racer(), 1);
+        campaign.use_weapons = false;
+        campaign.set_up_racers(&[me, me]);
+        assert_eq!(campaign.racers[0].mines, 0, "no mines without weapons");
+    }
+
+    /// The Adversary comes whenever the player has more points than the first drivers of the
+    /// standings, as many as there are cars (0x433241), not only in the Arena; a player
+    /// behind them races the drivers signed up, each opponent's rocket, spikes and mines drawn
+    /// at one chance in five.
+    #[test]
+    fn the_adversary_comes_only_for_a_player_ahead_of_the_first_drivers() {
+        // A new game's drivers: 100, 86, 77 and 69 points for drivers 0 to 3, the player
+        // last in the table (19).
+        let game = || {
+            let mut campaign = Campaign::new(7);
+            init_drivers(&mut campaign.drivers, &mut Rand::new(2), &cars(), &names());
+            campaign
+        };
+        let mut campaign = game();
+        campaign.player_mut().points = 101;
+        campaign.set_up_racers(&[3, PLAYER, 8, 9]);
+        assert!(campaign.racers[0].adversary, "ahead of drivers 0 to 3");
+        let mut campaign = game();
+        campaign.player_mut().points = 99;
+        let mut check = campaign.rand.clone();
+        campaign.set_up_racers(&[3, PLAYER, 8, 9]);
+        assert!(campaign.racers.iter().all(|racer| !racer.adversary));
+        for _ in 0..9 {
+            check.next();
+        }
+        assert_eq!(
+            campaign.rand, check,
+            "three draws for each of three opponents"
+        );
+        assert_eq!(campaign.player_racer(), 1);
+    }
+
+    /// After a race the player leads (0x434737), the next three races are drawn and filled at
+    /// once, and the cars' places drawn afresh: the results show races the player is in none
+    /// of, and the next sign-up's offers come from `rand()` where these draws leave it.
+    #[test]
+    fn after_a_race_the_leader_gets_the_next_races_filled_at_once() {
+        let mut campaign = leading();
+        campaign.racers = vec![
+            Racer {
+                driver: campaign.player_index,
+                rocket: 0,
+                spikes: 1,
+                mines: 8,
+                adversary: true,
+            };
+            2
+        ];
+        let mut check = campaign.rand.clone();
+        let mut last = campaign.last_circuits;
+        let mut expected = SignUp::new(&mut check, &order(), &mut last, campaign.player_index);
+        expected.fill_at_once(&mut check, &campaign.drivers);
+        let mut taken = [false; 4];
+        for _ in 0..4 {
+            loop {
+                let place = (check.next() % 4) as usize;
+                if !taken[place] {
+                    taken[place] = true;
+                    break;
+                }
+            }
+        }
+        campaign.fill_races_after_leading(&order());
+        assert_eq!(campaign.sign_up, Some(expected));
+        assert!(campaign.sign_up.as_ref().unwrap().full());
+        assert_eq!(campaign.rand, check);
+        assert_eq!(campaign.last_circuits, last);
     }
 }

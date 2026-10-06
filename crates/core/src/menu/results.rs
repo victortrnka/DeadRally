@@ -4,7 +4,7 @@
 //! them); then the standings sorted afresh with the player's statistics, the wait while the
 //! shop loads, a key, and the way back.
 
-use crate::campaign::quicksort;
+use crate::campaign::{ARENA, quicksort};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
@@ -535,11 +535,11 @@ impl Menu {
         let place = self.books.place;
         if place > 0 {
             let race = self.campaign.entered_race.unwrap_or(0);
-            let circuit = self
-                .campaign
-                .sign_up
-                .as_ref()
-                .map_or(0, |sign_up| sign_up.circuits[race]);
+            // The Arena's records are the never-set circuit after the three races' (0x4251DF).
+            let circuit = match self.campaign.sign_up.as_ref() {
+                Some(sign_up) if race < ARENA => sign_up.circuits[race],
+                _ => super::preview::ARENA_RECORDS,
+            };
             let car = player.car.clamp(0, 5) as usize;
             let best = self.outcome.best_lap;
             let (_, record) = self.config.record(circuit, car);

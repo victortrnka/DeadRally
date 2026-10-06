@@ -122,6 +122,23 @@ fn car_ramp(palette: &mut Palette, first: usize, [r, g, b]: [u8; 3]) {
     }
 }
 
+/// The cars' ramps in the race's palette (`initRaceValues` 0x409FCF on), the four places'
+/// always: each from its driver's colour, those past the drivers from `spare` (left as the
+/// track has them without one), but the first left as the track has it when its car is the
+/// Adversary's.
+fn car_ramps(palette: &mut Palette, drivers: &[Driver], spare: Option<[u8; 3]>) {
+    for (place, &first) in RAMPS.iter().enumerate() {
+        let colour = match drivers.get(place) {
+            Some(driver) if place == 0 && driver.car == driving::ADVERSARY_CAR => None,
+            Some(driver) => Some(driver.colour),
+            None => spare,
+        };
+        if let Some(colour) = colour {
+            car_ramp(palette, first, colour);
+        }
+    }
+}
+
 /// Whether `drawShadows` draws a shadow with these corners in a view `half_width` across from
 /// its middle: one corner across the view and one (maybe another) down it; a shadow whose
 /// corners all lie outside is left out even where it would cover the view.
@@ -294,12 +311,17 @@ impl Default for Session {
     }
 }
 
-/// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
-/// the player's place on the grid and whether the race has weapons, the pause box's lines,
-/// the eight controls' scancodes in `dr.cfg`, what a money power-up is worth, and the
-/// circuit's lap record for the player's car (minutes, seconds, hundredths, from `dr.cfg`).
+/// How a race is set up: the track (`TRn`, 0x45EA50) and whether it is turned round
+/// (0x4A7AA8) and its laps, the player's place on the grid and whether the race has weapons,
+/// the pause box's lines, the eight controls' scancodes in `dr.cfg`, what a money power-up is
+/// worth, and the circuit's lap record for the player's car (minutes, seconds, hundredths,
+/// from `dr.cfg`).
 pub(crate) struct Setup {
-    pub(crate) circuit: usize,
+    pub(crate) track: usize,
+    pub(crate) reversed: bool,
+    /// The colour of the cars' ramps past the drivers (in the Arena, the third and fourth
+    /// places', `CARCOL.PAL`'s entry 10: 0x4332EE); none leaves the track's colours there.
+    pub(crate) spare_ramps: Option<[u8; 3]>,
     /// The race chosen at the sign-up, 0 to 2 (0x456B88).
     pub(crate) race: usize,
     pub(crate) laps: i32,
@@ -501,8 +523,8 @@ const PAUSE_CHANNEL: usize = 5;
 const PAUSE_PITCH: u32 = 0x2_8000;
 
 impl Race {
-    /// The race on circuit `circuit` (`TRn` with n = circuit % 9 + 1) over `laps` laps, the
-    /// drivers in their places, the player in place `player`; `pause_lines` the pause box's.
+    /// The race on track `TRn` (n = `track`) over `laps` laps, the drivers in their places,
+    /// the player in place `player`; `pause_lines` the pause box's.
     pub(crate) fn new(
         archives: &RaceArchives,
         setup: Setup,
@@ -510,7 +532,9 @@ impl Race {
         rand: &mut Rand,
     ) -> Result<Race, RaceError> {
         let Setup {
-            circuit,
+            track: number,
+            reversed,
+            spare_ramps,
             race,
             laps,
             player,
@@ -527,9 +551,6 @@ impl Race {
             session,
             flame_phase,
         } = setup;
-        let number = circuit % 9 + 1;
-        // The second half's circuits run their tracks the other way round (0x432532).
-        let reversed = circuit > 8;
         let mut track = Track::load(&archives.tracks[number], number)?;
         // The scene's lights and pictures are worked out before the track is turned round
         // (0x4161EC and 0x416206 come before 0x416304).
@@ -571,8 +592,15 @@ impl Race {
                         rotation - 48
                     };
                 }
-                let handling =
-                    driving::Handling::new(&archives.handling, driver, slot == player, weapons);
+                let handling = match drivers.get(1) {
+                    // 0x401FBC: the Adversary's car, first on the grid, is set up apart.
+                    Some(second) if slot == 0 && driver.car == driving::ADVERSARY_CAR => {
+                        driving::Handling::adversary(&archives.handling, driver, second, weapons)
+                    }
+                    _ => {
+                        driving::Handling::new(&archives.handling, driver, slot == player, weapons)
+                    }
+                };
                 Car::new(
                     (x as f32, y as f32, rotation),
                     slot,
@@ -607,9 +635,7 @@ impl Race {
             name.get(..tough.len()) == Some(tough.as_slice())
         });
         let mut palette = track.palette.clone();
-        for (driver, &first) in drivers.iter().zip(&RAMPS) {
-            car_ramp(&mut palette, first, driver.colour);
-        }
+        car_ramps(&mut palette, &drivers, spare_ramps);
         let mut race = Race {
             track,
             drivers,
@@ -1456,16 +1482,23 @@ impl Race {
     }
 
     /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
-    /// the frame and the rocket flames' picture (`fp`, 0x456AFC), then for each car its
-    /// numbers in the original's layout, floats as their bits.
+    /// the frame, the rocket flames' picture (`fp`, 0x456AFC), the ticks between the last two
+    /// frames (`bt`, 0x4A9EA4) and before the next power-up (`pw`, 0x456AC4), then for each car
+    /// its numbers in the original's layout, floats as their bits.
     pub(crate) fn trace(&self) -> String {
-        let mut line = format!("{} fp{}", self.clock.frame, self.flame_phase);
+        let mut line = format!(
+            "{} fp{} bt{} pw{}",
+            self.clock.frame,
+            self.flame_phase,
+            self.clock.between,
+            self.power_ups.wait()
+        );
         for car in &self.cars {
             let h = &car.handling;
             line += &format!(
                 " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
                  g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
-                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{} at{} bo{} av{} mw{} ho{} ef{}",
+                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{} at{} bo{} av{} mw{} ho{} ef{} ag{}",
                 car.zone,
                 car.direction,
                 car.sprite,
@@ -1502,6 +1535,7 @@ impl Race {
                 car.ai.mine_wait,
                 i32::from(car.ai.horn),
                 car.effect,
+                car.gunfire.active,
             );
         }
         line
@@ -2322,5 +2356,46 @@ mod tests {
         assert!(!shadow_in_view([(-10, -10), (300, -10), (-10, 250)], 128));
         assert!(shadow_in_view([(5, -10), (300, 300), (-10, 199)], 128));
         assert!(!shadow_in_view([(5, -10), (300, 300), (-10, 200)], 128));
+    }
+
+    fn racer(car: usize, colour: [u8; 3]) -> Driver {
+        Driver {
+            name: b"R".to_vec(),
+            car,
+            level: 3,
+            engine: 0,
+            tires: 0,
+            armour: 0,
+            damage: 0,
+            rocket: 0,
+            mines: 0,
+            spikes: false,
+            colour,
+        }
+    }
+
+    /// In the Arena the Adversary's car keeps the track's own colours (0x409FCF skips its
+    /// ramp), the player's second car takes the player's colour, and the two empty places'
+    /// ramps take the spare colour; a ramp set for the Adversary would paint its car the
+    /// player's colour.
+    #[test]
+    fn the_adversarys_car_keeps_the_tracks_colours() {
+        let track = Palette([[7, 7, 7]; 256]);
+        let mut palette = track.clone();
+        let drivers = [racer(6, [40, 0, 0]), racer(1, [0, 40, 0])];
+        car_ramps(&mut palette, &drivers, Some([0, 0, 40]));
+        assert_eq!(&palette.0[15..25], &track.0[15..25], "the Adversary's");
+        assert_eq!(palette.0[30], [0, 40, 0], "the player's own colour");
+        assert_eq!(palette.0[40], [0, 0, 40], "the third place's");
+        assert_eq!(palette.0[50], [0, 0, 40], "the fourth place's");
+        let mut palette = track.clone();
+        let drivers = [racer(5, [40, 0, 0]), racer(1, [0, 40, 0])];
+        car_ramps(&mut palette, &drivers, None);
+        assert_eq!(palette.0[20], [40, 0, 0], "any other car's colour");
+        assert_eq!(
+            &palette.0[35..55],
+            &track.0[35..55],
+            "no spare: the track's"
+        );
     }
 }

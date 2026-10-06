@@ -51,8 +51,10 @@ pub const SHOP: u8 = 53;
 /// The drug dealer's and the hitman's pictures in their offers.
 pub const DRUG_DEALER: u8 = SHOP + 30;
 pub const HITMAN: u8 = SHOP + 31;
-/// The race's preview: its banner, the grid's frame, the circuit's picture.
+/// The race's preview: its banner, the grid's frame, the circuit's picture (the Arena's one
+/// more); the Adversary's face.
 pub const PREVIEW: u8 = 110;
+pub const ADVERSARY_FACE: u8 = 114;
 /// The results' pictures (spec M5): 120 on.
 pub const RESULTS: u8 = 120;
 
@@ -178,6 +180,9 @@ fn texts() -> Texts {
             hitman_offer: vec![b"h".to_vec(); 11],
             laps: b"L".to_vec(),
             prize: b"P".to_vec(),
+            adversary: b"ADV".to_vec(),
+            adversary_preview: b"adv".to_vec(),
+            arena_prize: b"G".to_vec(),
             abort_race: vec![b"A".to_vec(); 9],
             race_over: vec![b"A".to_vec(); 9],
             game_paused: vec![b"A".to_vec(); 9],
@@ -345,7 +350,11 @@ pub fn menu_assets() -> MenuAssets {
         hitman: solid(104, 128, HITMAN),
         preview_banner: solid(640, 54, PREVIEW),
         preview_grid: solid(225, 274, PREVIEW + 1),
-        track_shapes: (0..19).map(|_| solid(360, 274, PREVIEW + 2)).collect(),
+        // The Arena's picture (the last) in a colour of its own.
+        track_shapes: (0..19)
+            .map(|circuit| solid(360, 274, PREVIEW + 2 + u8::from(circuit == 18)))
+            .collect(),
+        adversary_face: solid(64, 64, ADVERSARY_FACE),
     }
 }
 
