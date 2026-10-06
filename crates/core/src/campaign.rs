@@ -303,6 +303,9 @@ pub(crate) struct Campaign {
     pub(crate) win_streak: i32,
     pub(crate) clean_race: bool,
     pub(crate) all_wrecked: bool,
+    /// Whether the last results found the player leading (0x456BC4): the Adversary's
+    /// animation plays only when a player first leads. A loaded game starts without it.
+    pub(crate) was_leading: bool,
     /// The race's switches, the effect power-up's waves and the rocket flames' picture, which
     /// no race sets back: the next race goes on from the last race's.
     pub(crate) race_session: crate::race::Session,
@@ -356,6 +359,7 @@ impl Campaign {
             win_streak: 0,
             clean_race: false,
             all_wrecked: false,
+            was_leading: false,
             race_session: crate::race::Session::default(),
         }
     }
@@ -548,6 +552,18 @@ impl SignUp {
             entrants: [[0; 4]; 3],
             counts: [0; 3],
             taken,
+            player,
+        }
+    }
+
+    /// The races as the original's memory holds them before any sign-up (all zeros): what
+    /// Escape on the Adversary's screen fills in a game loaded since the program started.
+    pub(crate) fn untouched(player: usize) -> SignUp {
+        SignUp {
+            circuits: [0; 3],
+            entrants: [[0; 4]; 3],
+            counts: [0; 3],
+            taken: [false; DRIVERS],
             player,
         }
     }

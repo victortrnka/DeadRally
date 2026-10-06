@@ -303,10 +303,16 @@ impl Menu {
             self.after_race();
             // 0x434670: every entry black before the results fade in.
             self.palette.fade(0);
-            self.results_after_race = true;
+            self.results_from = super::results::ResultsFrom::Race;
             return self.open_results();
         }
         State::Race { ticks: ticks + 1 }
+    }
+
+    /// The race in the Arena (`adversaryPreviewScreen` on Enter, M6b); until it exists the
+    /// stand-in's shop.
+    pub(super) fn start_arena(&mut self) -> State {
+        self.race_stand_in()
     }
 
     /// The race over (abandoned, or its data not loading): the menus' music and sounds back as
@@ -314,12 +320,18 @@ impl Menu {
     /// fades took away and the results would give back (M5), and the menus' background under
     /// the stand-in's shop with nothing of the preview or the race left on it.
     fn after_race(&mut self) {
+        self.menu_sound_back();
+        self.screen.copy_all(&self.graphics.background);
+        self.shown = self.screen.clone();
+    }
+
+    /// The menus' music and effects back (0x434617, 0x42BC45), at the full volume a race or an
+    /// animation took away.
+    pub(super) fn menu_sound_back(&mut self) {
         self.sound.stop();
         self.sound.set_mask(FULL_MASK);
         self.sound.load_effects(&self.assets.menu.effects);
         self.sound
             .play_music(&self.assets.menu_music, 0, self.config.music_volume());
-        self.screen.copy_all(&self.graphics.background);
-        self.shown = self.screen.clone();
     }
 }

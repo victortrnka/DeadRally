@@ -1765,6 +1765,129 @@ const NO_SIGN_UP_SHOTS: [(u64, &str); 71] = [
     (5694, "s064"),
 ];
 
+/// The keys of `scripts/reference/adversary.scenario`'s run of `docs/verification/m6.md`: the
+/// leader's test game loaded into the shop, the Underground Market, its way on to the
+/// Adversary's screen, Escape, then Enter on each results screen.
+const ADVERSARY_KEYS: [(u64, Key); 13] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1949, Key::Enter),
+    (2033, Key::Space),
+    (2161, Key::Enter),
+    (2415, Key::Enter),
+    (2696, Key::Escape),
+    (3047, Key::Enter),
+    (3261, Key::Enter),
+    (3476, Key::Enter),
+    (3696, Key::Enter),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run: the Adversary's
+/// screen, its fade after Escape, the other races' results and the screen kept after them
+/// (s000 and s001, as the screen wiped in, left out; docs/verification/m6.md).
+const ADVERSARY_SHOTS: [(u64, &str); 98] = [
+    (2460, "s002"),
+    (2480, "s003"),
+    (2461, "s004"),
+    (2475, "s005"),
+    (2471, "s006"),
+    (2470, "s007"),
+    (2552, "s008"),
+    (2564, "s009"),
+    (2550, "s010"),
+    (2560, "s011"),
+    (2555, "s012"),
+    (2623, "s013"),
+    (2629, "s014"),
+    (2618, "s015"),
+    (2632, "s016"),
+    (2620, "s017"),
+    (2628, "s018"),
+    (2709, "s019"),
+    (2723, "s020"),
+    (2737, "s021"),
+    (2752, "s022"),
+    (2766, "s023"),
+    (2780, "s024"),
+    (2795, "s025"),
+    (2809, "s026"),
+    (2815, "s027"),
+    (2835, "s028"),
+    (2852, "s029"),
+    (2866, "s030"),
+    (2859, "s031"),
+    (2895, "s032"),
+    (2899, "s033"),
+    (2885, "s034"),
+    (2938, "s035"),
+    (2952, "s036"),
+    (2966, "s037"),
+    (2930, "s038"),
+    (2983, "s039"),
+    (2969, "s040"),
+    (2955, "s041"),
+    (2936, "s042"),
+    (2985, "s043"),
+    (3066, "s044"),
+    (3068, "s045"),
+    (3087, "s046"),
+    (3107, "s047"),
+    (3123, "s048"),
+    (3069, "s049"),
+    (3152, "s050"),
+    (3166, "s051"),
+    (3171, "s052"),
+    (3157, "s053"),
+    (3141, "s054"),
+    (3163, "s055"),
+    (3170, "s056"),
+    (3150, "s057"),
+    (3269, "s058"),
+    (3280, "s059"),
+    (3295, "s060"),
+    (3309, "s061"),
+    (3323, "s062"),
+    (3321, "s063"),
+    (3352, "s064"),
+    (3360, "s065"),
+    (3380, "s066"),
+    (3395, "s067"),
+    (3351, "s068"),
+    (3423, "s069"),
+    (3438, "s070"),
+    (3444, "s071"),
+    (3464, "s072"),
+    (3482, "s073"),
+    (3495, "s074"),
+    (3489, "s075"),
+    (3523, "s076"),
+    (3528, "s077"),
+    (3514, "s078"),
+    (3498, "s079"),
+    (3520, "s080"),
+    (3527, "s081"),
+    (3491, "s082"),
+    (3511, "s083"),
+    (3633, "s084"),
+    (3652, "s085"),
+    (3638, "s086"),
+    (3680, "s087"),
+    (3628, "s088"),
+    (3629, "s089"),
+    (3629, "s090"),
+    (3629, "s091"),
+    (3752, "s092"),
+    (3766, "s093"),
+    (3780, "s094"),
+    (3795, "s095"),
+    (3809, "s096"),
+    (3823, "s097"),
+    (3838, "s098"),
+    (3852, "s099"),
+];
+
 /// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
 /// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
 /// menu, Up to "See current statistics", Enter, and Enter on the statistics.
@@ -4135,6 +4258,25 @@ fn the_no_sign_up_run_matches_the_committed_manifest() {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_adversary_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run equalled our frames (docs/verification/m6.md):
+    // a leader goes from the market's way on to the Adversary's screen, and Escape on it fills
+    // the races and shows their results.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&ADVERSARY_KEYS, &[]),
+        &ADVERSARY_SHOTS,
+        3_860,
+        slots,
+    );
+    check_manifest("adversary-run.sha256", &lines, "the Adversary run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_statistics_run_matches_the_committed_manifest() {
     // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
     // the Start Racing menu out but for the title's colours, the player's statistics without a
@@ -4384,6 +4526,15 @@ fn the_shop_purchases_run_matches_the_committed_manifest() {
 /// a player part-way through a game.
 fn test_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
     armed_save(texts, 37, [0, 0, 0])
+}
+
+/// The test game with the player leading every other driver on points (150 against the best
+/// other's 100; `captures/leader.sg`).
+fn leader_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&test_save(texts));
+    let at = 19 * 108 + 68;
+    game.drivers[at..at + 4].copy_from_slice(&150i32.to_le_bytes());
+    game.encode(77)
 }
 
 /// The test game with its weapons switched off (`captures/test.sg` with the weapons byte 0).
