@@ -35,7 +35,7 @@ DeadRally is a clean, native reimplementation of *Death Rally* (Remedy, 2009) in
 | `scripts/reference-run.sh --sound scripts/reference/startup-sound.scenario captures/startup-sound` | the original's sound, recorded from a null sink (nothing reaches the speakers); `--cfg FILE` starts it with another `dr.cfg` |
 | `target/release/deadrally-headless compare-audio captures/startup-sound/sound.wav captures/startup-sound/ours.wav --min-overlap 115` | does our render sound like the recording; PASS or FAIL against spec M1b §5 |
 | `DEADRALLY_BLESS=1 cargo test-data` | rewrite the manifests `crates/gamedata/tests/decoded-images.sha256`, `crates/headless/tests/rendered-audio.sha256`, `menu-run.sha256`, `configure-run.sha256`, `hall-of-fame-run.sha256`, `new-game-run.sha256` and `saved-games-run.sha256`, only after checking the pictures and the sound against the original again |
-| `scripts/reference-run.sh --seed 1 scripts/reference/new-game.scenario captures/new-game` | the original with `rand()` seeded (its drivers and races repeat); pass the same `--seed` to `find`, `render` and `render-audio`; `--save SLOT:FILE` gives either a saved game |
+| `scripts/reference-run.sh --seed 1 scripts/reference/new-game.scenario captures/new-game` | the original with `rand()` seeded (its drivers and races repeat); pass the same `--seed` to `find`, `render` and `render-audio`; `--save SLOT:FILE` gives either a saved game (`find` and `render`) |
 | `scripts/spike-check.sh screens target/release/deadrally captures/x 10` | screenshots and stats without a monitor (Xvfb; sound to a file) |
 | `scripts/fullscreen-check.sh target/release/deadrally captures/fs` | four fullscreen toggles on the real GPU without a monitor (headless Weston) |
 

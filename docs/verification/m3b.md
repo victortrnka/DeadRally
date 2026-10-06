@@ -24,3 +24,7 @@ The keys were put on a line of 14 ms a tick from the menu's idle shot, as in M3a
 ## The manifest
 
 `crates/headless/tests/saved-games-run.sha256` holds our frames at the 31 shots' ticks, the run's sound, the game saved into slot 1 and the last `dr.cfg` written.
+
+## Review
+
+A fresh review of the branch found one Important problem, fixed with a test that failed first: a saved game whose player held numbers no game has (a seventh car, a colour past `COPPER.PAL`, money or a name too wide for the side panel, a negative upgrade level, damage outside 0–100, a file cut short) crashed the game after "game loaded"; such a slot now counts as empty, as a foreign game does, and the side panel's centring can no longer underflow. Fixed too: a saved game is written beside its slot and renamed over it, so an interrupted write leaves the old game; the frontend warns when it has no folder to save into; the side panel writes its money cap into the player's record as the original does (0x41FCE9); and the name entry no longer sets the player's colour ramp outside the colour keys (`readKeyboard` calls 0x4189C0 only at 0x42ED7C and 0x42EE8E). Both reference runs still match every shot; the saved-games manifest was rewritten for palette entries no shot shows. Deferred (minor): `loadGame` also sets the first-race flag, 0x456BC4 and the four weapon-availability flags (needed from M3c); the weapons byte is kept as yes or no, so a file with 2 there would save back 1; only `DR.SG<n>` in capitals is looked for in the game folder.

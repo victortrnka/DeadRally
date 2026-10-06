@@ -1018,3 +1018,33 @@ fn saving_writes_the_game_under_the_typed_name_into_the_chosen_slot() {
         deadrally_gamedata::save_game::SaveGame::decode(&saved_game()).drivers
     );
 }
+
+#[test]
+fn a_damaged_saved_game_is_refused_like_an_empty_slot() {
+    // A save from another program or cut short decrypts into numbers no game holds (a car
+    // past the sixth, a colour past COPPER.PAL, a name wider than the side panel); loading it
+    // must not stop the game, so the slot counts as empty.
+    for (offset, value) in [
+        (28, 6),
+        (44, 300),
+        (48, -20_000_000),
+        (20, -1),
+        (12, i32::MIN),
+    ] {
+        let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game());
+        let at = 19 * 108 + offset;
+        file.drivers[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        let mut game = Game::new(assets(), common::config());
+        game.set_saved_games(vec![Some(file.encode(3))]);
+        run(&mut game, MENU_SHOWN);
+        to_the_slots(&mut game);
+        step(&mut game, Key::Enter);
+        step(&mut game, Key::Space);
+        run(&mut game, 60);
+        assert_ne!(
+            pixel(&game, (300, 95)),
+            common::SHOP,
+            "offset {offset}: no shop"
+        );
+    }
+}

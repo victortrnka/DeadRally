@@ -317,15 +317,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         {
             eprintln!("warning: cannot write {}: {error}", path.display());
         }
-        if let (Some((slot, bytes)), Some(dir)) = (
-            game.take_saved_game(),
-            dr_cfg_path.as_deref().and_then(Path::parent),
-        ) && let Err(error) = save_game::write_slot(dir, slot, &bytes)
-        {
-            eprintln!(
-                "warning: cannot write {}: {error}",
-                dir.join(save_game::file_name(slot)).display()
-            );
+        if let Some((slot, bytes)) = game.take_saved_game() {
+            match dr_cfg_path.as_deref().and_then(Path::parent) {
+                Some(dir) => {
+                    if let Err(error) = save_game::write_slot(dir, slot, &bytes) {
+                        eprintln!(
+                            "warning: cannot write {}: {error}",
+                            dir.join(save_game::file_name(slot)).display()
+                        );
+                    }
+                }
+                None => eprintln!(
+                    "warning: no configuration folder, so the game saved in slot {slot} is lost"
+                ),
+            }
         }
         if game.quit_requested() {
             break 'running;

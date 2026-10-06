@@ -55,8 +55,18 @@ impl Menu {
     /// A slot chosen to load from: its game, or the empty slot's sound and the slots again.
     pub(super) fn load_slot(&mut self, slot: usize) -> State {
         let game = self.slot_files[slot].as_deref().map(SaveGame::decode);
-        // Only a single-player game (driver 19) loads; another is as good as empty.
-        let Some(game) = game.filter(|game| usize::from(game.driver_id) == PLAYER) else {
+        // Only a single-player game (driver 19) whose player holds numbers a game can have
+        // loads; another, or a damaged file, is as good as empty.
+        let playable = |game: &SaveGame| {
+            usize::from(game.driver_id) == PLAYER
+                && game
+                    .drivers
+                    .as_chunks::<DRIVER_BYTES>()
+                    .0
+                    .get(PLAYER)
+                    .is_some_and(|record| Driver::from_bytes(record).is_playable())
+        };
+        let Some(game) = game.filter(playable) else {
             self.sound(EMPTY_SOUND);
             return self.submenu_pass(Submenu::Load);
         };
@@ -119,8 +129,6 @@ impl Menu {
         let width = self.graphics.big_b.width(&name);
         self.shown.copy_from(&self.screen, at(130, 298), width, 32);
         self.nickname = Nickname::save_name(name, width);
-        self.palette
-            .set_player_ramp(self.assets.menu.copper.0[super::licence::START_COLOUR as usize]);
         State::Nickname
     }
 

@@ -44,7 +44,12 @@ pub fn load_slots(
 /// When the folder cannot be made or the file written.
 pub fn write_slot(own_dir: &std::path::Path, slot: usize, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::create_dir_all(own_dir)?;
-    std::fs::write(own_dir.join(file_name(slot)), bytes)
+    // Written beside it and renamed over it, so an interrupted write never leaves half a
+    // game where a whole one was.
+    let path = own_dir.join(file_name(slot));
+    let partial = own_dir.join(format!("{}.partial", file_name(slot)));
+    std::fs::write(&partial, bytes)?;
+    std::fs::rename(&partial, &path)
 }
 const DRIVERS_AT: usize = NAME_AT + NAME_BYTES;
 
@@ -162,6 +167,12 @@ mod tests {
         assert_eq!(slots[1].as_deref(), Some(&b"ours 1"[..]));
         assert_eq!(slots[2], None);
         assert_eq!(std::fs::read(game.join("DR.SG1")).unwrap(), b"original 1");
+        write_slot(&own, 1, b"ours again").unwrap();
+        assert_eq!(std::fs::read(own.join("DR.SG1")).unwrap(), b"ours again");
+        assert!(
+            !own.join("DR.SG1.partial").exists(),
+            "nothing half-written is left"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 

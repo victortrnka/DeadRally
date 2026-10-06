@@ -190,7 +190,6 @@ impl Menu {
             max_pixels: NAME_PIXELS,
             licence: true,
         };
-        self.palette.set_player_ramp(self.copper(START_COLOUR));
         State::Nickname
     }
 
@@ -334,8 +333,6 @@ impl Menu {
             0x0E => self.erase_character(),
             _ => self.type_character(key),
         }
-        self.palette
-            .set_player_ramp(self.copper(self.nickname.colour));
         State::Nickname
     }
 
@@ -395,8 +392,6 @@ impl Menu {
             return State::FaceChange { up, waits };
         }
         self.campaign.player_mut().face = self.nickname.face;
-        self.palette
-            .set_player_ramp(self.copper(self.nickname.colour));
         State::Nickname
     }
 
