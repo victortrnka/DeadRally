@@ -1067,6 +1067,36 @@ fn saved_game_with_money(money: i32) -> Vec<u8> {
     game.encode(3)
 }
 
+#[test]
+fn a_saved_game_whose_player_is_not_driver_19_loads_and_saves_as_it_was() {
+    // After a race the standings move the player's record (0x463CE8 follows it), so a later
+    // save holds them anywhere in the table; such a game must load, and save back with the
+    // player where they were, not driver 19's record mistaken for theirs.
+    let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(5_000));
+    file.drivers.copy_within(19 * 108..20 * 108, 5 * 108);
+    file.drivers[19 * 108..20 * 108].fill(0);
+    file.drivers[19 * 108] = b'o';
+    file.driver_id = 5;
+    let mut game = in_shop(file.encode(3));
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (_, saved) = game.take_saved_game().expect("a game was saved");
+    let saved = deadrally_gamedata::save_game::SaveGame::decode(&saved);
+    assert_eq!(saved.driver_id, 5);
+    assert_eq!(saved.drivers[5 * 108], b'p', "the player's own record");
+    assert_eq!(
+        field(&saved.drivers[5 * 108..6 * 108], 48),
+        5_000,
+        "with their money"
+    );
+}
+
 /// The player's record in the game saved into slot 1 after `keys` in the shop of
 /// [`saved_game_with_money`].
 fn player_after_shopping(money: i32, keys: &[Key]) -> Vec<u8> {

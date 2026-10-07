@@ -1767,7 +1767,7 @@ const NO_SIGN_UP_SHOTS: [(u64, &str); 71] = [
 
 /// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
 /// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
-/// menu, Up to "See current statistics", Enter, and Enter on the statistics.
+/// menu, Up to its statistics row, Enter, and Enter on the statistics.
 const STATISTICS_KEYS: [(u64, Key); 10] = [
     (130, Key::Space),
     (1728, Key::Enter),

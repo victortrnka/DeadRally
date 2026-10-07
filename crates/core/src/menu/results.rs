@@ -4,6 +4,7 @@
 //! them); then the standings sorted afresh with the player's statistics, the wait while the
 //! shop loads, a key, and the way back.
 
+use crate::books::WRECKED;
 use crate::campaign::quicksort;
 use crate::canvas::{Canvas, at};
 use crate::keys;
@@ -47,7 +48,7 @@ const FACE: (usize, usize) = (422, 3);
 const CAR_X: usize = 490;
 /// The palette entries each place's car is drawn with (0x425D91 on).
 const PLACE_RAMPS: [usize; PLACES] = [0x40, 0x50, 0xE0, 0xF0];
-/// "Press any key to continue..." and its blink (0x4260D0): small A at (366, 452), small B
+/// The line asking for a key and its blink (0x4260D0): small A at (366, 452), small B
 /// from the 30th call, small A again at the 60th; the panel's rows under it put back first
 /// (`sub_426080`), and the line's strip shown.
 const PRESS: (usize, usize) = (366, 452);
@@ -62,8 +63,6 @@ const FADE_IN_STEPS: u32 = 50;
 const OUT_STEPS: u32 = 51;
 /// The sound when the shop has loaded (0x42B9A2).
 const LOADED_SOUND: u8 = 0x1C;
-/// A wrecked driver's damage.
-const WRECKED: i32 = 100;
 /// `drawStadistics`: its title, each row's label at 360 and value at 526, 23 lines apart
 /// from line 115 with a gap before the race's heading on line 247.
 const STATISTICS_TITLE: (usize, usize) = (416, 86);
@@ -80,9 +79,52 @@ fn clock([minutes, seconds, hundredths]: [i32; 3]) -> String {
     format!("{minutes:02}:{seconds:02}.{hundredths:02}")
 }
 
-/// A time in hundredths, as the records are compared.
+/// A time in hundredths, as the records are compared; the original's sums wrap on a
+/// hand-made `dr.cfg` (0x42520A).
 fn clock_total([minutes, seconds, hundredths]: [i32; 3]) -> i32 {
-    (minutes * 60 + seconds) * 100 + hundredths
+    minutes
+        .wrapping_mul(60)
+        .wrapping_add(seconds)
+        .wrapping_mul(100)
+        .wrapping_add(hundredths)
+}
+
+/// 0x425241, 0x425318: whether the best lap becomes the circuit's record for the car: a lap
+/// set and better than the record, or any lap on a record with nothing in it.
+fn beats_record(best: [i32; 3], record: [u32; 3]) -> bool {
+    let record = record.map(|part| part as i32);
+    let sum = |time: [i32; 3]| time[0].wrapping_add(time[1]).wrapping_add(time[2]);
+    let best_total = clock_total(best);
+    (best_total < clock_total(record) && sum(best) != 0) || (sum(record) == 0 && best_total > 0)
+}
+
+/// What a race's page does for one of its first three places.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Award {
+    /// The points' marker by the driver's row, when the page is shown.
+    Marker,
+    /// The points added and their text drawn.
+    Points,
+}
+
+/// A race's page's first three places in order (0x42943B–0x4295A7), given which are wrecked
+/// and which is the player lapped: a wreck gets nothing; the player lapped gets nothing and,
+/// when the page is shown, ends it there, so the places after get nothing either; when
+/// Escape skips the page the places after still get their points.
+fn page_awards(wrecked: [bool; 3], shut_out: [bool; 3], skip: bool) -> Vec<(usize, Award)> {
+    let mut awards = Vec::new();
+    for place in 0..3 {
+        if !skip && !wrecked[place] {
+            if shut_out[place] {
+                break;
+            }
+            awards.push((place, Award::Marker));
+        }
+        if !wrecked[place] && !shut_out[place] {
+            awards.push((place, Award::Points));
+        }
+    }
+    awards
 }
 
 impl Menu {
@@ -157,7 +199,7 @@ impl Menu {
     }
 
     /// After the races' pages: the standings sorted afresh (`sub_423C90`, `sub_423E20`) with
-    /// the player's statistics, "Please wait while loading..." while the shop loads.
+    /// the player's statistics, the line saying the shop loads while it does.
     fn results_statistics(&mut self) -> State {
         self.campaign.rank_drivers();
         let mut screen = std::mem::take(&mut self.screen);
@@ -185,7 +227,7 @@ impl Menu {
         State::ResultsLoading
     }
 
-    /// The shop loaded: the sound, and "Press any key to continue..." in place of the wait's
+    /// The shop loaded: the sound, and the line asking for a key in place of the wait's
     /// line.
     pub(super) fn results_loaded(&mut self) -> State {
         let mut screen = std::mem::take(&mut self.screen);
@@ -220,7 +262,7 @@ impl Menu {
         State::MarketLeave { step: 0 }
     }
 
-    /// "See current statistics" (`sub_42C940`): the palette composed, then the menu out from
+    /// The Start Racing menu's statistics row (`sub_42C940`): the palette composed, then the menu out from
     /// 100 % in 51 waits, the Start Racing menu's cursor turning every other one.
     pub(super) fn open_statistics(&mut self) -> State {
         self.compose_palette();
@@ -389,26 +431,25 @@ impl Menu {
         }
         let lapped = self.outcome.lapped;
         let player = self.campaign.player_index;
-        for (place, &driver) in places.iter().take(3).enumerate() {
-            let wrecked = self.campaign.drivers[driver].damage == WRECKED;
-            let shut_out = driver == player && lapped;
-            if !skip && !wrecked {
-                if shut_out {
-                    // 0x42945C: the player lapped ends the page's points there.
-                    break;
+        let wrecked = [0, 1, 2].map(|place| self.campaign.drivers[places[place]].damage == WRECKED);
+        let shut_out = [0, 1, 2].map(|place| places[place] == player && lapped);
+        for (place, award) in page_awards(wrecked, shut_out, skip) {
+            let driver = places[place];
+            match award {
+                Award::Marker => {
+                    let marker = &self.assets.menu.results.points[race];
+                    screen.draw(marker, at(MARKER_X, ROW_TOP + ROW_STEP * driver), true);
                 }
-                let marker = &self.assets.menu.results.points[race];
-                screen.draw(marker, at(MARKER_X, ROW_TOP + ROW_STEP * driver), true);
+                Award::Points => {
+                    let record = &mut self.campaign.drivers[driver];
+                    record.points = record.points.wrapping_add(POINTS[race][place]);
+                    let text = &self.assets.menu.texts.campaign.results_points[race][place];
+                    let y = ROW_TOP + POINTS_TEXT_DY + ROW_STEP * driver;
+                    self.graphics
+                        .medium
+                        .draw(&mut screen, text, at(POINTS_TEXT_X, y));
+                }
             }
-            if wrecked || shut_out {
-                continue;
-            }
-            self.campaign.drivers[driver].points += POINTS[race][place];
-            let text = &self.assets.menu.texts.campaign.results_points[race][place];
-            let y = ROW_TOP + POINTS_TEXT_DY + ROW_STEP * driver;
-            self.graphics
-                .medium
-                .draw(&mut screen, text, at(POINTS_TEXT_X, y));
         }
         self.screen = screen;
         if skip {
@@ -543,13 +584,7 @@ impl Menu {
             let car = player.car.clamp(0, 5) as usize;
             let best = self.outcome.best_lap;
             let (_, record) = self.config.record(circuit, car);
-            let record_total = clock_total(record.map(|part| part as i32));
-            let best_total = clock_total(best);
-            let best_set = best.iter().sum::<i32>() != 0;
-            // 0x425241, 0x425318: a better lap, or a first one, is the new record.
-            if (best_total < record_total && best_set)
-                || (record.iter().sum::<u32>() == 0 && best_total > 0)
-            {
+            if beats_record(best, record) {
                 self.config
                     .set_record(circuit, car, player.name(), best.map(|part| part as u32));
             }
@@ -601,7 +636,7 @@ impl Menu {
         }
     }
 
-    /// "Press any key to continue..." in small A (`font` 0) or small B (1) on the screen.
+    /// The line asking for a key in small A (`font` 0) or small B (1) on the screen.
     fn draw_press(&mut self, font: usize) {
         let text = self.assets.menu.texts.campaign.press_to_go_on.clone();
         let mut screen = std::mem::take(&mut self.screen);
@@ -627,5 +662,60 @@ impl Menu {
         if self.press_blink == BLINK_A {
             self.press_blink = 0;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lapped_player_on_a_shown_page_ends_its_points_but_not_a_skipped_one() {
+        // 0x42945C breaks out of the page's loop; the skipped page's loop only steps over
+        // the player (0x4295A7), so the third place's driver loses points only when the page
+        // is shown.
+        let shut_out = [false, true, false];
+        let wrecked = [false; 3];
+        assert_eq!(
+            page_awards(wrecked, shut_out, false),
+            [(0, Award::Marker), (0, Award::Points)]
+        );
+        assert_eq!(
+            page_awards(wrecked, shut_out, true),
+            [(0, Award::Points), (2, Award::Points)]
+        );
+    }
+
+    #[test]
+    fn a_wreck_in_the_first_three_gets_neither_marker_nor_points() {
+        let awards = page_awards([false, true, false], [false; 3], false);
+        assert_eq!(
+            awards,
+            [
+                (0, Award::Marker),
+                (0, Award::Points),
+                (2, Award::Marker),
+                (2, Award::Points)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_best_lap_beats_the_record_when_better_or_the_record_is_empty() {
+        // The record is written into dr.cfg and shown as the best lap ever; a slower lap or a
+        // race without a lap must leave it alone.
+        assert!(beats_record([0, 26, 0], [0, 26, 96]));
+        assert!(!beats_record([0, 26, 96], [0, 26, 96]), "an equal lap");
+        assert!(!beats_record([0, 27, 0], [0, 26, 96]), "a slower lap");
+        assert!(beats_record([1, 2, 3], [0, 0, 0]), "the first lap");
+        assert!(!beats_record([0, 0, 0], [0, 26, 96]), "no lap at all");
+        assert!(
+            !beats_record([0, 0, 0], [0, 0, 0]),
+            "no lap on an empty record"
+        );
+        // A hand-made dr.cfg's huge times wrap as the original's sums do, and do not stop the
+        // game.
+        let _ = beats_record([0, 26, 0], [u32::MAX, u32::MAX, u32::MAX]);
+        let _ = beats_record([i32::MAX, i32::MAX, i32::MAX], [400_000, 0, 0]);
     }
 }

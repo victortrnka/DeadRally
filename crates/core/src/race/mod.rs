@@ -2344,7 +2344,7 @@ mod tests {
     /// runs the intro, the view tilting up and the colours coming back, before the view tilts
     /// away; the player must not see the race end on a black screen.
     #[test]
-    fn a_race_abandoned_before_its_intro_still_shows_the_intro() {
+    fn a_pause_answered_before_the_intro_goes_on_to_the_intro() {
         use pause::Answer::{Abort, Help, Resume};
         assert_eq!(after_pause(Abort, true), AfterPause::IntroThenEnd);
         assert_eq!(after_pause(Abort, false), AfterPause::End);

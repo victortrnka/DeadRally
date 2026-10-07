@@ -12,11 +12,11 @@ use crate::campaign::{Offer, SignUp};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
-/// The three races' columns are 160 pixels apart; their snapshots, prices, popups and border.
 /// The music's volume as the screen fades after signing up for no race: from 0xFFDC down by
 /// 0x51E a step.
 const NO_SIGN_UP_VOLUME: u32 = 0xFFDC;
 const NO_SIGN_UP_VOLUME_STEP: u32 = 0x51E;
+/// The three races' columns are 160 pixels apart; their snapshots, prices, popups and border.
 const COLUMN: usize = 160;
 const SNAPSHOT: (usize, usize) = (32, 128);
 const PRICE_XS: [usize; 3] = [73, 226, 383];
@@ -672,9 +672,8 @@ impl Menu {
         self.open_preview()
     }
 
-    /// Until the race's end and results exist (M4c, M5), the races end here: back to the shop
-    /// with nothing changed but the welcome, which the shop shows once after the first race
-    /// (spec M3a §2, M3b §2).
+    /// A race whose data does not load ends here: back to the shop with nothing changed but
+    /// the welcome, which the shop shows once after the first race (spec M3a §2, M3b §2).
     pub(super) fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;

@@ -44,7 +44,12 @@ pub(super) fn time(ticks: i32) -> Time {
 }
 
 fn hundredths([minutes, seconds, hundredths]: Time) -> i32 {
-    (minutes * 60 + seconds) * 100 + hundredths
+    // A hand-made dr.cfg's record can hold any numbers; the original's sums wrap.
+    minutes
+        .wrapping_mul(60)
+        .wrapping_add(seconds)
+        .wrapping_mul(100)
+        .wrapping_add(hundredths)
 }
 
 /// What the race keeps of laps beyond the cars' own counts.

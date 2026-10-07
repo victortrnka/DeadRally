@@ -424,14 +424,16 @@ impl Menu {
         typed[TYPED - 1] = key;
         let typed = *typed;
         let player = self.campaign.player_mut();
+        // The original's adds wrap on a hand-made save's numbers (0x43971E, 0x4397CC).
         if typed.ends_with(&DRAW) {
-            player.money += 1000;
+            player.money = player.money.wrapping_add(1000);
         } else if typed.ends_with(&DROOL) {
             player.money = 500_000;
             self.sound
                 .trigger_at(CHEAT_CHANNEL, CHEAT_SOUND, CHEAT_VOLUME, CHEAT_PITCH);
         } else if typed.ends_with(&DRIVE) || typed.ends_with(&DROP) {
-            player.points += if typed.ends_with(&DRIVE) { 10 } else { -10 };
+            let change = if typed.ends_with(&DRIVE) { 10 } else { -10 };
+            player.points = player.points.wrapping_add(change);
             self.campaign.rank_drivers();
         } else {
             return;
