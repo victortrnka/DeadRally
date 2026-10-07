@@ -248,6 +248,10 @@ impl Menu {
             pause_lines: lines,
             race_over_lines: self.assets.menu.texts.campaign.race_over.clone(),
             paused_lines: self.assets.menu.texts.campaign.game_paused.clone(),
+            welcome_lines: self
+                .campaign
+                .race_welcome
+                .then(|| self.assets.menu.texts.campaign.race_welcome.clone()),
             help: self.assets.menu.texts.help.clone(),
             pads: std::array::from_fn(|control| self.config.pad(control)),
             still: self.campaign.still_opponents,

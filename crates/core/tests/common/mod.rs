@@ -185,6 +185,7 @@ fn texts() -> Texts {
             prize: b"P".to_vec(),
             abort_race: vec![b"A".to_vec(); 9],
             race_over: vec![b"A".to_vec(); 9],
+            race_welcome: vec![b"A".to_vec(); 9],
             game_paused: vec![b"A".to_vec(); 9],
             results_titles: vec![b"R".to_vec(); 3],
             results_points: vec![vec![b"+".to_vec(); 3]; 3],

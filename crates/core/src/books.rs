@@ -103,7 +103,9 @@ impl Campaign {
                 }
             }
         }
-        // 0x433720: the loan's races; every driver's weapons gone; the market restocked.
+        // 0x433720: the loan's races; no welcome box from now on (0x433733); every driver's
+        // weapons gone; the market restocked.
+        self.race_welcome = false;
         let player = self.player_mut();
         // The original's adds wrap on a hand-made save's numbers.
         if player.loan != -1 {
@@ -220,6 +222,18 @@ mod tests {
             damage,
             money,
         }
+    }
+
+    #[test]
+    fn only_a_new_games_first_race_shows_the_welcome_box() {
+        // The box naming the race's keys would otherwise greet the player before every race.
+        let mut campaign = campaign();
+        campaign.race_welcome = true;
+        campaign.settle(&Outcome {
+            finishes: vec![finish(1, 0, 0); 4],
+            ..Outcome::default()
+        });
+        assert!(!campaign.race_welcome);
     }
 
     /// The medium race pays 3000, 1500 and 375 for the first three places, nothing to a

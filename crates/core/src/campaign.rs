@@ -272,6 +272,8 @@ pub(crate) struct Campaign {
     pub(crate) warn_medium: bool,
     pub(crate) underground_popup: bool,
     pub(crate) welcome: bool,
+    /// A new game's first race shows the box with the race's keys after its intro (0x464F44).
+    pub(crate) race_welcome: bool,
     /// The sign-up on screen, and the race the player is in.
     pub(crate) sign_up: Option<SignUp>,
     pub(crate) entered_race: Option<usize>,
@@ -350,6 +352,7 @@ impl Campaign {
             warn_medium: false,
             underground_popup: false,
             welcome: false,
+            race_welcome: false,
             sign_up: None,
             entered_race: None,
             hitman_chance: 5,
