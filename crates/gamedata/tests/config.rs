@@ -90,19 +90,24 @@ fn the_originals_display_options_can_be_kept_in_the_file() {
 }
 
 #[test]
-fn display_options_must_be_true_or_false() {
-    // "yes" silently read as off would leave the player wondering why nothing changed.
+fn a_display_option_that_is_not_true_or_false_is_a_warning() {
+    // "yes" must not be read as off without a word, nor stop the game from finding its data
+    // in the same file.
     let dir = tempdir().unwrap();
     let path = dir.path().join("config.toml");
-    fs::write(&path, "smooth = \"yes\"\n").unwrap();
-    assert!(matches!(
-        load_config(&path),
-        Err(ConfigError::WrongType {
-            key: "smooth",
-            expected: "boolean",
-            ..
-        })
-    ));
+    fs::write(&path, "smooth = \"yes\"\ndata_path = \"/games/dr\"\n").unwrap();
+    let config = load_config(&path).unwrap().unwrap();
+    assert_eq!(config.smooth, None);
+    assert_eq!(
+        config.data_path.as_deref(),
+        Some(std::path::Path::new("/games/dr"))
+    );
+    assert_eq!(config.warnings.len(), 1);
+    assert!(
+        config.warnings[0].contains("smooth"),
+        "{:?}",
+        config.warnings
+    );
 }
 
 #[test]

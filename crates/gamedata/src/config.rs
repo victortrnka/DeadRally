@@ -127,17 +127,13 @@ pub fn load_config(path: &Path) -> Result<Option<Config>, ConfigError> {
                 }
             },
             key @ ("window" | "smooth" | "nogl" | "vsync") => {
+                // A display option is no reason to refuse the file's `data_path`.
                 let Some(on) = value.as_bool() else {
-                    return Err(ConfigError::WrongType {
-                        path: path.to_path_buf(),
-                        key: match key {
-                            "window" => "window",
-                            "smooth" => "smooth",
-                            "nogl" => "nogl",
-                            _ => "vsync",
-                        },
-                        expected: "boolean",
-                    });
+                    config.warnings.push(format!(
+                        "`{key}` in {} must be true or false (ignored)",
+                        path.display()
+                    ));
+                    continue;
                 };
                 let slot = match key {
                     "window" => &mut config.window,

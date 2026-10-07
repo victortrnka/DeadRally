@@ -176,6 +176,8 @@ mod tests {
 
     #[test]
     fn full_resolution_screens_are_copied_as_they_are() {
+        // The menus are drawn at the window's size; any scaling or smoothing of them in the
+        // software picture would blur the original's text (0x43BBF9 copies them).
         let mut palette = [[0; 3]; 256];
         palette[7] = [1, 2, 3];
         let pixels = vec![7; 640 * 480];
@@ -187,6 +189,8 @@ mod tests {
 
     #[test]
     fn other_sizes_are_rejected() {
+        // The original has no other screen; a frame of another size is a bug to report,
+        // not a picture to guess at.
         let palette = [[0; 3]; 256];
         let pixels = vec![0; 640 * 360];
         let mut out = vec![0; (WINDOW_WIDTH * WINDOW_HEIGHT * 4) as usize];

@@ -57,7 +57,9 @@ jobs:
         run: |
           version=$GITHUB_REF_NAME
           if [ "$GITHUB_REF_TYPE" != tag ]; then version="dev-${GITHUB_SHA::7}"; fi
-          echo "file=$(scripts/package.sh ${{ matrix.system }} "$version" dist)" >>"$GITHUB_OUTPUT"
+          # On its own line, so that a failing package.sh fails the step.
+          file=$(scripts/package.sh ${{ matrix.system }} "$version" dist)
+          echo "file=$file" >>"$GITHUB_OUTPUT"
       - name: The packed program starts
         shell: bash
         run: |

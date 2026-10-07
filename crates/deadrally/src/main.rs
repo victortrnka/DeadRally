@@ -11,6 +11,9 @@
 //! `window`, `smooth`, `nogl` and `vsync`. Alt+Enter toggles fullscreen, F12 toggles the
 //! smoothing, closing the window quits. One stats line per second goes to stdout.
 
+// A player's Windows build opens no console window; a debug build keeps it for the stats.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod keymap;
 
 use std::error::Error;
@@ -25,7 +28,8 @@ use deadrally_core::{
 };
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::{
-    Config, DATA_ENV_VAR, LocateError, Outcome, config_path, load_config, locate, save_data_path,
+    Config, DATA_ENV_VAR, DataSource, LocateError, Outcome, config_path, load_config, locate,
+    save_data_path,
 };
 use deadrally_gamedata::{dr_cfg, save_game};
 use sdl3::Sdl;
@@ -68,6 +72,8 @@ fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, St
             Some("-nogl") => options.nogl = true,
             Some("-novsync") => options.vsync = false,
             Some("-testscene") => options.test_scene = true,
+            // macOS's Finder may add its process serial number on a first launch.
+            Some(arg) if arg.starts_with("-psn_") => {}
             Some("--data") => {
                 options.data = Some(PathBuf::from(
                     args.next().ok_or("--data needs a directory")?,
@@ -103,7 +109,36 @@ impl Options {
 /// not a known release, and where DeadRally keeps its `dr.cfg`.
 type Loaded = (Game, Option<String>, Option<PathBuf>);
 
-fn load_game(data: Option<&Path>) -> Result<Loaded, String> {
+/// Why the game did not load, and whether choosing its folder in the dialog could help.
+struct NotLoaded {
+    message: String,
+    choosing_helps: bool,
+}
+
+impl From<String> for NotLoaded {
+    fn from(message: String) -> NotLoaded {
+        NotLoaded {
+            message,
+            choosing_helps: false,
+        }
+    }
+}
+
+/// Whether the system's folder dialog could mend `error`: no folder given anywhere, or the
+/// config file's not holding the game. A wrong `--data` or `DEADRALLY_DATA` is the player's
+/// to change, and a broken config file is reported as it is.
+fn offers_dialog(error: &LocateError) -> bool {
+    matches!(
+        error,
+        LocateError::NotSpecified { .. }
+            | LocateError::Invalid {
+                source: DataSource::ConfigFile(_),
+                ..
+            }
+    )
+}
+
+fn load_game(data: Option<&Path>) -> Result<Loaded, NotLoaded> {
     let config = config_path();
     let env = std::env::var_os(DATA_ENV_VAR);
     let hint = || {
@@ -116,14 +151,14 @@ fn load_game(data: Option<&Path>) -> Result<Loaded, String> {
              --data <dir>, the {DATA_ENV_VAR} environment variable, or data_path in {file}."
         )
     };
-    let located = locate(data, env.as_deref(), config.as_deref()).map_err(|error| match error {
-        // This one already names all three ways.
-        LocateError::NotSpecified { .. } => error.to_string(),
-        _ => format!("{error}\n\n{}", hint()),
+    let located = locate(data, env.as_deref(), config.as_deref()).map_err(|error| NotLoaded {
+        choosing_helps: offers_dialog(&error),
+        message: match error {
+            // This one already names all three ways.
+            LocateError::NotSpecified { .. } => error.to_string(),
+            _ => format!("{error}\n\n{}", hint()),
+        },
     })?;
-    for warning in &located.config_warnings {
-        eprintln!("warning: {warning}");
-    }
     let dir = &located.validation.dir;
     let warning = match &located.validation.outcome {
         Outcome::Known { .. } => None,
@@ -181,32 +216,39 @@ fn nanos(duration: Duration) -> u64 {
 /// and none was usable, on the folder they then choose in the system's dialog, which the
 /// config file keeps from then on (spec M7b).
 fn load_or_choose(sdl: &Sdl, data: Option<&Path>) -> Result<Loaded, String> {
-    let message = match load_game(data) {
+    let failure = match load_game(data) {
         Ok(loaded) => return Ok(loaded),
-        Err(message) => message,
+        Err(failure) => failure,
     };
-    let named = data.is_some() || std::env::var_os(DATA_ENV_VAR).is_some_and(|dir| !dir.is_empty());
-    if named {
-        return Err(message);
+    if !failure.choosing_helps {
+        return Err(failure.message);
     }
     tell(
         MessageBoxFlag::INFORMATION,
         "Choose the game",
-        &format!("{message}\n\nChoose the folder of your copy of Death Rally next."),
+        &format!(
+            "{}\n\nChoose the folder of your copy of Death Rally next.",
+            failure.message
+        ),
     );
     let Some(dir) = choose_folder(sdl) else {
-        return Err(message);
+        return Err(failure.message);
     };
     // Kept first and then read back, so that a folder that does not hold the game is reported
     // as the config file's and is asked for again at the next start.
     match config_path().map(|path| save_data_path(&path, &dir)) {
         Some(Ok(())) => load_game(None),
         Some(Err(error)) => {
-            eprintln!("warning: {error}");
+            tell(
+                MessageBoxFlag::WARNING,
+                "Warning",
+                &format!("{error}\n\nDeadRally will ask for the folder again at the next start."),
+            );
             load_game(Some(&dir))
         }
         None => load_game(Some(&dir)),
     }
+    .map_err(|failure| failure.message)
 }
 
 /// The folder the player chooses in the system's dialog; `None` when they cancel or the
@@ -228,20 +270,38 @@ fn choose_folder(sdl: &Sdl) -> Option<PathBuf> {
         if let Some(dir) = chosen.lock().unwrap_or_else(PoisonError::into_inner).take() {
             return dir;
         }
-        events.wait_event_timeout(Duration::from_millis(50));
+        // Ctrl+C or a stopped dialog must not leave the game waiting with no window.
+        if let Some(Event::Quit { .. }) = events.wait_event_timeout(Duration::from_millis(50)) {
+            return None;
+        }
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
+    // Started from Finder or Explorer, a player sees no stderr.
+    if let Err(error) = run() {
+        tell(MessageBoxFlag::ERROR, "Error", &error.to_string());
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
     let options = parse_options(std::env::args_os().skip(1))?;
     let config = match config_path().as_deref().map(load_config) {
         Some(Ok(Some(config))) => config,
         Some(Err(error)) => {
-            eprintln!("warning: {error}");
+            tell(MessageBoxFlag::WARNING, "Warning", &error.to_string());
             Config::default()
         }
         _ => Config::default(),
     };
+    if !config.warnings.is_empty() {
+        tell(
+            MessageBoxFlag::WARNING,
+            "Warning",
+            &config.warnings.join("\n"),
+        );
+    }
     let options = options.with_config(&config);
     sdl3::hint::set("SDL_RENDER_VSYNC", if options.vsync { "1" } else { "0" });
 
@@ -510,6 +570,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use deadrally_gamedata::{ConfigError, ValidationError};
 
     fn parse(list: &[&str]) -> Result<Options, String> {
         parse_options(list.iter().map(OsString::from))
@@ -569,10 +630,49 @@ mod tests {
     fn unusable_data_says_how_to_point_at_other_data() {
         // A player whose copy is incomplete or damaged must learn how to choose another one.
         let empty = tempfile::tempdir().unwrap();
-        let message = load_game(Some(empty.path())).expect_err("an empty folder is no game data");
+        let Err(NotLoaded { message, .. }) = load_game(Some(empty.path())) else {
+            panic!("an empty folder is no game data");
+        };
         for needle in ["--data", "DEADRALLY_DATA", "data_path"] {
             assert!(message.contains(needle), "{needle} missing in: {message}");
         }
+    }
+
+    #[test]
+    fn the_folder_dialog_is_offered_only_when_choosing_can_help() {
+        // A broken config file or a wrong --data must be reported as such: a dialog there
+        // would ask for a folder the player already has, and rewrite their config file.
+        let unreadable = || ValidationError::DirUnreadable {
+            dir: PathBuf::from("/nowhere"),
+            source: std::io::Error::other("gone"),
+        };
+        assert!(offers_dialog(&LocateError::NotSpecified {
+            config_path: None
+        }));
+        assert!(offers_dialog(&LocateError::Invalid {
+            source: DataSource::ConfigFile(PathBuf::from("config.toml")),
+            error: unreadable(),
+        }));
+        assert!(!offers_dialog(&LocateError::Invalid {
+            source: DataSource::CommandLine,
+            error: unreadable(),
+        }));
+        assert!(!offers_dialog(&LocateError::Invalid {
+            source: DataSource::Environment,
+            error: unreadable(),
+        }));
+        assert!(!offers_dialog(&LocateError::Config(ConfigError::Parse {
+            path: PathBuf::from("config.toml"),
+            message: "line 1".to_owned(),
+        })));
+    }
+
+    #[test]
+    fn macos_launch_arguments_are_ignored() {
+        // Finder may pass -psn_0_NNN on a first launch; refusing it would stop the game
+        // before it shows anything.
+        let options = parse(&["-psn_0_1234567", "-window"]).unwrap();
+        assert!(options.windowed);
     }
 
     #[test]
