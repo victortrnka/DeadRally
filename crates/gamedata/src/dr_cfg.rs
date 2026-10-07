@@ -271,6 +271,32 @@ impl DrCfg {
         )
     }
 
+    /// A game won into the best ten (`showHallOfFameEndGame_430FA0`): before the first entry
+    /// with more races than `races`, the entries below moving down a place and the last
+    /// dropping out; the name copied over the old one up to its NUL (the bytes after it stay)
+    /// and upper-cased. `None` when ten entries have as few races or fewer.
+    pub fn insert_hall_of_fame(
+        &mut self,
+        name: &[u8],
+        races: i32,
+        difficulty: u32,
+    ) -> Option<usize> {
+        let rank = (0..HALL_OF_FAME_ENTRIES).find(|&rank| races < self.hall_of_fame(rank).1)?;
+        for k in (rank + 1..HALL_OF_FAME_ENTRIES).rev() {
+            let from = HALL_OF_FAME + ENTRY_BYTES * (k - 1);
+            self.payload
+                .copy_within(from..from + ENTRY_BYTES, from + ENTRY_BYTES);
+        }
+        let at = HALL_OF_FAME + ENTRY_BYTES * rank;
+        let length = name.len().min(NAME_BYTES - 1);
+        let field = &mut self.payload[at..at + NAME_BYTES];
+        field[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
+        field[length] = 0;
+        self.put(at + NAME_BYTES, races as u32);
+        self.put(at + NAME_BYTES + 4, difficulty);
+        Some(rank)
+    }
+
     /// Upper-cases the best ten's names in place, as `seeHallOfFame` (0x431510) does with
     /// `_strupr` before drawing them.
     pub fn upper_case_hall_of_fame(&mut self) {
@@ -392,6 +418,24 @@ mod tests {
         let unreadable = home.path().join("dr.cfg");
         std::fs::create_dir(&unreadable).unwrap();
         assert!(load(Some(&unreadable), home.path(), &dummy()).is_err());
+    }
+
+    #[test]
+    fn a_won_game_enters_the_best_ten_before_the_first_with_more_races() {
+        // The best ten are sorted by races, fewest first; a winner with as many races as an
+        // entry goes below it, and the last entry drops out.
+        let mut cfg = DrCfg::parse(&[0; 8]).unwrap();
+        for rank in 0..HALL_OF_FAME_ENTRIES {
+            let at = HALL_OF_FAME + ENTRY_BYTES * rank;
+            cfg.payload[at] = b'a' + rank as u8;
+            cfg.put(at + NAME_BYTES, 10 * (rank as u32 + 1));
+        }
+        assert_eq!(cfg.insert_hall_of_fame(b"Tom", 30, 2), Some(3));
+        assert_eq!(cfg.hall_of_fame(2), (&b"c"[..], 30, 0));
+        assert_eq!(cfg.hall_of_fame(3), (&b"TOM"[..], 30, 2));
+        assert_eq!(cfg.hall_of_fame(4), (&b"d"[..], 40, 0));
+        assert_eq!(cfg.hall_of_fame(9), (&b"i"[..], 90, 0));
+        assert_eq!(cfg.insert_hall_of_fame(b"slow", 100, 0), None);
     }
 
     #[test]

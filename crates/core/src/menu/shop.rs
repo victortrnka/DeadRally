@@ -342,10 +342,10 @@ impl Menu {
         if !second {
             return State::Shop { second: true };
         }
-        let next = self.shop_pass();
         if self.shop.game_over {
             return self.shop_game_over();
         }
+        let next = self.shop_pass();
         if next == (State::Shop { second: false })
             && let Some(quick) = self.quick_keys()
         {
@@ -891,7 +891,10 @@ impl Menu {
             return self.open_market();
         }
         self.sound(ON_SOUND);
-        // The final race against the Adversary comes with M6; the sign-up stands in for it.
+        // 0x438643: a leader meets the Adversary instead of signing up.
+        if self.campaign.player_leads() {
+            return self.open_adversary();
+        }
         self.open_sign_up()
     }
 

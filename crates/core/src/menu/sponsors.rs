@@ -54,7 +54,7 @@ const LAST: i32 = 4;
 const TOP_RANKS: i32 = 7;
 /// The end of the road: less than this with the car's trade-in, and a car more damaged than
 /// this (0x438AB6).
-const RACE_MONEY: i64 = 1000;
+const RACE_MONEY: i32 = 1000;
 const WRECK_DAMAGE: i32 = 95;
 /// What the sponsors pay by the player's car, the Vagabond first: three wins in a row
 /// (0x41B53A) and everyone else wrecked (0x41B89A) alike, a clean race (0x41B6EA).
@@ -102,7 +102,8 @@ type Picture<'a> = (&'a Image, (usize, usize), bool);
 /// (the car's worth when the shop was entered), less than a repair costs (`repair`), and the
 /// car more than 95 % damaged.
 pub(crate) fn broke(player: &Driver, trade_in: i32, repair: i32) -> bool {
-    i64::from(player.money) + i64::from(trade_in) < RACE_MONEY
+    // Added as 32 bits, as the original adds them (0x438AC0).
+    player.money.wrapping_add(trade_in) < RACE_MONEY
         && player.money < repair
         && player.damage > WRECK_DAMAGE
 }
@@ -338,8 +339,10 @@ impl Menu {
     /// The shop's pass after the end of the road (0x438960 to 0x439B39): the game ends
     /// (`endGame` 0x4291D0) and the Start Racing menu comes back as after Escape. The original
     /// acts on a key read in that pass first, the whole Underground Market and race on Enter
-    /// at the way on; here the pass's key moves the selection or buys at most.
+    /// at the way on; DeadRally lets that key go instead, so a game that is over plays on in
+    /// no way.
     pub(super) fn shop_game_over(&mut self) -> State {
+        self.keys.take();
         self.shop.game_over = false;
         self.end_game();
         self.leave_shop()
@@ -480,7 +483,11 @@ mod tests {
         let mut lapped = true;
         let mut broke = true;
         let mut told = Vec::new();
-        while let Some(popup) = campaign.popup_due(lapped, broke) {
+        // At most one more round than there are popups, so a flag left set fails here.
+        for _ in 0..=ORDER.len() {
+            let Some(popup) = campaign.popup_due(lapped, broke) else {
+                break;
+            };
             campaign.popup_told(popup);
             match popup {
                 Popup::Lapped => lapped = false,
@@ -489,7 +496,20 @@ mod tests {
             }
             told.push(popup);
         }
-        assert_eq!(told, ORDER);
+        assert_eq!(
+            told,
+            [
+                Popup::Welcome,
+                Popup::Lapped,
+                Popup::WinStreak,
+                Popup::CleanRace,
+                Popup::AllWrecked,
+                Popup::DrugRun,
+                Popup::Hit,
+                Popup::LoanDue,
+                Popup::EndOfRoad,
+            ]
+        );
     }
 
     #[test]
@@ -514,9 +534,18 @@ mod tests {
                 money(&campaign) - 10_000
             };
             let k = car as usize;
-            assert_eq!(paid(Popup::WinStreak), WIN_STREAK_PAY[k]);
-            assert_eq!(paid(Popup::CleanRace), CLEAN_RACE_PAY[k]);
-            assert_eq!(paid(Popup::AllWrecked), ALL_WRECKED_PAY[k]);
+            assert_eq!(
+                paid(Popup::WinStreak),
+                [600, 1000, 2000, 3000, 4000, 5000][k]
+            );
+            assert_eq!(
+                paid(Popup::CleanRace),
+                [350, 750, 1500, 3000, 4500, 6000][k]
+            );
+            assert_eq!(
+                paid(Popup::AllWrecked),
+                [600, 1000, 2000, 3000, 4000, 5000][k]
+            );
         }
         let mut lotus = campaign(5);
         lotus.settle_popup(Popup::CleanRace);

@@ -70,6 +70,10 @@ fn assets() -> Assets {
         intro_music: music(false),
         intro_effects: effects(),
         menu_music: music(false),
+        adversary_animation: Animation::from_frames(Vec::new(), Vec::new()),
+        adversary_effects: effects(),
+        end_animation: Animation::from_frames(Vec::new(), Vec::new()),
+        end_effects: effects(),
         menu: common::menu_assets(),
         race: common::race_archives(),
     }

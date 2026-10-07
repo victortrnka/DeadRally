@@ -7,6 +7,7 @@ mod buffer;
 mod cars;
 mod collisions;
 mod driving;
+mod flag;
 mod guns;
 mod help;
 mod hud;
@@ -122,6 +123,29 @@ fn car_ramp(palette: &mut Palette, first: usize, [r, g, b]: [u8; 3]) {
     }
 }
 
+/// The cars' ramps in the race's palette (`initRaceValues` 0x409FCF on), the four places'
+/// always: each from its driver's colour, those past the drivers from `spare` (left as the
+/// track has them without one), but the first left as the track has it when its car is the
+/// Adversary's.
+fn car_ramps(palette: &mut Palette, drivers: &[Driver], spare: Option<[u8; 3]>) {
+    for (place, &first) in RAMPS.iter().enumerate() {
+        let colour = match drivers.get(place) {
+            Some(driver) if place == 0 && driver.car == driving::ADVERSARY_CAR => None,
+            Some(driver) => Some(driver.colour),
+            None => spare,
+        };
+        if let Some(colour) = colour {
+            car_ramp(palette, first, colour);
+        }
+    }
+}
+
+/// Whether a car's headlights shine (0x40DAB9, 0x40DD5D): not once it is wrecked or has
+/// finished.
+fn lit(car: &Car) -> bool {
+    car.handling.damage > 0 && !car.finished
+}
+
 /// Whether `drawShadows` draws a shadow with these corners in a view `half_width` across from
 /// its middle: one corner across the view and one (maybe another) down it; a shadow whose
 /// corners all lie outside is left out even where it would cover the view.
@@ -171,6 +195,8 @@ pub(crate) struct Race {
     over_ticks: i32,
     /// The box's lines when P pauses the game.
     paused_lines: Vec<Vec<u8>>,
+    /// The welcome box's lines, until it has shown after the intro.
+    welcome_lines: Option<Vec<Vec<u8>>>,
     /// The music's and the effects' volumes in `dr.cfg`, which F2 and F3 turn back on.
     volumes: (u32, u32),
     /// The help's pages and texts, the gamepad's inputs for the controls (`dr.cfg`), and
@@ -230,6 +256,8 @@ pub(crate) struct Race {
     mines: mines::Mines,
     /// A wreck's fire (`BURN1A.BPK`).
     fire: Vec<u8>,
+    /// The chequered flag once a car has finished.
+    flag: flag::Flag,
     /// The HUD's medals of the places.
     medals: hud::Medals,
     /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`); the one shown is the session's.
@@ -300,12 +328,17 @@ impl Default for Session {
     }
 }
 
-/// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
-/// the player's place on the grid and whether the race has weapons, the pause box's lines,
-/// the eight controls' scancodes in `dr.cfg`, what a money power-up is worth, and the
-/// circuit's lap record for the player's car (minutes, seconds, hundredths, from `dr.cfg`).
+/// How a race is set up: the track (`TRn`, 0x45EA50) and whether it is turned round
+/// (0x4A7AA8) and its laps, the player's place on the grid and whether the race has weapons,
+/// the pause box's lines, the eight controls' scancodes in `dr.cfg`, what a money power-up is
+/// worth, and the circuit's lap record for the player's car (minutes, seconds, hundredths,
+/// from `dr.cfg`).
 pub(crate) struct Setup {
-    pub(crate) circuit: usize,
+    pub(crate) track: usize,
+    pub(crate) reversed: bool,
+    /// The colour of the cars' ramps past the drivers (in the Arena, the third and fourth
+    /// places', `CARCOL.PAL`'s entry 10: 0x4332EE); none leaves the track's colours there.
+    pub(crate) spare_ramps: Option<[u8; 3]>,
     /// The race chosen at the sign-up, 0 to 2 (0x456B88).
     pub(crate) race: usize,
     pub(crate) laps: i32,
@@ -314,6 +347,8 @@ pub(crate) struct Setup {
     pub(crate) pause_lines: Vec<Vec<u8>>,
     pub(crate) race_over_lines: Vec<Vec<u8>>,
     pub(crate) paused_lines: Vec<Vec<u8>>,
+    /// The welcome box's lines when this is a new game's first race (0x464F44).
+    pub(crate) welcome_lines: Option<Vec<Vec<u8>>>,
     pub(crate) help: HelpTexts,
     pub(crate) controls: [u32; 8],
     pub(crate) pads: [u32; 7],
@@ -422,6 +457,12 @@ enum Stage {
         first: bool,
         ending: bool,
     },
+    /// The welcome box after a new game's first intro; whether the race was abandoned
+    /// before the intro, and ends once the box is answered.
+    Welcome {
+        pause: Box<pause::Pause>,
+        ending: bool,
+    },
     /// The help (F1), the music's order it interrupted, and whether it came in the loop's
     /// first pass, before the intro.
     Help {
@@ -509,8 +550,8 @@ const PAUSE_CHANNEL: usize = 5;
 const PAUSE_PITCH: u32 = 0x2_8000;
 
 impl Race {
-    /// The race on circuit `circuit` (`TRn` with n = circuit % 9 + 1) over `laps` laps, the
-    /// drivers in their places, the player in place `player`; `pause_lines` the pause box's.
+    /// The race on track `TRn` (n = `track`) over `laps` laps, the drivers in their places,
+    /// the player in place `player`; `pause_lines` the pause box's.
     pub(crate) fn new(
         archives: &RaceArchives,
         setup: Setup,
@@ -518,7 +559,9 @@ impl Race {
         rand: &mut Rand,
     ) -> Result<Race, RaceError> {
         let Setup {
-            circuit,
+            track: number,
+            reversed,
+            spare_ramps,
             race,
             laps,
             player,
@@ -526,6 +569,7 @@ impl Race {
             pause_lines,
             race_over_lines,
             paused_lines,
+            welcome_lines,
             help,
             controls,
             pads,
@@ -534,9 +578,6 @@ impl Race {
             lap_record,
             session,
         } = setup;
-        let number = circuit % 9 + 1;
-        // The second half's circuits run their tracks the other way round (0x432532).
-        let reversed = circuit > 8;
         let mut track = Track::load(&archives.tracks[number], number)?;
         // The scene's lights and pictures are worked out before the track is turned round
         // (0x4161EC and 0x416206 come before 0x416304).
@@ -578,8 +619,15 @@ impl Race {
                         rotation - 48
                     };
                 }
-                let handling =
-                    driving::Handling::new(&archives.handling, driver, slot == player, weapons);
+                let handling = match drivers.get(1) {
+                    // 0x401FBC: the Adversary's car, first on the grid, is set up apart.
+                    Some(second) if slot == 0 && driver.car == driving::ADVERSARY_CAR => {
+                        driving::Handling::adversary(&archives.handling, driver, second, weapons)
+                    }
+                    _ => {
+                        driving::Handling::new(&archives.handling, driver, slot == player, weapons)
+                    }
+                };
                 Car::new(
                     (x as f32, y as f32, rotation),
                     slot,
@@ -616,9 +664,7 @@ impl Race {
         let tough = drivers.iter().position(is_tough);
         let player_tough = is_tough(&drivers[player]);
         let mut palette = track.palette.clone();
-        for (driver, &first) in drivers.iter().zip(&RAMPS) {
-            car_ramp(&mut palette, first, driver.colour);
-        }
+        car_ramps(&mut palette, &drivers, spare_ramps);
         let mut race = Race {
             track,
             drivers,
@@ -656,6 +702,7 @@ impl Race {
             race_over_lines,
             over_ticks: 0,
             paused_lines,
+            welcome_lines,
             volumes: (0, 0),
             help_pages: help::Pages {
                 keys: page(&archives.engine, "KEYCOM3")?,
@@ -696,6 +743,7 @@ impl Race {
                 hud::decoded(&archives.engine, "BLOWI.BPK")?,
             ),
             fire: hud::decoded(&archives.engine, "BURN1A.BPK")?,
+            flag: flag::Flag::new(hud::decoded(&archives.engine, "GEN-FLA.BPK")?),
             medals: hud::Medals::new(&[]),
             rocket_flames: [
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
@@ -784,6 +832,7 @@ impl Race {
             self.clock.between,
             self.weapons,
             rand,
+            self.laps_state.over,
         );
         for tick in 0..steps {
             self.clock.frame += 1;
@@ -1106,11 +1155,43 @@ impl Race {
                 if going {
                     return Outcome::Racing;
                 }
-                if *ending {
+                let ending = *ending;
+                if let Some(lines) = self.welcome_lines.take() {
+                    // 0x41788D: a new game's first race shows its welcome box now, over the
+                    // screen as the intro left it, its sound alone.
+                    let (pause, asked) = self.open_box(&lines, keys, rand);
+                    self.stage = Stage::Welcome { pause, ending };
+                    Self::pause_sounds(sound, &asked);
+                    return Outcome::Racing;
+                }
+                if ending {
                     // 0x41795D: the race abandoned before the intro leaves the loop after it.
                     self.start_outro(sound, Outcome::Aborted);
                     return Outcome::Racing;
                 }
+                self.clock.restart();
+            }
+            Stage::Welcome { pause, ending } => {
+                let ending = *ending;
+                let mut asked = Vec::new();
+                let step = pause.wait(|code| keys.held(code), rand, &mut asked);
+                self.screen.copy_from_slice(pause.screen());
+                Self::pause_sounds(sound, &asked);
+                let answer = match step {
+                    pause::Step::Waiting => return Outcome::Racing,
+                    pause::Step::Leaving => {
+                        keys.release_all();
+                        return Outcome::Racing;
+                    }
+                    pause::Step::Over(answer) => answer,
+                };
+                if ending {
+                    self.start_outro(sound, Outcome::Aborted);
+                    return Outcome::Racing;
+                }
+                // 0x41793C: Y does not abort here (0x464F68 is not -1); F1 is left held for
+                // the next pass.
+                self.help_asked = answer == pause::Answer::Help;
                 self.clock.restart();
             }
             Stage::Pause {
@@ -1420,8 +1501,9 @@ impl Race {
         Self::pause_sounds(sound, &asked);
     }
 
-    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the screen as shown; and
-    /// the sounds it asks for at its start.
+    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the race's buffer (from
+    /// 0x464F14, not the screen, which the intro or the effect power-up's waves may have left
+    /// otherwise); and the sounds it asks for at its start.
     fn open_box(
         &mut self,
         lines: &[Vec<u8>],
@@ -1447,7 +1529,13 @@ impl Race {
             }
         }
         keys.release_all();
-        let (pause, asked) = pause::Pause::new(&self.screen, picture, self.left(), rand);
+        // 0x406580: the box flies in over the buffer's view as the pass left it, which at the
+        // race's end is the last frame drawn and never shown.
+        let mut frame = Vec::with_capacity(VIEW_HEIGHT * VIEW_WIDTH);
+        for y in 0..VIEW_HEIGHT {
+            frame.extend((0..VIEW_WIDTH).map(|x| self.buffer.pixel(x, y)));
+        }
+        let (pause, asked) = pause::Pause::new(&frame, picture, self.left(), rand);
         self.screen.copy_from_slice(pause.screen());
         (Box::new(pause), asked)
     }
@@ -1487,16 +1575,24 @@ impl Race {
     }
 
     /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
-    /// the frame and the rocket flames' picture (`fp`, 0x456AFC), then for each car its
-    /// numbers in the original's layout, floats as their bits.
-    pub(crate) fn trace(&self) -> String {
-        let mut line = format!("{} fp{}", self.clock.frame, self.session.flame_phase);
+    /// the frame, the rocket flames' picture (`fp`, 0x456AFC), the ticks between the last two
+    /// frames (`bt`, 0x4A9EA4) and before the next power-up (`pw`, 0x456AC4), `rand()`'s state
+    /// (`rs`), then for each car its numbers in the original's layout, floats as their bits.
+    pub(crate) fn trace(&self, rand: &Rand) -> String {
+        let mut line = format!(
+            "{} fp{} bt{} pw{} rs{}",
+            self.clock.frame,
+            self.session.flame_phase,
+            self.clock.between,
+            self.power_ups.wait(),
+            rand.state()
+        );
         for car in &self.cars {
             let h = &car.handling;
             line += &format!(
                 " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
                  g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
-                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{} at{} bo{} av{} mw{} ho{} ef{}",
+                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{} at{} bo{} av{} mw{} ho{} ef{} ag{}",
                 car.zone,
                 car.direction,
                 car.sprite,
@@ -1533,6 +1629,7 @@ impl Race {
                 car.ai.mine_wait,
                 i32::from(car.ai.horn),
                 car.effect,
+                car.gunfire.active,
             );
         }
         line
@@ -1752,6 +1849,17 @@ impl Race {
             self.laps_state.race_clock += self.clock.between;
             self.laps_state.lap_clock += self.clock.between;
         }
+        self.draw_hud(sound);
+        // 0x417240: the flag for each car in first place once the race is over for the cars.
+        if self.laps_state.over {
+            for _ in self.cars.iter().filter(|car| car.place == 1) {
+                self.flag.draw(&mut self.buffer, self.clock.between);
+            }
+        }
+    }
+
+    /// The HUD (0x414220) or, with the status bar away, the small board alone (0x414110).
+    fn draw_hud(&mut self, sound: &mut Sound) {
         let left = self.left();
         if self.view_width == VIEW_WIDTH as i32 {
             // 0x414110: the status bar away, the last lap's time counted down a first time,
@@ -1868,13 +1976,13 @@ impl Race {
         let others = (0..self.cars.len()).filter(|&slot| slot != self.player);
         let lit = &self.track.lit;
         let player = &self.cars[self.player];
-        if player.handling.damage > 0 {
+        if self::lit(player) {
             cars::headlights(&mut self.buffer, on_screen[self.player], player.angle, lit);
         }
         for slot in others.clone() {
             let (x, y) = on_screen[slot];
             let near = x > left - 40 && x < 360 && y > -40 && y < VIEW_HEIGHT as i32 + 40;
-            if near && self.cars[slot].handling.damage > 0 {
+            if near && self::lit(&self.cars[slot]) {
                 cars::headlights(&mut self.buffer, (x, y), self.cars[slot].angle, lit);
             }
         }
@@ -2360,5 +2468,59 @@ mod tests {
         assert!(!shadow_in_view([(-10, -10), (300, -10), (-10, 250)], 128));
         assert!(shadow_in_view([(5, -10), (300, 300), (-10, 199)], 128));
         assert!(!shadow_in_view([(5, -10), (300, 300), (-10, 200)], 128));
+    }
+
+    fn racer(car: usize, colour: [u8; 3]) -> Driver {
+        Driver {
+            name: b"R".to_vec(),
+            car,
+            level: 3,
+            engine: 0,
+            tires: 0,
+            armour: 0,
+            damage: 0,
+            rocket: 0,
+            mines: 0,
+            spikes: false,
+            colour,
+        }
+    }
+
+    /// In the Arena the Adversary's car keeps the track's own colours (0x409FCF skips its
+    /// ramp), the player's second car takes the player's colour, and the two empty places'
+    /// ramps take the spare colour; a ramp set for the Adversary would paint its car the
+    /// player's colour.
+    #[test]
+    fn the_adversarys_car_keeps_the_tracks_colours() {
+        let track = Palette([[7, 7, 7]; 256]);
+        let mut palette = track.clone();
+        let drivers = [racer(6, [40, 0, 0]), racer(1, [0, 40, 0])];
+        car_ramps(&mut palette, &drivers, Some([0, 0, 40]));
+        assert_eq!(&palette.0[15..25], &track.0[15..25], "the Adversary's");
+        assert_eq!(palette.0[30], [0, 40, 0], "the player's own colour");
+        assert_eq!(palette.0[40], [0, 0, 40], "the third place's");
+        assert_eq!(palette.0[50], [0, 0, 40], "the fourth place's");
+        let mut palette = track.clone();
+        let drivers = [racer(5, [40, 0, 0]), racer(1, [0, 40, 0])];
+        car_ramps(&mut palette, &drivers, None);
+        assert_eq!(palette.0[20], [40, 0, 0], "any other car's colour");
+        assert_eq!(
+            &palette.0[35..55],
+            &track.0[35..55],
+            "no spare: the track's"
+        );
+    }
+
+    /// A car's headlights go out with its wreck and once it has finished (0x40DAB9,
+    /// 0x40DD5D): the winner rolling on after the line lights nothing ahead of it.
+    #[test]
+    fn a_finished_or_wrecked_car_has_no_headlights() {
+        let mut car = horn_car(0, 1, 100.0);
+        assert!(lit(&car));
+        car.finished = true;
+        assert!(!lit(&car), "finished");
+        car.finished = false;
+        car.handling.damage = 0;
+        assert!(!lit(&car), "wrecked");
     }
 }

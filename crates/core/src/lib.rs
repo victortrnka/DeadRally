@@ -6,6 +6,7 @@
 //! on every OS: parity with the original is impossible otherwise.
 #![forbid(unsafe_code)]
 
+mod animation;
 mod audio;
 mod books;
 mod campaign;

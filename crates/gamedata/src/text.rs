@@ -247,17 +247,36 @@ const LABEL_SEPARATOR: u32 = 0x44_35F8;
 /// The headlines after a race (0x4279C0): 19 of four lines, 0x118 apart, the lines 0x46.
 const HEADLINES: u32 = 0x45_5150;
 const HEADLINE_COUNT: u32 = 19;
+/// The panel's four lines when the game is won (`sub_427BC0`), 0x46 apart.
+const END_LINES: u32 = 0x45_6618;
 const PRESS_ENTER: u32 = 0x44_24D4;
 const GAME_PAUSED: u32 = 0x44_24F8;
+/// The box after a new game's first intro (0x4178A5): its nine lines.
+const RACE_WELCOME: [u32; 9] = [
+    0x44_2324,
+    BOX_BLANK,
+    0x44_2300,
+    0x44_22DC,
+    0x44_22B8,
+    0x44_2294,
+    0x44_2270,
+    BOX_BLANK,
+    PRESS_ENTER,
+];
 const BOX_LINE: usize = 32;
 const PRIZE: u32 = 0x44_4078;
+/// The race in the Arena: the Adversary's name in the race (copied into the first racer at
+/// 0x433285) and in the preview (0x432B02), and the preview's prize (0x432A78).
+const ADVERSARY: u32 = 0x44_404C;
+const ADVERSARY_PREVIEW: u32 = 0x44_4058;
+const ARENA_PRIZE: u32 = 0x44_4064;
 /// The shop's popups after a race (`postLoadedOrLicense` from 0x4389A6), ten lines of 80
 /// bytes each: the welcome (0x41C230), the player lapped (0x41B400), the sponsors' by the
 /// player's car (800 bytes a car: three wins in a row 0x41B4F0, a clean race 0x41B6A0,
-/// everyone else wrecked 0x41B850), the drug run's outcome (0x41BA00: its seventh line before
-/// the pay and the words after it) and its failure, the hit's (0x41BDE0: the sixth line
-/// before the victim's name and the words after it, the seventh before the pay and the
-/// words after it) and its failure, the loan paid back or not (0x41C4C0), the end of the
+/// everyone else wrecked 0x41B850), the drug run's outcome (0x41BA00: its eighth line before
+/// the pay and the words after it) and its failure, the hit's (0x41BDE0: the seventh line
+/// before the victim's name and the words after it, the eighth before the pay and the words
+/// after it) and its failure, the loan paid back or not (0x41C4C0), the end of the
 /// road (0x41C300) and the last place (0x42E6F0).
 const POPUP_LINES: u32 = 10;
 const SHOP_WELCOME: u32 = 0x44_B848;
@@ -440,6 +459,12 @@ pub struct CampaignTexts {
     /// the race's price.
     pub laps: Vec<u8>,
     pub prize: Vec<u8>,
+    /// The race in the Arena: the Adversary's name as the race has it (0x433285), as the
+    /// preview draws it upper-cased (0x432B02), and the race's prize after the prize's words
+    /// (0x432A78).
+    pub adversary: Vec<u8>,
+    pub adversary_preview: Vec<u8>,
+    pub arena_prize: Vec<u8>,
     /// The race's pause box (0x417641): its nine lines, blank but for the fourth, asking
     /// whether to abort the race, and the sixth, how to answer.
     pub abort_race: Vec<Vec<u8>>,
@@ -449,6 +474,9 @@ pub struct CampaignTexts {
     /// The box when P pauses the race (0x416FC3): blank but for the fourth line, the game
     /// paused, and the ninth, how to go on.
     pub game_paused: Vec<Vec<u8>>,
+    /// The box after a new game's first intro (0x41788D): the welcome, the race's keys and
+    /// how to go on.
+    pub race_welcome: Vec<Vec<u8>>,
     /// The results: each race's title, the points of its first three places, the waits'
     /// lines and the statistics' title.
     pub results_titles: Vec<Vec<u8>>,
@@ -459,8 +487,10 @@ pub struct CampaignTexts {
     pub statistics_rows: Vec<Vec<u8>>,
     pub race_kinds: Vec<Vec<u8>>,
     pub label_separator: Vec<u8>,
-    /// The bottom panel's headlines after a race, four lines each.
+    /// The bottom panel's headlines after a race, four lines each, and its lines when the
+    /// game is won.
     pub headlines: Vec<Vec<Vec<u8>>>,
+    pub end_lines: Vec<Vec<u8>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -735,6 +765,9 @@ impl Texts {
                     .collect::<Result<_, _>>()?,
                 laps: text(LAPS, MAX_LINE)?,
                 prize: text(PRIZE, MAX_LINE)?,
+                adversary: shown(ADVERSARY, DRIVER_NAME_MAX)?,
+                adversary_preview: shown(ADVERSARY_PREVIEW, DRIVER_NAME_MAX)?,
+                arena_prize: shown(ARENA_PRIZE, MAX_LINE)?,
                 abort_race: [
                     BOX_BLANK, BOX_BLANK, BOX_BLANK, ABORT_RACE, BOX_BLANK, YES_NO,
                 ]
@@ -773,6 +806,9 @@ impl Texts {
                             .collect()
                     })
                     .collect::<Result<_, _>>()?,
+                end_lines: (0..4)
+                    .map(|line| text(END_LINES + 0x46 * line, 0x45))
+                    .collect::<Result<_, _>>()?,
                 race_over: [BOX_BLANK, BOX_BLANK, BOX_BLANK, RACE_OVER]
                     .into_iter()
                     .chain([BOX_BLANK; 4])
@@ -784,6 +820,10 @@ impl Texts {
                     .chain([BOX_BLANK; 4])
                     .chain([PRESS_ENTER])
                     .map(|address| text(address, BOX_LINE))
+                    .collect::<Result<_, _>>()?,
+                race_welcome: RACE_WELCOME
+                    .iter()
+                    .map(|&address| text(address, BOX_LINE))
                     .collect::<Result<_, _>>()?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
@@ -1145,6 +1185,9 @@ mod tests {
             put(address, format!("{:x}", address & 0xFF).as_bytes());
         }
         put(LABEL_SEPARATOR, b": ");
+        put(ADVERSARY, b"ADV");
+        put(ADVERSARY_PREVIEW, b"adv");
+        put(ARENA_PRIZE, b"glory");
         for k in 0..HEADLINE_COUNT {
             for line in 0..4 {
                 put(
@@ -1243,6 +1286,18 @@ mod tests {
             [b"38".to_vec(), b"18".to_vec(), b"20".to_vec()]
         );
         assert_eq!(texts.campaign.results_titles[2], b"5c");
+    }
+
+    #[test]
+    fn the_arena_has_the_adversarys_names_and_its_own_prize() {
+        // The Arena's preview names the Adversary from one string (upper-cased as it is
+        // drawn), the race from another, and shows a prize of its own in place of a price;
+        // a wrong address names the Adversary with another string.
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let campaign = &texts.campaign;
+        assert_eq!(campaign.adversary, b"ADV");
+        assert_eq!(campaign.adversary_preview, b"adv");
+        assert_eq!(campaign.arena_prize, b"glory");
     }
 
     #[test]

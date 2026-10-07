@@ -10,6 +10,7 @@ use super::licence::draw_price;
 use super::shop::{CONTINUE, CONTINUE_FRAMES};
 use super::sign_up::PopupThen;
 use super::{Menu, State};
+use crate::campaign::Driver;
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
@@ -57,7 +58,7 @@ const THIRD: f64 = 1.0 / 3.0;
 const WEAPON_FILL: [i32; 4] = [8, 1, 1, 1];
 /// The shop's fade back in turns the flag only when the player can race (0x438C13): no loan
 /// due, 1000 with the trade-in value, the money for a repair, the car not near wrecked.
-const RACE_MONEY: i64 = 1000;
+const RACE_MONEY: i32 = 1000;
 const WRECK_DAMAGE: i32 = 95;
 const LOAN_DUE: i32 = 4;
 
@@ -471,6 +472,10 @@ impl Menu {
         self.sound(ON_SOUND);
         // 0x4366CA: the selection left on the sabotage, as the original leaves it.
         self.shop.market = 4;
+        // 0x4366A0: a leader meets the Adversary instead of signing up.
+        if self.campaign.player_leads() {
+            return self.open_adversary();
+        }
         self.open_sign_up()
     }
 
@@ -541,11 +546,11 @@ impl Menu {
     /// No loan due, 1000 or more with the car's trade-in value when the shop was entered, the
     /// money for a repair, the car not near wrecked (0x438C13).
     fn can_race(&self) -> bool {
-        let player = self.campaign.player();
-        player.loan_races != LOAN_DUE
-            && i64::from(player.money) + i64::from(self.shop.trade_in) >= RACE_MONEY
-            && player.money >= self.repair_price()
-            && player.damage <= WRECK_DAMAGE
+        can_race(
+            self.campaign.player(),
+            self.shop.trade_in,
+            self.repair_price(),
+        )
     }
 
     /// A repair's price (0x4227C0): the car's, half with weapons.
@@ -558,6 +563,16 @@ impl Menu {
             full
         }
     }
+}
+
+/// Whether `player` may race (0x438C33): no loan due, the money and the car's `trade_in`
+/// enough for a race (added as 32 bits, as the original adds them), the `repair` paid for and
+/// the car not wrecked.
+fn can_race(player: &Driver, trade_in: i32, repair: i32) -> bool {
+    player.loan_races != LOAN_DUE
+        && player.money.wrapping_add(trade_in) >= RACE_MONEY
+        && player.money >= repair
+        && player.damage <= WRECK_DAMAGE
 }
 
 #[cfg(test)]
@@ -573,6 +588,19 @@ mod tests {
         assert_eq!(debt(4, 2), 1_750);
         assert_eq!(debt(1, 4), 13_500);
         assert_eq!(debt(3, 3), 4_000);
+    }
+
+    #[test]
+    fn a_hand_made_save_s_huge_money_wraps_before_the_way_on_is_checked() {
+        // 0x438C33 adds the money and the trade-in as 32 bits: a hand-made save near the end
+        // of the range wraps below a race's price, and the original turns the way on off.
+        let mut player = Driver {
+            money: i32::MAX - 100,
+            ..Driver::default()
+        };
+        assert!(!can_race(&player, 1000, 50));
+        player.money = 5000;
+        assert!(can_race(&player, 1000, 50));
     }
 
     #[test]

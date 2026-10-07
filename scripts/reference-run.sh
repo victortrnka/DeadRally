@@ -5,7 +5,7 @@
 #
 #   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
 #                            [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO]
-#                            [--smooth] SCENARIO OUT_DIR
+#                            [--rand FRAME:VALUE] [--smooth] SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -26,7 +26,9 @@
 # With --watch the race's state is read from the original's memory each time its frame counter
 # moves and logged to OUT_DIR/watch.log (scripts/reference-watch.py; spec M4c). With --drive
 # (which watches too) the player's car is also driven along PATH from the race's frame FROM to
-# the path's point TO by holding the arrows (scripts/reference-watch.py; spec M5).
+# the path's point TO by holding the arrows (scripts/reference-watch.py; spec M5). With --rand
+# (which watches too) the log also holds `rand()`'s state, found in memory as the value VALUE
+# at the race's frame FRAME (DeadRally's `trace` gives both: `rs` before the start).
 #
 # With --smooth the original starts with -smooth: its software picture of the 320x200 screens is
 # smoothed instead of doubled (spec M7, 0x43BA99).
@@ -46,7 +48,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO] [--smooth] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO] [--rand FRAME:VALUE] [--smooth] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -59,6 +61,7 @@ no_ai=false
 smooth_args=()
 watch=false
 drive=
+rand=
 saves=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -106,6 +109,12 @@ while [[ "${1:-}" == --* ]]; do
         --drive)
             [[ $# -ge 2 && "$2" =~ ^[^:]+:[0-9]+:[0-9]+$ && -f "${2%%:*}" ]] || usage
             drive="$(realpath "${2%%:*}"):${2#*:}"
+            watch=true
+            shift 2
+            ;;
+        --rand)
+            [[ $# -ge 2 && "$2" =~ ^[0-9]+:[0-9]+$ ]] || usage
+            rand=$2
             watch=true
             shift 2
             ;;
@@ -254,6 +263,10 @@ if $watch; then
     if [[ -n "$drive" ]]; then
         launch+=(--drive "$drive")
         echo "driving the player's car: $drive" >>"$log"
+    fi
+    if [[ -n "$rand" ]]; then
+        launch+=(--rand "$rand")
+        echo "watching rand()'s state from: $rand" >>"$log"
     fi
     launch+=(-- wine)
     echo "watching the race's state into watch.log" >>"$log"
