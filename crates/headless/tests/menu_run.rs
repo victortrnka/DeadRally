@@ -4955,6 +4955,186 @@ fn the_arena_won_run_matches_the_committed_manifest() {
     check_manifest("arena-won-run.sha256", &lines, "the won Arena run");
 }
 
+/// The keys of `scripts/reference/leader-turn.scenario`'s run of `docs/verification/m6.md`
+/// after the race start's: Enter on the hard race's page, on the statistics, on their way out
+/// and on the shop's way on.
+const LEADER_TURN_KEYS: [(u64, Key); 4] = [
+    (13_180, Key::Enter),
+    (13_537, Key::Enter),
+    (13_890, Key::Enter),
+    (16_531, Key::Enter),
+];
+
+/// A leader turn run's held keys (`file`, its lines tick, key, ticks held): the player's car's
+/// four laps, from the original's memory (`scripts/compare-watch.py --keys`), then Return held
+/// on the race-over box at `box_tick`.
+fn leader_turn_held(file: &str, text: &str, box_tick: u64) -> Vec<Held> {
+    let mut held: Vec<Held> = text
+        .lines()
+        .map(|line| {
+            let fields: Vec<&str> = line.split(' ').collect();
+            let key = match fields[1] {
+                "up" => Key::Up,
+                "left" => Key::Left,
+                "right" => Key::Right,
+                other => panic!("{file}: unknown key {other}"),
+            };
+            (fields[0].parse().unwrap(), key, fields[2].parse().unwrap())
+        })
+        .collect();
+    held.push((box_tick, Key::Enter, 7));
+    held
+}
+
+/// A leader turn run's shots (`text`, its lines tick and name).
+fn leader_turn_shots(text: &str) -> Vec<(u64, &str)> {
+    text.lines()
+        .map(|line| {
+            let (tick, name) = line.split_once(' ').unwrap();
+            (tick.parse().unwrap(), name)
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_leader_turn_run_matches_the_committed_manifest() {
+    // Written after 256 of the run's 261 screenshots equalled our frames and every frame of the
+    // race's state, rand()'s included, equalled the original's memory (docs/verification/
+    // m6.md): the race won that first makes the player the leader ends its results with every
+    // colour faded out, the Adversary's animation and the menus' music, then the shop, whose
+    // way on leads to the Adversary. A way out that keeps the title lit, skips the animation or
+    // comes back to the wrong screen, or a leader not found, shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_save(&assets.menu.texts));
+    let keys: Vec<(u64, Key)> = RACE_START_KEYS
+        .iter()
+        .chain(&LEADER_TURN_KEYS)
+        .copied()
+        .collect();
+    let held = leader_turn_held("leader-turn.keys", include_str!("leader-turn.keys"), 12_823);
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&keys, &held),
+        &leader_turn_shots(include_str!("leader-turn.shots")),
+        16_830,
+        slots,
+    );
+    check_manifest("leader-turn-run.sha256", &lines, "the leader turn run");
+}
+
+/// The keys of the leader turn's run with weapons (`leader-turn.scenario` with
+/// `leader_turn_armed_save`, docs/verification/m6.md): the race start's, as that run's original
+/// took them (the market's waits draw `rand()`, so its keys decide the opponents' weapons),
+/// then Enter on the hard race's page, on the statistics, on their way out and on the shop's
+/// way on.
+const LEADER_TURN_MARKET_KEYS: [(u64, Key); 14] = [
+    (130, Key::Space),
+    (1728, Key::Enter),
+    (1806, Key::Down),
+    (1870, Key::Enter),
+    (1952, Key::Enter),
+    (2037, Key::Space),
+    (2166, Key::Enter),
+    (2419, Key::Enter),
+    (2613, Key::Enter),
+    (2788, Key::Space),
+    (13_179, Key::Enter),
+    (13_541, Key::Enter),
+    (13_893, Key::Enter),
+    (16_535, Key::Enter),
+];
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn after_the_leader_s_animation_the_market_s_way_out_fades_a_black_screen() {
+    // The original clears the screen it shows after the Adversary's animation (`sub_43BE60`
+    // from 0x42B657), and on the way out that keeps the screen (weapons on, the shop's way on
+    // seen) the Underground Market's fade (0x4370C7) draws nothing over it: the player sees
+    // black until the shop fades in, not the results' statistics again (docs/verification/
+    // m6.md, the run with weapons).
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_armed_save(&assets.menu.texts));
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::with_seed(assets, config, SEED);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    let held = leader_turn_held(
+        "leader-turn-market.keys",
+        include_str!("leader-turn-market.keys"),
+        12_827,
+    );
+    let mut film_seen = false;
+    for done in 0..16_000 {
+        for &(_, key) in LEADER_TURN_MARKET_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in &held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        let frame = game.frame();
+        // The animation follows the results' way out (from tick 13 893); the intro at the
+        // start is a film 320 wide too.
+        if done < 13_900 {
+            continue;
+        }
+        if frame.width == 320 {
+            film_seen = true;
+        } else if film_seen {
+            // The market's fade has begun: its first waits show the cleared screen at full
+            // brightness, so anything drawn would show.
+            game.tick();
+            let frame = game.frame();
+            assert!(
+                frame.pixels.iter().all(|&pixel| pixel == 0),
+                "the market's fade after the animation shows a cleared screen (tick {done})"
+            );
+            return;
+        }
+    }
+    panic!("the leader's animation was not seen");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_leader_turn_market_run_matches_the_committed_manifest() {
+    // Written after 260 of the run's 261 screenshots equalled our frames and every frame of
+    // the race's state equalled the original's memory (docs/verification/m6.md): with weapons
+    // on, the results that first make the player the leader keep the screen while every colour
+    // fades, the Adversary's animation plays, the Underground Market fades a black screen out,
+    // the shop fades in and its way on leads to the market.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_armed_save(&assets.menu.texts));
+    let held = leader_turn_held(
+        "leader-turn-market.keys",
+        include_str!("leader-turn-market.keys"),
+        12_827,
+    );
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&LEADER_TURN_MARKET_KEYS, &held),
+        &leader_turn_shots(include_str!("leader-turn-market.shots")),
+        16_840,
+        slots,
+    );
+    check_manifest(
+        "leader-turn-market-run.sha256",
+        &lines,
+        "the leader turn run with weapons",
+    );
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_adversary_run_matches_the_committed_manifest() {
@@ -5255,6 +5435,28 @@ fn leader_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
     let mut game = deadrally_gamedata::save_game::SaveGame::decode(&test_save(texts));
     let at = 19 * 108 + 68;
     game.drivers[at..at + 4].copy_from_slice(&150i32.to_le_bytes());
+    game.encode(77)
+}
+
+/// The test game without weapons whose player (85 points) is one behind the leader (Jane
+/// Honda's 86) and whose first driver (Sam Speed, who wins the hard race) has 70: only a win of
+/// the easy race (3 points) makes the player lead (`captures/leader-turn.sg`).
+fn leader_turn_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&unarmed_save(texts));
+    for (driver, points) in [(19, 85i32), (0, 70)] {
+        let at = driver * 108 + 68;
+        game.drivers[at..at + 4].copy_from_slice(&points.to_le_bytes());
+    }
+    game.encode(77)
+}
+
+/// The test game, its weapons on, whose player (99 points) is one behind the leader (Sam
+/// Speed's 100, in no race): winning the easy race (3 points) makes the player lead, the hard
+/// race's winner reaching 96 (`captures/leader-turn-armed.sg`).
+fn leader_turn_armed_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&test_save(texts));
+    let at = 19 * 108 + 68;
+    game.drivers[at..at + 4].copy_from_slice(&99i32.to_le_bytes());
     game.encode(77)
 }
 
