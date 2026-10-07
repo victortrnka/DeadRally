@@ -28,7 +28,7 @@ pub mod track;
 mod validate;
 pub mod xm;
 
-pub use config::{Config, ConfigError, config_path, load_config};
+pub use config::{Config, ConfigError, config_path, load_config, save_data_path};
 pub use known_versions::{KNOWN_VERSIONS, KnownFile, KnownVersion, REQUIRED_FILES};
 pub use locate::{DATA_ENV_VAR, DataSource, LocateError, Located, STEAM_SUBDIR, locate};
 pub use lzw::LzwError;

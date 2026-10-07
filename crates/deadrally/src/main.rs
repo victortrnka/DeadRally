@@ -6,14 +6,17 @@
 //! software picture (640x480, at a whole scale) instead of scaling the screens to the desktop;
 //! `-novsync` turns vsync off, for measuring present cost; `-testscene` runs the M0 test scene,
 //! which needs no game data; `--data <dir>` names the game data directory (else
-//! `DEADRALLY_DATA`, else `data_path` in the config file). Alt+Enter toggles fullscreen, F12
-//! toggles the smoothing, closing the window quits. One stats line per second goes to stdout.
+//! `DEADRALLY_DATA`, else `data_path` in the config file, else the folder the player chooses
+//! in the system's dialog, which the config file then keeps). The config file can also keep
+//! `window`, `smooth`, `nogl` and `vsync`. Alt+Enter toggles fullscreen, F12 toggles the
+//! smoothing, closing the window quits. One stats line per second goes to stdout.
 
 mod keymap;
 
 use std::error::Error;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox, whole_scale};
@@ -21,16 +24,20 @@ use deadrally_core::{
     AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use deadrally_gamedata::assets::Assets;
-use deadrally_gamedata::{DATA_ENV_VAR, LocateError, Outcome, config_path, locate};
+use deadrally_gamedata::{
+    Config, DATA_ENV_VAR, LocateError, Outcome, config_path, load_config, locate, save_data_path,
+};
 use deadrally_gamedata::{dr_cfg, save_game};
+use sdl3::Sdl;
 use sdl3::audio::{AudioFormat, AudioSpec};
+use sdl3::dialog::show_open_folder_dialog;
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Gamepad};
 use sdl3::keyboard::{Mod, Scancode};
 use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::render::{FRect, ScaleMode};
-use sdl3::video::FullscreenType;
+use sdl3::video::{FullscreenType, Window};
 
 const BYTES_PER_SAMPLE: usize = 2;
 
@@ -76,6 +83,20 @@ fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, St
         }
     }
     Ok(options)
+}
+
+impl Options {
+    /// The options with the config file's where the command line gave none: the command line's
+    /// flags only turn an option on (or vsync off), so either source can.
+    fn with_config(self, config: &Config) -> Options {
+        Options {
+            windowed: self.windowed || config.window.unwrap_or(false),
+            smooth: self.smooth || config.smooth.unwrap_or(false),
+            nogl: self.nogl || config.nogl.unwrap_or(false),
+            vsync: self.vsync && config.vsync.unwrap_or(true),
+            ..self
+        }
+    }
 }
 
 /// The startup sequence on the player's data and `dr.cfg`, a warning to show when the data is
@@ -156,12 +177,80 @@ fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 
+/// The game on the data the player named or the config file holds; or, when they named none
+/// and none was usable, on the folder they then choose in the system's dialog, which the
+/// config file keeps from then on (spec M7b).
+fn load_or_choose(sdl: &Sdl, data: Option<&Path>) -> Result<Loaded, String> {
+    let message = match load_game(data) {
+        Ok(loaded) => return Ok(loaded),
+        Err(message) => message,
+    };
+    let named = data.is_some() || std::env::var_os(DATA_ENV_VAR).is_some_and(|dir| !dir.is_empty());
+    if named {
+        return Err(message);
+    }
+    tell(
+        MessageBoxFlag::INFORMATION,
+        "Choose the game",
+        &format!("{message}\n\nChoose the folder of your copy of Death Rally next."),
+    );
+    let Some(dir) = choose_folder(sdl) else {
+        return Err(message);
+    };
+    // Kept first and then read back, so that a folder that does not hold the game is reported
+    // as the config file's and is asked for again at the next start.
+    match config_path().map(|path| save_data_path(&path, &dir)) {
+        Some(Ok(())) => load_game(None),
+        Some(Err(error)) => {
+            eprintln!("warning: {error}");
+            load_game(Some(&dir))
+        }
+        None => load_game(Some(&dir)),
+    }
+}
+
+/// The folder the player chooses in the system's dialog; `None` when they cancel or the
+/// system has no dialog.
+fn choose_folder(sdl: &Sdl) -> Option<PathBuf> {
+    let chosen: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::default();
+    let answer = Arc::clone(&chosen);
+    show_open_folder_dialog(
+        None::<&Path>,
+        false,
+        None::<&Window>,
+        Box::new(move |result, _| {
+            let dir = result.ok().and_then(|dirs| dirs.into_iter().next());
+            *answer.lock().unwrap_or_else(PoisonError::into_inner) = Some(dir);
+        }),
+    );
+    let mut events = sdl.event_pump().ok()?;
+    loop {
+        if let Some(dir) = chosen.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            return dir;
+        }
+        events.wait_event_timeout(Duration::from_millis(50));
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let options = parse_options(std::env::args_os().skip(1))?;
+    let config = match config_path().as_deref().map(load_config) {
+        Some(Ok(Some(config))) => config,
+        Some(Err(error)) => {
+            eprintln!("warning: {error}");
+            Config::default()
+        }
+        _ => Config::default(),
+    };
+    let options = options.with_config(&config);
+    sdl3::hint::set("SDL_RENDER_VSYNC", if options.vsync { "1" } else { "0" });
+
+    let sdl = sdl3::init()?;
+    let video = sdl.video()?;
     let (mut game, dr_cfg_path) = if options.test_scene {
         (Game::test_scene(), None)
     } else {
-        match load_game(options.data.as_deref()) {
+        match load_or_choose(&sdl, options.data.as_deref()) {
             Ok((game, warning, own)) => {
                 if let Some(warning) = warning {
                     tell(MessageBoxFlag::WARNING, "Warning", &warning);
@@ -174,10 +263,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     };
-    sdl3::hint::set("SDL_RENDER_VSYNC", if options.vsync { "1" } else { "0" });
-
-    let sdl = sdl3::init()?;
-    let video = sdl.video()?;
     let gamepads = sdl.gamepad()?;
     let audio = sdl.audio()?;
 
@@ -446,6 +531,27 @@ mod tests {
         assert!(options.smooth && options.nogl);
         let plain = parse(&[]).unwrap();
         assert!(!plain.smooth && !plain.nogl);
+    }
+
+    #[test]
+    fn the_config_file_keeps_the_options_and_the_command_line_wins() {
+        // A player who wrote smooth = true once gets it every time; -novsync on the command
+        // line still turns vsync off for one run.
+        let config = Config {
+            window: Some(true),
+            smooth: Some(true),
+            vsync: Some(true),
+            ..Config::default()
+        };
+        let options = parse(&["-novsync"]).unwrap().with_config(&config);
+        assert!(options.windowed && options.smooth && !options.nogl && !options.vsync);
+        let off = Config {
+            nogl: Some(false),
+            vsync: Some(false),
+            ..Config::default()
+        };
+        let options = parse(&["-nogl"]).unwrap().with_config(&off);
+        assert!(options.nogl && !options.vsync && !options.windowed);
     }
 
     #[test]

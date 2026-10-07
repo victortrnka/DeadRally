@@ -4,11 +4,18 @@ use std::path::{Path, PathBuf};
 
 use directories::{BaseDirs, ProjectDirs};
 
-/// DeadRally's own settings. M0 knows one key; DeadRally only reads the file.
+/// DeadRally's own settings. DeadRally writes the file only to keep the data folder chosen at
+/// the first start ([`save_data_path`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Config {
     /// `data_path`: the directory with the original game data.
     pub data_path: Option<PathBuf>,
+    /// The original's command-line options, kept here (spec M7): `window` (`-window`), `smooth`
+    /// (`-smooth`), `nogl` (`-nogl`), and `vsync` (off as `-novsync`).
+    pub window: Option<bool>,
+    pub smooth: Option<bool>,
+    pub nogl: Option<bool>,
+    pub vsync: Option<bool>,
     /// Human-readable notes about keys that were ignored.
     pub warnings: Vec<String>,
 }
@@ -16,6 +23,10 @@ pub struct Config {
 #[derive(Debug)]
 pub enum ConfigError {
     Read {
+        path: PathBuf,
+        source: io::Error,
+    },
+    Write {
         path: PathBuf,
         source: io::Error,
     },
@@ -36,6 +47,9 @@ impl fmt::Display for ConfigError {
         match self {
             ConfigError::Read { path, source } => {
                 write!(f, "cannot read config file {}: {source}", path.display())
+            }
+            ConfigError::Write { path, source } => {
+                write!(f, "cannot write config file {}: {source}", path.display())
             }
             ConfigError::Parse { path, message } => {
                 write!(
@@ -62,7 +76,7 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ConfigError::Read { source, .. } => Some(source),
+            ConfigError::Read { source, .. } | ConfigError::Write { source, .. } => Some(source),
             ConfigError::Parse { .. } | ConfigError::WrongType { .. } => None,
         }
     }
@@ -112,6 +126,27 @@ pub fn load_config(path: &Path) -> Result<Option<Config>, ConfigError> {
                     });
                 }
             },
+            key @ ("window" | "smooth" | "nogl" | "vsync") => {
+                let Some(on) = value.as_bool() else {
+                    return Err(ConfigError::WrongType {
+                        path: path.to_path_buf(),
+                        key: match key {
+                            "window" => "window",
+                            "smooth" => "smooth",
+                            "nogl" => "nogl",
+                            _ => "vsync",
+                        },
+                        expected: "boolean",
+                    });
+                };
+                let slot = match key {
+                    "window" => &mut config.window,
+                    "smooth" => &mut config.smooth,
+                    "nogl" => &mut config.nogl,
+                    _ => &mut config.vsync,
+                };
+                *slot = Some(on);
+            }
             unknown => config.warnings.push(format!(
                 "unknown key `{unknown}` in {} (ignored)",
                 path.display()
@@ -119,6 +154,42 @@ pub fn load_config(path: &Path) -> Result<Option<Config>, ConfigError> {
         }
     }
     Ok(Some(config))
+}
+
+/// Keeps `dir` as `data_path` in the config file at `path`, creating the file and its folder
+/// if need be. The file's other keys are kept, its comments are not.
+///
+/// # Errors
+///
+/// [`ConfigError`] when the file exists but cannot be read or is not TOML, or cannot be written.
+pub fn save_data_path(path: &Path, dir: &Path) -> Result<(), ConfigError> {
+    let write_error = |source| ConfigError::Write {
+        path: path.to_path_buf(),
+        source,
+    };
+    let mut table: toml::Table = match std::fs::read_to_string(path) {
+        Ok(text) => text
+            .parse()
+            .map_err(|error: toml::de::Error| ConfigError::Parse {
+                path: path.to_path_buf(),
+                message: error.to_string(),
+            })?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => toml::Table::new(),
+        Err(source) => {
+            return Err(ConfigError::Read {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    table.insert(
+        "data_path".to_owned(),
+        toml::Value::String(dir.to_string_lossy().into_owned()),
+    );
+    if let Some(folder) = path.parent() {
+        std::fs::create_dir_all(folder).map_err(write_error)?;
+    }
+    std::fs::write(path, table.to_string()).map_err(write_error)
 }
 
 /// Expands a leading `~`. The shell does this for `--data` and `DEADRALLY_DATA`, but nothing
