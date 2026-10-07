@@ -45,6 +45,8 @@ pub(super) enum Wipe {
     Shop,
     /// The race's preview (`sub_42C670`), the music falling; one more wait after it.
     Preview,
+    /// The Adversary's screen (`sub_42C4A0`).
+    Adversary,
 }
 
 impl Wipe {
@@ -70,27 +72,9 @@ impl Menu {
         self.back.copy_rows(&self.graphics.background, 105, 262);
         let menu = &self.assets.menu;
         self.back.draw(&menu.fame_title, at(0, 84), true);
-        let medium = &self.graphics.medium;
-        let difficulties = &menu.texts.hall_of_fame.difficulties;
-        for rank in 0..10 {
-            let y = 144 + 22 * rank;
-            let rank_at = if rank == 9 { at(28, y) } else { at(36, y) };
-            medium.draw(&mut self.back, format!("{}.", rank + 1).as_bytes(), rank_at);
-            let (name, races, difficulty) = self.config.hall_of_fame(rank);
-            medium.draw(&mut self.back, name, at(137, y));
-            if races >= 0 {
-                let x = match races {
-                    0..10 => 344,
-                    10..100 => 336,
-                    _ => 328,
-                };
-                medium.draw(&mut self.back, races.to_string().as_bytes(), at(x, y));
-            }
-            let level = difficulties
-                .get(difficulty as usize)
-                .map_or(&[][..], Vec::as_slice);
-            medium.draw(&mut self.back, &upper(level), at(429, y));
-        }
+        let mut back = std::mem::take(&mut self.back);
+        self.draw_best_ten(&mut back);
+        self.back = back;
         State::Wipe {
             wipe: Wipe::Fame,
             step: 0,
@@ -136,6 +120,7 @@ impl Menu {
             Wipe::SignUp => self.sign_up_shown(),
             Wipe::Shop => self.shop_shown(),
             Wipe::Preview => State::PreviewWait,
+            Wipe::Adversary => self.adversary_shown(),
             Wipe::StartMenu => {
                 self.shown = self.screen.clone();
                 State::Submenu {
@@ -270,6 +255,74 @@ impl Menu {
         let frame = &self.assets.menu.snapshots[circuit];
         let rows = (frame.width * SNAPSHOT_ROWS) as usize;
         Image::new(frame.width, SNAPSHOT_ROWS, frame.pixels[..rows].to_vec())
+    }
+
+    /// The best ten's rows: the rank, the name, the races and the difficulty in the medium
+    /// font, 22 lines apart from line 144.
+    pub(super) fn draw_best_ten(&self, canvas: &mut Canvas) {
+        let medium = &self.graphics.medium;
+        let difficulties = &self.assets.menu.texts.hall_of_fame.difficulties;
+        for rank in 0..10 {
+            let y = 144 + 22 * rank;
+            let rank_at = if rank == 9 { at(28, y) } else { at(36, y) };
+            medium.draw(canvas, format!("{}.", rank + 1).as_bytes(), rank_at);
+            let (name, races, difficulty) = self.config.hall_of_fame(rank);
+            medium.draw(canvas, name, at(137, y));
+            if races >= 0 {
+                let x = match races {
+                    0..10 => 344,
+                    10..100 => 336,
+                    _ => 328,
+                };
+                medium.draw(canvas, races.to_string().as_bytes(), at(x, y));
+            }
+            let level = difficulties
+                .get(difficulty as usize)
+                .map_or(&[][..], Vec::as_slice);
+            medium.draw(canvas, &upper(level), at(429, y));
+        }
+    }
+
+    /// `drawBorder_421980`: the border with `CHOO2`'s corners cut to their outer halves (12
+    /// rows), for a single row.
+    pub(super) fn thin_border(
+        &self,
+        canvas: &mut Canvas,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) {
+        const CORNER: usize = 24;
+        const HALF: usize = 12;
+        const LINE: u8 = 0x16;
+        let corners = &self.assets.menu.border_corners;
+        let half = |corner: usize, bottom: bool| {
+            let image = &corners[corner];
+            let w = image.width as usize;
+            let first = if bottom {
+                image.height as usize - HALF
+            } else {
+                0
+            };
+            Image::new(
+                image.width,
+                HALF as u32,
+                image.pixels[first * w..(first + HALF) * w].to_vec(),
+            )
+        };
+        let right = x + width - CORNER;
+        let bottom = y + height - HALF;
+        canvas.draw(&half(0, false), at(x, y), true);
+        canvas.draw(&half(1, false), at(right, y), true);
+        canvas.draw(&half(2, true), at(x, bottom), true);
+        canvas.draw(&half(3, true), at(right, bottom), true);
+        let across = width.saturating_sub(2 * CORNER);
+        let down = height.saturating_sub(2 * CORNER);
+        canvas.fill(at(x + CORNER, y + 2), across, 1, LINE);
+        canvas.fill(at(x + CORNER, y + height - 3), across, 1, LINE);
+        canvas.fill(at(x + 2, y + CORNER), 1, down, LINE);
+        canvas.fill(at(x + width - 3, y + CORNER), 1, down, LINE);
     }
 
     /// `drawBorder` (0x421AE0): `CHOO2`'s four corners and lines of colour 22 between them.

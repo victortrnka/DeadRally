@@ -114,7 +114,63 @@ impl Handling {
             guns: tables.guns.get(setup.car).cloned().unwrap_or_default(),
         }
     }
+
+    /// The Adversary's car (car 6, the first on the grid), which `initParticipantValues` sets
+    /// up apart once the tables have done every car (0x401FBC): its engine by the game's
+    /// difficulty (the Adversary's level), more when the player's race has weapons; the
+    /// steering of the Pickup and the armour of the Lotus with every upgrade at the second
+    /// car's level (the player's in the Arena), the steering slowed by the second car's
+    /// engine upgrade; no slide from the tires; its own size; two guns 30 degrees either side.
+    /// Its damage, rocket, mines and weapons are its own as for any car.
+    pub(super) fn adversary(
+        tables: &HandlingTables,
+        adversary: &Driver,
+        second: &Driver,
+        weapons: bool,
+    ) -> Handling {
+        let mut car = Handling::new(tables, adversary, false, weapons);
+        let engines = if weapons {
+            ADVERSARY_ENGINES[1]
+        } else {
+            ADVERSARY_ENGINES[0]
+        };
+        if let Some(&engine) = engines.get(adversary.level) {
+            car.engine = engine;
+        }
+        car.engine_backup = car.engine;
+        let float = |table: &[f32], index: usize| table.get(index).copied().unwrap_or(0.0);
+        let int = |table: &[i32], index: usize| table.get(index).copied().unwrap_or(0);
+        let row = CARS * second.level;
+        let steering = f64::from(float(&tables.steering, ADVERSARY_STEERING + row));
+        car.steering = (3.75 / (steering - f64::from(second.engine) * 0.05)) as f32;
+        let armour = int(&tables.armour, ADVERSARY_ARMOUR + row).wrapping_add(int(
+            &tables.armour_upgrade,
+            UPGRADES * second.level + UPGRADES - 1,
+        ));
+        car.armour = armour.min(900);
+        car.tires = 0.0;
+        car.size = ADVERSARY_SIZE;
+        car.guns = Guns {
+            count: 2,
+            angle: [ADVERSARY_GUN_ANGLE, -ADVERSARY_GUN_ANGLE],
+            reach: [ADVERSARY_GUN_REACH; 2],
+            flash: [ADVERSARY_GUN_FLASH; 2],
+        };
+        car
+    }
 }
+
+/// The Adversary's car (0x401FBC): its engine by its level (the game's difficulty) without
+/// and with weapons in the player's race, the cars whose steering and armour it has, its size,
+/// and its guns' angle, reach and muzzle flash.
+pub(super) const ADVERSARY_CAR: usize = 6;
+const ADVERSARY_ENGINES: [[f32; 3]; 2] = [[4.3, 4.4, 4.5], [4.5, 4.6, 4.7]];
+const ADVERSARY_STEERING: usize = 1;
+const ADVERSARY_ARMOUR: usize = 5;
+const ADVERSARY_SIZE: f32 = 10.5;
+const ADVERSARY_GUN_ANGLE: i32 = 30;
+const ADVERSARY_GUN_REACH: i32 = 19;
+const ADVERSARY_GUN_FLASH: i32 = 4;
 
 /// The track's mask, which tells the ground's kind under each pixel.
 pub(super) struct Ground<'a> {
@@ -707,6 +763,82 @@ mod tests {
             weapons: true,
             guns: Guns::default(),
         }
+    }
+
+    /// Tables whose every entry tells where it was read: the engine's and the tires' by
+    /// their index, the steering's and the armour's likewise, sizes 1 to 6.
+    fn tables() -> HandlingTables {
+        let rows = CARS * 4;
+        HandlingTables {
+            engine: (0..rows * UPGRADES).map(|i| i as f32).collect(),
+            tires: (0..rows * UPGRADES).map(|i| i as f32 + 0.5).collect(),
+            steering: (0..rows).map(|i| 10.0 + i as f32).collect(),
+            armour: (0..rows).map(|i| 10 * i as i32).collect(),
+            armour_upgrade: (0..4 * UPGRADES).map(|i| i as i32).collect(),
+            size: (1..=6).map(|i| i as f32).collect(),
+            balance: vec![0.0; 12],
+            guns: vec![Guns::default(); CARS],
+            gun_damage: vec![0.5; 7],
+            tough: b"TOUGH\0".to_vec(),
+        }
+    }
+
+    fn driver(car: usize, level: usize) -> Driver {
+        Driver {
+            name: b"X".to_vec(),
+            car,
+            level,
+            engine: 2,
+            tires: 1,
+            armour: 3,
+            damage: 0,
+            rocket: 0,
+            mines: 8,
+            spikes: true,
+            colour: [0; 3],
+        }
+    }
+
+    /// The Adversary's car is not one of the tables' (0x401FBC): its engine comes from the
+    /// game's difficulty, more with weapons on; it steers like the second car's level of the
+    /// Pickup with the second driver's engine upgrade, has the Lotus's armour with every
+    /// upgrade at that level, no slide from its tires, its own size and two guns 30 degrees
+    /// either side. A car set up from the tables instead drives another race.
+    #[test]
+    fn the_adversarys_car_is_set_up_apart_from_the_tables() {
+        let tables = tables();
+        let adversary = driver(6, 1);
+        let player = Driver {
+            engine: 3,
+            ..driver(1, 3)
+        };
+        let car = Handling::adversary(&tables, &adversary, &player, true);
+        assert_eq!((car.engine, car.engine_backup), (4.6, 4.6));
+        assert_eq!(car.tires, 0.0);
+        assert_eq!(car.size, 10.5);
+        let steering = 10.0 + (1 + CARS * 3) as f64;
+        assert_eq!(car.steering, (3.75 / (steering - 3.0 * 0.05)) as f32);
+        assert_eq!(car.armour, 10 * (5 + 6 * 3) + (5 * 3 + 4));
+        assert_eq!(car.damage, FULL_BAR);
+        assert_eq!(
+            car.guns,
+            Guns {
+                count: 2,
+                angle: [30, -30],
+                reach: [19, 19],
+                flash: [4, 4],
+            }
+        );
+        assert_eq!((car.mines, car.car), (8, 6));
+        let engines = |weapons: bool| {
+            (0..3)
+                .map(|level| {
+                    Handling::adversary(&tables, &driver(6, level), &player, weapons).engine
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(engines(true), [4.5, 4.6, 4.7]);
+        assert_eq!(engines(false), [4.3, 4.4, 4.5]);
     }
 
     /// A car facing right (direction 72) in the middle of open road.

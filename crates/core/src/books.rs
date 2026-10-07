@@ -56,11 +56,7 @@ impl Campaign {
     /// [`Campaign::racers`].
     pub(crate) fn settle(&mut self, outcome: &Outcome) -> Books {
         let finish = |racer: usize| outcome.finishes.get(racer).copied().unwrap_or_default();
-        let me = self
-            .racers
-            .iter()
-            .position(|racer| racer.driver == self.player_index)
-            .unwrap_or(0);
+        let me = self.player_racer();
         let mine = finish(me);
         let race = self.entered_race.unwrap_or(0);
         // 0x433512: the place, for the results and for the shop after them.
@@ -103,7 +99,9 @@ impl Campaign {
                 }
             }
         }
-        // 0x433720: the loan's races; every driver's weapons gone; the market restocked.
+        // 0x433720: the loan's races; no welcome box from now on (0x433733); every driver's
+        // weapons gone; the market restocked.
+        self.race_welcome = false;
         let player = self.player_mut();
         // The original's adds wrap on a hand-made save's numbers.
         if player.loan != -1 {
@@ -209,9 +207,62 @@ mod tests {
                 rocket: 0,
                 spikes: 0,
                 mines: 0,
+                adversary: false,
             })
             .to_vec();
         campaign
+    }
+
+    /// The Arena, the player leading with 150 points: the Adversary first on the grid, the
+    /// player second (both the player's record).
+    fn arena() -> Campaign {
+        let mut campaign = campaign();
+        campaign.drivers[PLAYER].points = 150;
+        campaign.drivers[PLAYER].damage = 37;
+        campaign.entered_race = Some(crate::campaign::ARENA);
+        let racer = Racer {
+            driver: PLAYER,
+            rocket: 0,
+            spikes: 0,
+            mines: 0,
+            adversary: false,
+        };
+        campaign.racers = vec![
+            Racer {
+                adversary: true,
+                spikes: 1,
+                ..racer
+            },
+            racer,
+        ];
+        campaign
+    }
+
+    /// In the Arena the player's books are their own car's, the second (0x45FC20 is 1): its
+    /// place, its money power-ups at $400 each and no prize (0x433D0F), its damage carried
+    /// over (0x4344CF); the Adversary's car, first on the grid, counts for nothing, and no
+    /// sponsor hears of the race.
+    #[test]
+    fn the_arena_pays_the_players_own_car_its_money_power_ups_only() {
+        let mut campaign = arena();
+        let outcome = Outcome {
+            finishes: vec![finish(1, 20, 5), finish(2, 40, 2)],
+            ..Outcome::default()
+        };
+        let books = campaign.settle(&outcome);
+        assert_eq!(
+            books,
+            Books {
+                place: 2,
+                picked_up: 800,
+                prize: 0
+            }
+        );
+        let player = campaign.drivers[PLAYER];
+        assert_eq!((player.damage, player.races, player.wins), (40, 1, 0));
+        assert_eq!(player.last_income, 800);
+        assert_eq!(player.money, 1000, "the money power-ups are not paid out");
+        assert_eq!(campaign.win_streak, 0);
     }
 
     fn finish(place: i32, damage: i32, money: i32) -> Finish {
@@ -220,6 +271,18 @@ mod tests {
             damage,
             money,
         }
+    }
+
+    #[test]
+    fn only_a_new_games_first_race_shows_the_welcome_box() {
+        // The box naming the race's keys would otherwise greet the player before every race.
+        let mut campaign = campaign();
+        campaign.race_welcome = true;
+        campaign.settle(&Outcome {
+            finishes: vec![finish(1, 0, 0); 4],
+            ..Outcome::default()
+        });
+        assert!(!campaign.race_welcome);
     }
 
     /// The medium race pays 3000, 1500 and 375 for the first three places, nothing to a

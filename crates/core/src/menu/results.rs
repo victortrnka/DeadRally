@@ -5,7 +5,7 @@
 //! shop loads, a key, and the way back.
 
 use crate::books::WRECKED;
-use crate::campaign::quicksort;
+use crate::campaign::{ARENA, quicksort};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
@@ -127,11 +127,29 @@ fn page_awards(wrecked: [bool; 3], shut_out: [bool; 3], skip: bool) -> Vec<(usiz
     awards
 }
 
+/// What the results follow (`postRaceMain`'s argument): a race (0), or no race (1) after
+/// signing up for none or Escape on the Adversary's screen, which then also puts the sabotage
+/// on sale again unless the player leads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ResultsFrom {
+    Race,
+    NoRace,
+    AdversaryEscape,
+}
+
+/// The animations the menus play (`openAnimation`, 0x4185B0): the Adversary's when a player
+/// first leads, and the end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Film {
+    Adversary,
+    End,
+}
+
 impl Menu {
     /// The results after signing up for no race (0x435CC2): `postRaceMain(1)`, which leaves
     /// the shop's loading out; every race is full already.
     pub(super) fn results_without_race(&mut self) -> State {
-        self.results_after_race = false;
+        self.results_from = ResultsFrom::NoRace;
         self.open_results()
     }
 
@@ -205,7 +223,13 @@ impl Menu {
         let mut screen = std::mem::take(&mut self.screen);
         self.draw_statistics(&mut screen);
         self.draw_standings(&mut screen);
-        if !self.results_after_race {
+        if self.results_from == ResultsFrom::Race {
+            // 0x42B8B3: the player leading now and not at the last results.
+            let leads = self.campaign.player_leads();
+            self.newly_leading = leads && !self.campaign.was_leading;
+            self.campaign.was_leading = leads;
+        }
+        if self.results_from != ResultsFrom::Race {
             // 0x42B9C6: no shop to load after no race.
             self.screen = screen;
             self.draw_press(0);
@@ -247,9 +271,13 @@ impl Menu {
     /// comes back, or the Underground Market the race was reached through fades out first
     /// (0x4370C7).
     pub(super) fn results_out(&mut self, step: u32, fade: bool) -> State {
-        if fade {
+        let level = 100 - 2 * i64::from(step);
+        if self.newly_leading {
+            // 0x42BA45, 0x42B4CE: every entry for a new leader, whichever way out.
+            self.palette.fade(level);
+        } else if fade {
             // 0x42BAA0: entries 96 to 127 keep what they show.
-            self.palette.fade_market(100 - 2 * i64::from(step));
+            self.palette.fade_market(level);
         }
         if step + 1 < OUT_STEPS {
             return State::ResultsOut {
@@ -257,7 +285,29 @@ impl Menu {
                 fade,
             };
         }
+        if self.newly_leading {
+            // 0x42BB6F: the Adversary's animation, its music and effects.
+            self.sound.stop();
+            self.film = Some(crate::animation::Player::new(&self.assets.letterbox));
+            self.sound
+                .play_music(&self.assets.intro_music, 0, crate::audio::FULL_VOLUME);
+            self.sound.load_effects(&self.assets.adversary_effects);
+            return State::Film {
+                film: Film::Adversary,
+                fade,
+            };
+        }
+        self.results_left(fade)
+    }
+
+    /// The results left: the key the last wait took let go of, then the shop or the
+    /// Underground Market the race was entered through.
+    fn results_left(&mut self, fade: bool) -> State {
         self.keys.take();
+        if self.results_from == ResultsFrom::AdversaryEscape {
+            // 0x4357B3: the sabotage on sale again unless the player leads.
+            self.campaign.stock[3] = i32::from(!self.campaign.player_leads());
+        }
         if fade {
             return self.shop_again();
         }
@@ -382,6 +432,42 @@ impl Menu {
             self.cursor,
         );
         self.cursor = (self.cursor + 1) % super::CURSOR_FRAMES;
+    }
+
+    /// A tick of an animation; when it ends, the menus' music back. After the Adversary's
+    /// (0x42BC45), the screen shown cleared, the palette composed with the title's entries 96
+    /// to 127 lit, then the way out of the results goes on.
+    pub(super) fn film_tick(&mut self, film: Film, fade: bool) -> State {
+        let animation = match film {
+            Film::Adversary => &self.assets.adversary_animation,
+            Film::End => &self.assets.end_animation,
+        };
+        let player = self.film.as_mut().expect("an animation is playing");
+        if player.tick(animation, &mut self.keys, &mut self.sound)
+            == crate::animation::Tick::Playing
+        {
+            return State::Film { film, fade };
+        }
+        self.film = None;
+        if film == Film::End {
+            return self.after_the_end();
+        }
+        self.menu_sound_back();
+        // 0x42BC87, 0x42B657: `sub_43BE60` clears the screen shown as it sets the menus' mode
+        // back. The shop draws over it at once; the Underground Market's fade on the way out
+        // that keeps the screen shows it black.
+        self.shown.pixels_mut().fill(0);
+        self.newly_leading = false;
+        if !fade {
+            // 0x42B66C: the way out that keeps the screen forgets what the sponsors would have
+            // paid for; the fading one does not.
+            self.campaign.win_streak = 0;
+            self.campaign.clean_race = false;
+            self.campaign.all_wrecked = false;
+        }
+        self.compose_palette();
+        self.palette.show_composed(96..128);
+        self.results_left(fade)
     }
 
     /// The menu's background with the ranking's frame and the results' panel.
@@ -579,11 +665,11 @@ impl Menu {
         let place = self.books.place;
         if place > 0 {
             let race = self.campaign.entered_race.unwrap_or(0);
-            let circuit = self
-                .campaign
-                .sign_up
-                .as_ref()
-                .map_or(0, |sign_up| sign_up.circuits[race]);
+            // The Arena's records are the never-set circuit after the three races' (0x4251DF).
+            let circuit = match self.campaign.sign_up.as_ref() {
+                Some(sign_up) if race < ARENA => sign_up.circuits[race],
+                _ => super::preview::ARENA_RECORDS,
+            };
             let car = player.car.clamp(0, 5) as usize;
             let best = self.outcome.best_lap;
             let (_, record) = self.config.record(circuit, car);

@@ -54,10 +54,14 @@ pub const HITMAN: u8 = SHOP + 31;
 /// The sponsor's and the reaper's pictures in the shop's popups after a race.
 pub const SPONSOR: u8 = SHOP + 32;
 pub const REAPER: u8 = SHOP + 33;
-/// The race's preview: its banner, the grid's frame, the circuit's picture.
+/// The race's preview: its banner, the grid's frame, the circuit's picture (the Arena's one
+/// more); the Adversary's face.
 pub const PREVIEW: u8 = 110;
+pub const ADVERSARY_FACE: u8 = 114;
 /// The results' pictures (spec M5): 120 on.
 pub const RESULTS: u8 = 120;
+/// The Adversary's screen: its title, the Adversary and the Escape box.
+pub const ADVERSARY: u8 = 135;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -181,8 +185,12 @@ fn texts() -> Texts {
             hitman_offer: vec![b"h".to_vec(); 11],
             laps: b"L".to_vec(),
             prize: b"P".to_vec(),
+            adversary: b"ADV".to_vec(),
+            adversary_preview: b"adv".to_vec(),
+            arena_prize: b"G".to_vec(),
             abort_race: vec![b"A".to_vec(); 9],
             race_over: vec![b"A".to_vec(); 9],
+            race_welcome: vec![b"A".to_vec(); 9],
             game_paused: vec![b"A".to_vec(); 9],
             results_titles: vec![b"R".to_vec(); 3],
             results_points: vec![vec![b"+".to_vec(); 3]; 3],
@@ -193,6 +201,7 @@ fn texts() -> Texts {
             race_kinds: vec![b"k".to_vec(); 4],
             label_separator: b": ".to_vec(),
             headlines: vec![vec![b"N".to_vec(); 4]; 19],
+            end_lines: vec![b"E".to_vec(); 4],
         },
         shop: shop_texts(),
         help: deadrally_gamedata::text::HelpTexts {
@@ -332,6 +341,9 @@ pub fn menu_assets() -> MenuAssets {
         colour_slider: solid(294, 16, LICENCE + 13),
         colour_knob: solid(10, 24, LICENCE + 14),
         price_digits: (0..11).map(|k| solid(16, 13, LICENCE + 15 + k)).collect(),
+        adversary_title: solid(440, 16, ADVERSARY),
+        adversary: solid(256, 228, ADVERSARY + 1),
+        escape_box: solid(115, 104, ADVERSARY + 2),
         results: deadrally_gamedata::assets::ResultsPictures {
             ranking: solid(54, 386, RESULTS),
             panel: solid(272, 386, RESULTS + 1),
@@ -375,7 +387,11 @@ pub fn menu_assets() -> MenuAssets {
         reaper: solid(104, 128, REAPER),
         preview_banner: solid(640, 54, PREVIEW),
         preview_grid: solid(225, 274, PREVIEW + 1),
-        track_shapes: (0..19).map(|_| solid(360, 274, PREVIEW + 2)).collect(),
+        // The Arena's picture (the last) in a colour of its own.
+        track_shapes: (0..19)
+            .map(|circuit| solid(360, 274, PREVIEW + 2 + u8::from(circuit == 18)))
+            .collect(),
+        adversary_face: solid(64, 64, ADVERSARY_FACE),
     }
 }
 
