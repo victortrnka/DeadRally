@@ -61,7 +61,6 @@ A player downloads DeadRally for their system and points it at their copy of the
 - **M7d, the documentation:**
   - The README for players: where to get the game data, where DeadRally keeps `dr.cfg`, its saves and its config, the options and keys, and what is known to differ from the original (from `docs/verification/`).
   - A CHANGELOG.
-  - The brief's status brought up to date.
 
 ## 5. Verification
 
