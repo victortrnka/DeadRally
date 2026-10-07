@@ -8,7 +8,7 @@ use super::raster::ftol;
 use super::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::trig::sin;
 
-/// The waves' table (`0x4A6854`, filled at the game's start, 0x4046C0): 3600 sines of steps
+/// The waves' table (`0x4A6854`, filled by 0x4046C0; DeadRally builds it for each race): 3600 sines of steps
 /// of 0.0175 radians, times 1024; the waver reads its first thousand.
 const ENTRIES: usize = 3600;
 /// Where the waver reads its second wave, 360 entries on.

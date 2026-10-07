@@ -253,6 +253,31 @@ const PRESS_ENTER: u32 = 0x44_24D4;
 const GAME_PAUSED: u32 = 0x44_24F8;
 const BOX_LINE: usize = 32;
 const PRIZE: u32 = 0x44_4078;
+/// The shop's popups after a race (`postLoadedOrLicense` from 0x4389A6), ten lines of 80
+/// bytes each: the welcome (0x41C230), the player lapped (0x41B400), the sponsors' by the
+/// player's car (800 bytes a car: three wins in a row 0x41B4F0, a clean race 0x41B6A0,
+/// everyone else wrecked 0x41B850), the drug run's outcome (0x41BA00: its seventh line before
+/// the pay and the words after it) and its failure, the hit's (0x41BDE0: the sixth line
+/// before the victim's name and the words after it, the seventh before the pay and the
+/// words after it) and its failure, the loan paid back or not (0x41C4C0), the end of the
+/// road (0x41C300) and the last place (0x42E6F0).
+const POPUP_LINES: u32 = 10;
+const SHOP_WELCOME: u32 = 0x44_B848;
+const LAPPED: u32 = 0x44_CB08;
+const WIN_STREAK: u32 = 0x44_7388;
+const CLEAN_RACE: u32 = 0x44_8648;
+const ALL_WRECKED: u32 = 0x44_9908;
+const DRUG_RUN: u32 = 0x44_ABC8;
+const DRUG_RUN_END: u32 = 0x44_2938;
+const DRUG_RUN_FAILED: u32 = 0x44_AEE8;
+const HIT: u32 = 0x44_B208;
+const HIT_VICTIM_END: u32 = 0x44_2984;
+const HIT_END: u32 = 0x44_2974;
+const HIT_FAILED: u32 = 0x44_B528;
+const LOAN_REPAID: u32 = 0x44_C4C8;
+const LOAN_UNPAID: u32 = 0x44_C7E8;
+const END_OF_ROAD: u32 = 0x45_4C38;
+const TOO_SLOW: u32 = 0x44_CE28;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextError {
@@ -493,6 +518,34 @@ pub struct ShopTexts {
     pub market_welcome: Vec<Vec<u8>>,
 }
 
+/// Ten lines of a popup, in `writeTextInScreen`'s font codes (some empty).
+pub type PopupLines = Vec<Vec<u8>>;
+
+/// The shop's popups after a race (spec M5): see [`SHOP_WELCOME`] and the addresses after it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShopPopupTexts {
+    pub welcome: PopupLines,
+    pub lapped: PopupLines,
+    /// `win_streak[car]`, `clean_race[car]`, `all_wrecked[car]`: by the player's car.
+    pub win_streak: Vec<PopupLines>,
+    pub clean_race: Vec<PopupLines>,
+    pub all_wrecked: Vec<PopupLines>,
+    /// The drug run paid: the eighth line is followed by the pay and `drug_run_end`.
+    pub drug_run: PopupLines,
+    pub drug_run_end: Vec<u8>,
+    pub drug_run_failed: PopupLines,
+    /// The hit paid: the seventh line is followed by the victim's name and `hit_victim_end`,
+    /// the eighth by the pay and `hit_end`.
+    pub hit: PopupLines,
+    pub hit_victim_end: Vec<u8>,
+    pub hit_end: Vec<u8>,
+    pub hit_failed: PopupLines,
+    pub loan_repaid: PopupLines,
+    pub loan_unpaid: PopupLines,
+    pub end_of_road: PopupLines,
+    pub too_slow: PopupLines,
+}
+
 /// A font's cell size and the pen advance of each glyph, character 32 first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Metrics {
@@ -519,6 +572,7 @@ pub struct Texts {
     pub campaign: CampaignTexts,
     pub shop: ShopTexts,
     pub help: HelpTexts,
+    pub shop_popups: ShopPopupTexts,
 }
 
 impl Texts {
@@ -870,6 +924,36 @@ impl Texts {
                     .map(|input| shown(HELP_PAD_NAMES - 16 * input, HELP_NAME))
                     .collect::<Result<_, _>>()?,
             },
+            shop_popups: {
+                let popup = |base: u32| -> Result<PopupLines, TextError> {
+                    (0..POPUP_LINES)
+                        .map(|line| text(base + 80 * line, 79))
+                        .collect()
+                };
+                let by_car = |base: u32| -> Result<Vec<PopupLines>, TextError> {
+                    (0..CARS as u32)
+                        .map(|car| popup(base + 800 * car))
+                        .collect()
+                };
+                ShopPopupTexts {
+                    welcome: popup(SHOP_WELCOME)?,
+                    lapped: popup(LAPPED)?,
+                    win_streak: by_car(WIN_STREAK)?,
+                    clean_race: by_car(CLEAN_RACE)?,
+                    all_wrecked: by_car(ALL_WRECKED)?,
+                    drug_run: popup(DRUG_RUN)?,
+                    drug_run_end: shown(DRUG_RUN_END, MAX_LINE)?,
+                    drug_run_failed: popup(DRUG_RUN_FAILED)?,
+                    hit: popup(HIT)?,
+                    hit_victim_end: shown(HIT_VICTIM_END, MAX_LINE)?,
+                    hit_end: shown(HIT_END, MAX_LINE)?,
+                    hit_failed: popup(HIT_FAILED)?,
+                    loan_repaid: popup(LOAN_REPAID)?,
+                    loan_unpaid: popup(LOAN_UNPAID)?,
+                    end_of_road: popup(END_OF_ROAD)?,
+                    too_slow: popup(TOO_SLOW)?,
+                }
+            },
         })
     }
 }
@@ -1076,7 +1160,80 @@ mod tests {
                 );
             }
         }
+        for (k, &address) in [DRUG_RUN_END, HIT_VICTIM_END, HIT_END].iter().enumerate() {
+            put(address, format!("e{k}").as_bytes());
+        }
+        for line in 0..POPUP_LINES {
+            for (k, &base) in [
+                SHOP_WELCOME,
+                LAPPED,
+                DRUG_RUN,
+                DRUG_RUN_FAILED,
+                HIT,
+                HIT_FAILED,
+                LOAN_REPAID,
+                LOAN_UNPAID,
+                END_OF_ROAD,
+                TOO_SLOW,
+            ]
+            .iter()
+            .enumerate()
+            {
+                put(base + 80 * line, format!("p{k}.{line}").as_bytes());
+            }
+            // The sponsors' first two lines are empty, the first car's first also the
+            // difficulties' last name.
+            let cars = if line < 2 { 0 } else { CARS as u32 };
+            for car in 0..cars {
+                for (k, &base) in [WIN_STREAK, CLEAN_RACE, ALL_WRECKED].iter().enumerate() {
+                    put(
+                        base + 800 * car + 80 * line,
+                        format!("c{k}.{car}.{line}").as_bytes(),
+                    );
+                }
+            }
+        }
         build_at(0x4_1000, 0x1_6000, &data)
+    }
+
+    #[test]
+    fn the_shops_popups_after_a_race_are_ten_lines_each_and_the_sponsors_by_car() {
+        // A wrong stride shows half of another popup's lines, or another car's sponsor
+        // (whose sum differs) after a winning streak, a clean race or everyone else wrecked.
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let popups = &texts.shop_popups;
+        let lines = [
+            &popups.welcome,
+            &popups.lapped,
+            &popups.drug_run,
+            &popups.drug_run_failed,
+            &popups.hit,
+            &popups.hit_failed,
+            &popups.loan_repaid,
+            &popups.loan_unpaid,
+            &popups.end_of_road,
+            &popups.too_slow,
+        ];
+        for (k, popup) in lines.iter().enumerate() {
+            assert_eq!(popup.len(), 10);
+            assert_eq!(popup[9], format!("p{k}.9").as_bytes());
+        }
+        for (k, by_car) in [&popups.win_streak, &popups.clean_race, &popups.all_wrecked]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(by_car.len(), 6);
+            assert_eq!(by_car[5][2], format!("c{k}.5.2").as_bytes());
+            assert_eq!(by_car[0][9], format!("c{k}.0.9").as_bytes());
+        }
+        assert_eq!(
+            [
+                popups.drug_run_end.as_slice(),
+                &popups.hit_victim_end,
+                &popups.hit_end
+            ],
+            [b"e0".as_slice(), b"e1", b"e2"]
+        );
     }
 
     #[test]

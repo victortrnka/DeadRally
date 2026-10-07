@@ -183,15 +183,15 @@ impl MenuPalette {
         self.shown = fade(palette, percent << 16);
     }
 
-    /// What follows each wait of 0x42A570 (and 0x42A480) in the menu: the pulse writes entries
-    /// 16–31 at its level and moves on; every 70th call the background steps a row, its 32
-    /// entries shown at full brightness.
     /// `sub_41EE40`'s reset of the pulse: at 100 %, falling.
     pub(crate) fn reset_pulse(&mut self) {
         self.pulse = PULSE_TOP;
         self.rising = false;
     }
 
+    /// What follows each wait of 0x42A570 (and 0x42A480) in the menu: the pulse writes entries
+    /// 16–31 at its level and moves on; every 70th call the background steps a row, its 32
+    /// entries shown at full brightness.
     pub(crate) fn after_wait(&mut self) {
         self.calls += 1;
         let level = self.pulse << 16;

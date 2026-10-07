@@ -294,6 +294,12 @@ pub(crate) struct Campaign {
     pub(crate) drug_deal: i32,
     pub(crate) hit: i32,
     pub(crate) hit_victim: usize,
+    /// The victim's name as the hit was taken (0x45FBE0), which the shop names after the
+    /// race, when the drivers have been sorted afresh.
+    pub(crate) hit_victim_name: Vec<u8>,
+    /// The player's place in the last race (0x456B50), which the shop's last-place popup
+    /// reads and clears.
+    pub(crate) place: i32,
     /// The offer on screen, waiting for its answer.
     pub(crate) offer: Option<Offer>,
     /// The race's drivers in their places on the grid.
@@ -354,6 +360,8 @@ impl Campaign {
             drug_deal: 0,
             hit: 0,
             hit_victim: 0,
+            hit_victim_name: Vec::new(),
+            place: 0,
             offer: None,
             racers: Vec::new(),
             win_streak: 0,

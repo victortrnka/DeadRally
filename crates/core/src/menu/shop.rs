@@ -98,6 +98,15 @@ pub(crate) struct Shop {
     /// Whether the market was left by Escape (0x456B60): the shop then brings its music's
     /// order and volume back.
     pub(super) market_escaped: bool,
+    /// The car's trade-in value when `postLoadedOrLicense` was entered (0x438879), which its
+    /// checks after a race go on using.
+    pub(super) trade_in: i32,
+    /// After a race (`menu::sponsors`): the popup on screen, whether the player has heard
+    /// they were lapped or at the end of the road, and whether the game ends after the next
+    /// pass.
+    pub(super) popup: Option<super::sponsors::Popup>,
+    pub(super) told: bool,
+    pub(super) game_over: bool,
     /// The last keys typed in the shop, the latest last, for its cheat words (0x4396B0).
     typed: [u8; TYPED],
 }
@@ -117,6 +126,10 @@ impl Default for Shop {
             market: CONTINUE,
             continue_seen: false,
             market_escaped: false,
+            trade_in: 0,
+            popup: None,
+            told: false,
+            game_over: false,
             typed: [0; TYPED],
         }
     }
@@ -133,6 +146,7 @@ impl Shop {
             message_passes: self.message_passes,
             market: self.market,
             continue_seen: self.continue_seen,
+            trade_in: self.trade_in,
             ..Shop::default()
         };
     }
@@ -144,9 +158,10 @@ fn dollars(n: i32) -> Vec<u8> {
 }
 
 impl Menu {
-    /// `postLoadedOrLicense` for a game in progress: the shop drawn over a copy of the
-    /// screen and wiped in, the continue item selected.
+    /// `postLoadedOrLicense` for a game in progress: the car's trade-in counted, the shop
+    /// drawn over a copy of the screen and wiped in, the continue item selected.
     pub(super) fn open_shop(&mut self) -> State {
+        self.shop.trade_in = self.trade_in();
         self.shop.selected = CONTINUE;
         self.shop.typed = [0; TYPED];
         let mut back = self.screen.clone();
@@ -161,18 +176,21 @@ impl Menu {
     }
 
     /// `drawShopAnimationAndRightSide`: the title, the side panel, the continue item's
-    /// border, then every item's box, each drawing its description over the last.
+    /// border unless one of the shop's own popups is flagged (0x42914B), then every item's
+    /// box, each drawing its description over the last.
     pub(super) fn draw_shop(&mut self, canvas: &mut Canvas) {
         self.shop.continue_seen |= self.shop.selected == CONTINUE;
         canvas.draw(&self.assets.menu.shop_title, at(0, 92), true);
         self.draw_side_panel(canvas);
-        self.item_border(canvas, CONTINUE);
+        if !self.campaign.shop_popup_flagged() {
+            self.item_border(canvas, CONTINUE);
+        }
         for item in [CAR, ENGINE, TIRES, ARMOUR, REPAIR, CONTINUE] {
             self.draw_item(canvas, item);
         }
     }
 
-    fn item_border(&self, canvas: &mut Canvas, item: usize) {
+    pub(super) fn item_border(&self, canvas: &mut Canvas, item: usize) {
         if item == CAR {
             let (x, y, w, h) = CAR_BORDER;
             self.border(canvas, x, y, w, h);
@@ -325,6 +343,9 @@ impl Menu {
             return State::Shop { second: true };
         }
         let next = self.shop_pass();
+        if self.shop.game_over {
+            return self.shop_game_over();
+        }
         if next == (State::Shop { second: false })
             && let Some(quick) = self.quick_keys()
         {
@@ -424,14 +445,16 @@ impl Menu {
         typed[TYPED - 1] = key;
         let typed = *typed;
         let player = self.campaign.player_mut();
+        // The original's adds wrap on a hand-made save's numbers (0x43971E, 0x4397CC).
         if typed.ends_with(&DRAW) {
-            player.money += 1000;
+            player.money = player.money.wrapping_add(1000);
         } else if typed.ends_with(&DROOL) {
             player.money = 500_000;
             self.sound
                 .trigger_at(CHEAT_CHANNEL, CHEAT_SOUND, CHEAT_VOLUME, CHEAT_PITCH);
         } else if typed.ends_with(&DRIVE) || typed.ends_with(&DROP) {
-            player.points += if typed.ends_with(&DRIVE) { 10 } else { -10 };
+            let change = if typed.ends_with(&DRIVE) { 10 } else { -10 };
+            player.points = player.points.wrapping_add(change);
             self.campaign.rank_drivers();
         } else {
             return;
@@ -989,7 +1012,7 @@ impl Menu {
 
     /// Escape: the shop's screen gives way to the background and the panel, the Start
     /// Racing menu wipes in over it.
-    fn leave_shop(&mut self) -> State {
+    pub(super) fn leave_shop(&mut self) -> State {
         let mut back = std::mem::take(&mut self.back);
         back.copy_all(&self.graphics.background);
         self.graphics.panel_frame(&mut back, 0, 371, 639, 109);

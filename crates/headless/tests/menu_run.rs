@@ -1508,8 +1508,9 @@ const HELP_SHOTS: [(u64, &str); 224] = [
 /// race start's (the space ending the sign-up's linger four waits later in this run, as the
 /// menu's pulse after the race shows), the mine, Down backing over it and Enter on the race's
 /// end as in the wreck run, then Enter after the medium race's page, after the hard race's and
-/// after the statistics.
-const RESULTS_KEYS: [(u64, Key); 13] = [
+/// after the statistics; in the shop after them, Enter on the last place's popup and on the way
+/// on, then twice on the Underground Market's way on with the car wrecked.
+const RESULTS_KEYS: [(u64, Key); 17] = [
     (130, Key::Space),
     (1728, Key::Enter),
     (1806, Key::Down),
@@ -1523,6 +1524,10 @@ const RESULTS_KEYS: [(u64, Key); 13] = [
     (4470, Key::Enter),
     (4827, Key::Enter),
     (5216, Key::Enter),
+    (5573, Key::Enter),
+    (5930, Key::Enter),
+    (6287, Key::Enter),
+    (6645, Key::Enter),
 ];
 const RESULTS_HELD: [Held; 3] = [
     (3643, Key::LeftAlt, 7),
@@ -1533,8 +1538,10 @@ const RESULTS_HELD: [Held; 3] = [
 /// The ticks after which our frame equalled each screenshot of that run, one every 200 ms
 /// from the race's end on: the box, the view tilting away, the results fading in, the three
 /// races' pages, the statistics and the way out (s035 and s064, caught as the screen changed,
-/// left out; docs/verification/m5.md).
-const RESULTS_SHOTS: [(u64, &str); 91] = [
+/// left out; docs/verification/m5.md); then the shop fading in, the last place's popup with
+/// its cursor, the shop drawn again, the Underground Market and its refusals (the 25 shots
+/// whose background's copper rows had stepped in one and not the other left out).
+const RESULTS_SHOTS: [(u64, &str); 194] = [
     (3901, "s000"),
     (3901, "s001"),
     (3901, "s002"),
@@ -1626,6 +1633,109 @@ const RESULTS_SHOTS: [(u64, &str); 91] = [
     (5286, "s090"),
     (5300, "s091"),
     (5315, "s092"),
+    (5329, "s093"),
+    (5343, "s094"),
+    (5357, "s095"),
+    (5372, "s096"),
+    (5386, "s097"),
+    (5400, "s098"),
+    (5415, "s099"),
+    (5429, "s100"),
+    (5443, "s101"),
+    (5457, "s102"),
+    (5515, "s106"),
+    (5529, "s107"),
+    (5586, "s111"),
+    (5600, "s112"),
+    (5615, "s113"),
+    (5629, "s114"),
+    (5643, "s115"),
+    (5658, "s116"),
+    (5672, "s117"),
+    (5686, "s118"),
+    (5700, "s119"),
+    (5715, "s120"),
+    (5729, "s121"),
+    (5743, "s122"),
+    (5757, "s123"),
+    (5772, "s124"),
+    (5786, "s125"),
+    (5800, "s126"),
+    (5814, "s127"),
+    (5857, "s130"),
+    (5826, "s131"),
+    (5886, "s132"),
+    (5900, "s133"),
+    (5915, "s134"),
+    (5930, "s135"),
+    (5943, "s136"),
+    (5957, "s137"),
+    (5972, "s138"),
+    (5986, "s139"),
+    (6000, "s140"),
+    (6015, "s141"),
+    (6029, "s142"),
+    (6043, "s143"),
+    (6057, "s144"),
+    (6100, "s147"),
+    (6115, "s148"),
+    (6097, "s150"),
+    (6172, "s152"),
+    (6186, "s153"),
+    (6200, "s154"),
+    (6215, "s155"),
+    (6229, "s156"),
+    (6243, "s157"),
+    (6257, "s158"),
+    (6272, "s159"),
+    (6288, "s160"),
+    (6300, "s161"),
+    (6314, "s162"),
+    (6329, "s163"),
+    (6386, "s167"),
+    (6400, "s168"),
+    (6369, "s169"),
+    (6457, "s172"),
+    (6472, "s173"),
+    (6454, "s175"),
+    (6529, "s177"),
+    (6543, "s178"),
+    (6557, "s179"),
+    (6572, "s180"),
+    (6586, "s181"),
+    (6600, "s182"),
+    (6615, "s183"),
+    (6629, "s184"),
+    (6645, "s185"),
+    (6657, "s186"),
+    (6672, "s187"),
+    (6686, "s188"),
+    (6729, "s191"),
+    (6743, "s192"),
+    (6758, "s193"),
+    (6726, "s194"),
+    (6786, "s195"),
+    (6800, "s196"),
+    (6815, "s197"),
+    (6737, "s198"),
+    (6811, "s200"),
+    (6872, "s201"),
+    (6886, "s202"),
+    (6943, "s206"),
+    (6958, "s207"),
+    (6972, "s208"),
+    (6986, "s209"),
+    (7000, "s210"),
+    (7015, "s211"),
+    (7029, "s212"),
+    (7043, "s213"),
+    (7058, "s214"),
+    (7072, "s215"),
+    (7086, "s216"),
+    (7100, "s217"),
+    (7115, "s218"),
+    (7083, "s219"),
+    (7143, "s220"),
 ];
 
 /// The keys of `scripts/reference/cheats.scenario`'s run of `docs/verification/m5.md`: the
@@ -1890,7 +2000,7 @@ const ADVERSARY_SHOTS: [(u64, &str); 98] = [
 
 /// The keys of `scripts/reference/statistics.scenario`'s run of `docs/verification/m5.md`: the
 /// test game loaded into the shop as in the race start's run, Escape back to the Start Racing
-/// menu, Up to "See current statistics", Enter, and Enter on the statistics.
+/// menu, Up to its statistics row, Enter, and Enter on the statistics.
 const STATISTICS_KEYS: [(u64, Key); 10] = [
     (130, Key::Space),
     (1728, Key::Enter),
@@ -1954,6 +2064,76 @@ const STATISTICS_SHOTS: [(u64, &str); 46] = [
     (3037, "s050"),
     (3053, "s051"),
     (3067, "s052"),
+];
+
+/// The keys of `scripts/reference/shop-welcome.scenario`'s run of `docs/verification/m5.md`
+/// after the new game run's: space ending the sign-up's wait, then (Escape and Y held) the
+/// race abandoned 2.49 s into it as in the original, whose first race shows its welcome box
+/// first (our keys from here on are the original's 444 ticks earlier), and Enter on each
+/// results screen, on the shop's welcome, on its last place's popup and on into the
+/// Underground Market.
+const SHOP_WELCOME_KEYS: [(u64, Key); 8] = [
+    (3334, Key::Space),
+    (4533, Key::Enter),
+    (4747, Key::Enter),
+    (4961, Key::Enter),
+    (5160, Key::Enter),
+    (5374, Key::Enter),
+    (5589, Key::Enter),
+    (5803, Key::Enter),
+];
+const SHOP_WELCOME_HELD: [Held; 2] = [(4105, Key::Escape, 7), (4248, Key::Y, 7)];
+
+/// The ticks after which our frame equalled each screenshot of that run above the bottom
+/// panel, whose headline after the race differs (the original's welcome box): the shop fading
+/// in with the welcome to it and its cursor, the last place's popup after it, the shop drawn
+/// again with its border, and the Underground Market's first visit.
+const SHOP_WELCOME_SHOTS: [(u64, &str); 45] = [
+    (5032, "w054"),
+    (5046, "w055"),
+    (5060, "w056"),
+    (5073, "w057"),
+    (5089, "w058"),
+    (5103, "w059"),
+    (5117, "w060"),
+    (5131, "w061"),
+    (5145, "w062"),
+    (5159, "w063"),
+    (5075, "w064"),
+    (5189, "w065"),
+    (5203, "w066"),
+    (5217, "w067"),
+    (5231, "w068"),
+    (5245, "w069"),
+    (5259, "w070"),
+    (5273, "w071"),
+    (5189, "w072"),
+    (5203, "w073"),
+    (5217, "w074"),
+    (5331, "w075"),
+    (5345, "w076"),
+    (5361, "w077"),
+    (5375, "w078"),
+    (5433, "w080"),
+    (5447, "w081"),
+    (5462, "w082"),
+    (5476, "w083"),
+    (5490, "w084"),
+    (5504, "w085"),
+    (5519, "w086"),
+    (5533, "w087"),
+    (5547, "w088"),
+    (5562, "w089"),
+    (5576, "w090"),
+    (5590, "w091"),
+    (6026, "w112"),
+    (5903, "w113"),
+    (5977, "w115"),
+    (5914, "w117"),
+    (5988, "w119"),
+    (5925, "w121"),
+    (5999, "w123"),
+    (5936, "w125"),
 ];
 
 /// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
@@ -4202,8 +4382,10 @@ fn the_results_run_matches_the_committed_manifest() {
     // Written after the screenshots of the run equalled our frames (docs/verification/m5.md):
     // the race to a wreck with the opponents driving, the results fading in with the medium
     // race's page at once (the race's last Enter), the hard race's, every first three's
-    // points, the standings sorted afresh with the player's statistics, and the way back out
-    // through the Underground Market's fade.
+    // points, the standings sorted afresh with the player's statistics, the way back out
+    // through the Underground Market's fade, and the shop after them with the last place's
+    // popup (the wrecked player's, after the fade, the cursor from its first frame), drawn
+    // again after it, and the Underground Market refusing the wreck.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
     slots[0] = Some(armed_save(&assets.menu.texts, 99, [1, 0, 0]));
@@ -4211,7 +4393,7 @@ fn the_results_run_matches_the_committed_manifest() {
         (SEED, None),
         (&RESULTS_KEYS, &RESULTS_HELD),
         &RESULTS_SHOTS,
-        5_330,
+        7_160,
         slots,
         false,
     );
@@ -4292,6 +4474,28 @@ fn the_statistics_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("statistics-run.sha256", &lines, "the statistics run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_shop_welcome_run_matches_the_committed_manifest() {
+    // Written after the screenshots of the run, but for the bottom panel, equalled our frames
+    // (docs/verification/m5.md): a new game's first race abandoned, its results, and the shop
+    // after them with the welcome to it drawn before its fade and without the continue item's
+    // border, then the last place's popup, then the shop drawn again.
+    let keys: Vec<(u64, Key)> = NEW_GAME_KEYS
+        .iter()
+        .chain(&SHOP_WELCOME_KEYS)
+        .copied()
+        .collect();
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&keys, &SHOP_WELCOME_HELD),
+        &SHOP_WELCOME_SHOTS,
+        6_050,
+        Vec::new(),
+    );
+    check_manifest("shop-welcome-run.sha256", &lines, "the shop welcome run");
 }
 
 #[test]
