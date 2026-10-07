@@ -419,6 +419,19 @@ impl Campaign {
             .fold(0, i32::max)
     }
 
+    /// `initDrivers` (0x428930) for a new game or the end of one: the drivers, what the
+    /// sponsors look at (0x428CE9), the sign-up's border on the first race, and the market
+    /// restocked.
+    pub(crate) fn init_drivers(&mut self, cars: &[CarSpec], names: &[Vec<u8>]) {
+        self.player_index = PLAYER;
+        init_drivers(&mut self.drivers, &mut self.rand, cars, names);
+        self.win_streak = 0;
+        self.clean_race = false;
+        self.all_wrecked = false;
+        self.selected_race = 0;
+        self.restock();
+    }
+
     /// The market restocked (0x4236D0, from `initDrivers` on): everything on sale but the
     /// sabotage while the player leads.
     pub(crate) fn restock(&mut self) {
@@ -696,6 +709,25 @@ mod tests {
         assert_eq!(first, [41, 18467, 6334, 26500, 19169]);
         let mut zero = Rand::new(0);
         assert_eq!(zero.next(), 38);
+    }
+
+    #[test]
+    fn a_new_game_counts_the_sponsors_wins_in_a_row_from_nothing() {
+        // Two wins at the end of one game would otherwise make the next game's first win a
+        // streak of three, and the sponsor would pay after one win instead of three.
+        let mut campaign = Campaign::new(1);
+        campaign.win_streak = 2;
+        campaign.clean_race = true;
+        campaign.all_wrecked = true;
+        campaign.init_drivers(&cars(), &names());
+        assert_eq!(
+            (
+                campaign.win_streak,
+                campaign.clean_race,
+                campaign.all_wrecked
+            ),
+            (0, false, false)
+        );
     }
 
     #[test]

@@ -1088,16 +1088,7 @@ impl Menu {
     /// for the player's colour (`sub_4224E0`).
     fn init_drivers(&mut self) {
         let texts = &self.assets.menu.texts.campaign;
-        let campaign = &mut self.campaign;
-        campaign.player_index = crate::campaign::PLAYER;
-        crate::campaign::init_drivers(
-            &mut campaign.drivers,
-            &mut campaign.rand,
-            &texts.cars,
-            &texts.driver_names,
-        );
-        campaign.selected_race = 0;
-        campaign.restock();
+        self.campaign.init_drivers(&texts.cars, &texts.driver_names);
         self.shop.reset();
         self.car_frame = 0;
         self.compose_palette();
