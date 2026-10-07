@@ -509,7 +509,9 @@ impl Menu {
     /// The player chose to exit and the end screen is over.
     /// The race's state, while a race runs ([`crate::Game::race_trace`]).
     pub(crate) fn race_trace(&self) -> Option<String> {
-        self.race.as_ref().map(crate::race::Race::trace)
+        self.race
+            .as_ref()
+            .map(|race| race.trace(&self.campaign.rand))
     }
 
     pub(crate) fn quit_requested(&self) -> bool {

@@ -17,6 +17,11 @@ impl Rand {
         Rand { state: seed }
     }
 
+    /// The generator's state, for comparing with the original's (`compare-watch.py`).
+    pub(crate) fn state(&self) -> u32 {
+        self.state
+    }
+
     /// `rand()`: 0 to 32767.
     pub(crate) fn next(&mut self) -> i32 {
         self.state = self.state.wrapping_mul(214_013).wrapping_add(2_531_011);

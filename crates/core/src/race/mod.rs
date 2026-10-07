@@ -7,6 +7,7 @@ mod buffer;
 mod cars;
 mod collisions;
 mod driving;
+mod flag;
 mod guns;
 mod help;
 mod hud;
@@ -139,6 +140,12 @@ fn car_ramps(palette: &mut Palette, drivers: &[Driver], spare: Option<[u8; 3]>) 
     }
 }
 
+/// Whether a car's headlights shine (0x40DAB9, 0x40DD5D): not once it is wrecked or has
+/// finished.
+fn lit(car: &Car) -> bool {
+    car.handling.damage > 0 && !car.finished
+}
+
 /// Whether `drawShadows` draws a shadow with these corners in a view `half_width` across from
 /// its middle: one corner across the view and one (maybe another) down it; a shadow whose
 /// corners all lie outside is left out even where it would cover the view.
@@ -247,6 +254,8 @@ pub(crate) struct Race {
     mines: mines::Mines,
     /// A wreck's fire (`BURN1A.BPK`).
     fire: Vec<u8>,
+    /// The chequered flag once a car has finished.
+    flag: flag::Flag,
     /// The HUD's medals of the places.
     medals: hud::Medals,
     /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`); the one shown is the session's.
@@ -722,6 +731,7 @@ impl Race {
                 hud::decoded(&archives.engine, "BLOWI.BPK")?,
             ),
             fire: hud::decoded(&archives.engine, "BURN1A.BPK")?,
+            flag: flag::Flag::new(hud::decoded(&archives.engine, "GEN-FLA.BPK")?),
             medals: hud::Medals::new(&[]),
             rocket_flames: [
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
@@ -810,6 +820,7 @@ impl Race {
             self.clock.between,
             self.weapons,
             rand,
+            self.laps_state.over,
         );
         for tick in 0..steps {
             self.clock.frame += 1;
@@ -1473,7 +1484,15 @@ impl Race {
             }
         }
         keys.release_all();
-        let (pause, asked) = pause::Pause::new(&self.screen, picture, self.left(), rand);
+        // 0x406580: the box flies in over the buffer's view as the pass left it, which at the
+        // race's end is the last frame drawn and never shown.
+        let mut frame = vec![0; VIEW_WIDTH * VIEW_HEIGHT];
+        for (y, row) in frame.chunks_mut(VIEW_WIDTH).enumerate() {
+            for (x, pixel) in row.iter_mut().enumerate() {
+                *pixel = self.buffer.pixel(x, y);
+            }
+        }
+        let (pause, asked) = pause::Pause::new(&frame, picture, self.left(), rand);
         self.screen.copy_from_slice(pause.screen());
         (Box::new(pause), asked)
     }
@@ -1514,15 +1533,16 @@ impl Race {
 
     /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
     /// the frame, the rocket flames' picture (`fp`, 0x456AFC), the ticks between the last two
-    /// frames (`bt`, 0x4A9EA4) and before the next power-up (`pw`, 0x456AC4), then for each car
-    /// its numbers in the original's layout, floats as their bits.
-    pub(crate) fn trace(&self) -> String {
+    /// frames (`bt`, 0x4A9EA4) and before the next power-up (`pw`, 0x456AC4), `rand()`'s state
+    /// (`rs`), then for each car its numbers in the original's layout, floats as their bits.
+    pub(crate) fn trace(&self, rand: &Rand) -> String {
         let mut line = format!(
-            "{} fp{} bt{} pw{}",
+            "{} fp{} bt{} pw{} rs{}",
             self.clock.frame,
             self.session.flame_phase,
             self.clock.between,
-            self.power_ups.wait()
+            self.power_ups.wait(),
+            rand.state()
         );
         for car in &self.cars {
             let h = &car.handling;
@@ -1786,6 +1806,17 @@ impl Race {
             self.laps_state.race_clock += self.clock.between;
             self.laps_state.lap_clock += self.clock.between;
         }
+        self.draw_hud(sound);
+        // 0x417240: the flag for each car in first place once the race is over for the cars.
+        if self.laps_state.over {
+            for _ in self.cars.iter().filter(|car| car.place == 1) {
+                self.flag.draw(&mut self.buffer, self.clock.between);
+            }
+        }
+    }
+
+    /// The HUD (0x414220) or, with the status bar away, the small board alone (0x414110).
+    fn draw_hud(&mut self, sound: &mut Sound) {
         let left = self.left();
         if self.view_width == VIEW_WIDTH as i32 {
             // 0x414110: the status bar away, the last lap's time counted down a first time,
@@ -1902,13 +1933,13 @@ impl Race {
         let others = (0..self.cars.len()).filter(|&slot| slot != self.player);
         let lit = &self.track.lit;
         let player = &self.cars[self.player];
-        if player.handling.damage > 0 {
+        if self::lit(player) {
             cars::headlights(&mut self.buffer, on_screen[self.player], player.angle, lit);
         }
         for slot in others.clone() {
             let (x, y) = on_screen[slot];
             let near = x > left - 40 && x < 360 && y > -40 && y < VIEW_HEIGHT as i32 + 40;
-            if near && self.cars[slot].handling.damage > 0 {
+            if near && self::lit(&self.cars[slot]) {
                 cars::headlights(&mut self.buffer, (x, y), self.cars[slot].angle, lit);
             }
         }
@@ -2435,5 +2466,18 @@ mod tests {
             &track.0[35..55],
             "no spare: the track's"
         );
+    }
+
+    /// A car's headlights go out with its wreck and once it has finished (0x40DAB9,
+    /// 0x40DD5D): the winner rolling on after the line lights nothing ahead of it.
+    #[test]
+    fn a_finished_or_wrecked_car_has_no_headlights() {
+        let mut car = horn_car(0, 1, 100.0);
+        assert!(lit(&car));
+        car.finished = true;
+        assert!(!lit(&car), "finished");
+        car.finished = false;
+        car.handling.damage = 0;
+        assert!(!lit(&car), "wrecked");
     }
 }
