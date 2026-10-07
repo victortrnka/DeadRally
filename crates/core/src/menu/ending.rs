@@ -97,7 +97,8 @@ impl Menu {
         {
             let (x, y, w) = ROW_BORDER;
             self.thin_border(&mut screen, x, y + ROW_STEP * rank, w, ROW_HEIGHT);
-            self.save = true;
+            // `saveConfiguration` (0x4310CD) draws `dr.cfg`'s random byte.
+            self.save_config();
         }
         self.draw_best_ten(&mut screen);
         self.screen = screen;
@@ -138,6 +139,9 @@ impl Menu {
         }
         self.menu_sound_back();
         self.end_game();
+        // 0x4355A5: the Arena's place is forgotten, so the next game's statistics show no
+        // race until it has raced one.
+        self.books.place = 0;
         self.set_up();
         State::FadeIn { step: 0 }
     }

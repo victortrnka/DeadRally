@@ -4905,6 +4905,56 @@ fn the_arena_run_matches_the_committed_manifest() {
     check_manifest("arena-run.sha256", &lines, "the Arena run");
 }
 
+/// The won Arena run's keys (`arena-won.keys`: tick, key, ticks held): the player's, from the
+/// original's memory (`scripts/compare-watch.py --keys`, tick = race frame + 3016), Return
+/// held on the race-over box and on the best ten.
+fn arena_won_held() -> Vec<Held> {
+    let mut held: Vec<Held> = include_str!("arena-won.keys")
+        .lines()
+        .map(|line| {
+            let fields: Vec<&str> = line.split(' ').collect();
+            let key = match fields[1] {
+                "up" => Key::Up,
+                "left" => Key::Left,
+                "right" => Key::Right,
+                other => panic!("arena-won.keys: unknown key {other}"),
+            };
+            (fields[0].parse().unwrap(), key, fields[2].parse().unwrap())
+        })
+        .collect();
+    held.extend([(15_181, Key::Enter, 7), (19_253, Key::Enter, 7)]);
+    held
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_arena_won_run_matches_the_committed_manifest() {
+    // Written after all 508 screenshots of the run equalled our frames and every frame of the
+    // race's state, rand()'s included, equalled the original's memory (docs/verification/
+    // m6.md): the leader wins the Arena, and the end follows, the title, the best ten with the
+    // winner put in and dr.cfg written. A wrong end, Hall of Fame entry or way back to the
+    // menus shows here; the menu keys up to Enter on the Adversary's screen are the lost run's.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_save(&assets.menu.texts));
+    let shots: Vec<(u64, String)> = include_str!("arena-won.shots")
+        .lines()
+        .map(|line| {
+            let (tick, name) = line.split_once(' ').unwrap();
+            (tick.parse().unwrap(), name.to_owned())
+        })
+        .collect();
+    let shots: Vec<(u64, &str)> = shots.iter().map(|(t, n)| (*t, n.as_str())).collect();
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&ARENA_KEYS[..9], &arena_won_held()),
+        &shots,
+        21_000,
+        slots,
+    );
+    check_manifest("arena-won-run.sha256", &lines, "the won Arena run");
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_adversary_run_matches_the_committed_manifest() {

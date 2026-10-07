@@ -72,6 +72,9 @@ impl Player {
         keys: &mut Keys,
         sound: &mut Sound,
     ) -> Tick {
+        if animation.is_empty() {
+            return Tick::Ended;
+        }
         self.waited += 1;
         let mut due = None;
         while self.waited >= u32::from(animation.delays[self.next]) {
@@ -114,5 +117,29 @@ impl Player {
             palette: &self.palette.0,
             aspect: (4, 3),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use deadrally_gamedata::image::Image;
+
+    #[test]
+    fn an_animation_without_frames_ends_at_once() {
+        // Data of an unknown version may hold an empty animation; the game must go on past it
+        // as the original goes past one it cannot open, not stop.
+        let letterbox = Picture {
+            image: Image {
+                width: WIDTH,
+                height: HEIGHT,
+                pixels: vec![0; (WIDTH * HEIGHT) as usize],
+            },
+            palette: Palette::BLACK,
+        };
+        let mut player = Player::new(&letterbox);
+        let empty = Animation::from_frames(Vec::new(), Vec::new());
+        let tick = player.tick(&empty, &mut Keys::default(), &mut Sound::default());
+        assert_eq!(tick, Tick::Ended);
     }
 }

@@ -454,6 +454,13 @@ impl Menu {
         }
         self.menu_sound_back();
         self.newly_leading = false;
+        if !fade {
+            // 0x42B66C: the way out that keeps the screen forgets what the sponsors would have
+            // paid for; the fading one does not.
+            self.campaign.win_streak = 0;
+            self.campaign.clean_race = false;
+            self.campaign.all_wrecked = false;
+        }
         self.compose_palette();
         self.palette.show_composed(96..128);
         self.results_left(fade)
