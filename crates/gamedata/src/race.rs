@@ -50,7 +50,7 @@ impl From<BpaError> for RaceError {
 /// A track: its `-INF.BIN`, its picture `-IMA` with the palette in it, its surface mask
 /// `-MAS` (the low nibble a surface's kind), `-LIT.TAB`, the colour each colour turns in the
 /// cars' headlights, and its shadows `-SHA`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Track {
     pub info: TrackInfo,
     pub image: Image,
@@ -59,6 +59,15 @@ pub struct Track {
     /// The zones round the track for laps (`-VAI.BPK`, 0x5034D0): a byte for each 4x4
     /// pixels.
     pub zones: Image,
+    /// The opponents' guide round the track (`-LR1.BPK`, 0x4AA920), a byte for each 4x4
+    /// pixels: 16 on the line they keep to, less left of it, more right of it.
+    pub guide: Image,
+    /// By zone (`-DRV.DAT`): the share of its engine an opponent drives at (0x501280) and the
+    /// share of its steering it turns with (0x4796A0); and how far off its line it keeps while
+    /// it gets round a car (`-OHI.DAT`, 0x46EE00).
+    pub zone_speed: Vec<f32>,
+    pub zone_steering: Vec<f32>,
+    pub zone_offset: Vec<i32>,
     pub lit: [u8; 256],
     /// What the tires' skid marks and bloody tracks turn the track's colours into
     /// (`-SKI.TAB` at 0x501AA0, `-BLO.TAB` at 0x479D40).
@@ -83,6 +92,7 @@ impl Track {
         self.image.pixels.reverse();
         self.mask.pixels.reverse();
         self.zones.pixels.reverse();
+        self.guide.pixels.reverse();
         for spot in &mut self.info.power_ups {
             if spot[0] > 0 {
                 spot[0] = width - spot[0] - 1;
@@ -205,6 +215,24 @@ impl Track {
         let (image, palette) = decode("IMA.BPK", info.width, info.height)?;
         let (mask, _) = decode("MAS.BPK", info.width, info.height)?;
         let (zones, _) = decode("VAI.BPK", info.width >> 2, info.height >> 2)?;
+        let (guide, _) = decode("LR1.BPK", info.width >> 2, info.height >> 2)?;
+        // 256 words a table, read into tables the original keeps zeroed (0x403438).
+        let words = |suffix: &str, tables: usize| -> Result<Vec<[u8; 4]>, RaceError> {
+            let bytes = archive.read(&name(suffix))?;
+            let mut words = vec![[0; 4]; 256 * tables];
+            for (word, chunk) in words.iter_mut().zip(bytes.as_chunks::<4>().0) {
+                *word = *chunk;
+            }
+            Ok(words)
+        };
+        let drive = words("DRV.DAT", 2)?;
+        let (speed, steering) = drive.split_at(256);
+        let zone_speed = speed.iter().map(|&w| f32::from_le_bytes(w)).collect();
+        let zone_steering = steering.iter().map(|&w| f32::from_le_bytes(w)).collect();
+        let zone_offset = words("OHI.DAT", 1)?
+            .iter()
+            .map(|&w| i32::from_le_bytes(w))
+            .collect();
         // Read into a table of 256 as the original reads it (0x4A9EE0).
         let table = |suffix: &str| -> Result<[u8; 256], RaceError> {
             let mut table = [0; 256];
@@ -244,6 +272,10 @@ impl Track {
             palette,
             mask,
             zones,
+            guide,
+            zone_speed,
+            zone_steering,
+            zone_offset,
             lit,
             skid,
             blood,
@@ -439,6 +471,10 @@ mod tests {
             palette: Palette::BLACK,
             mask: picture(vec![1, 2, 3]),
             zones: picture(vec![4, 5]),
+            guide: picture(vec![6, 7]),
+            zone_speed: vec![],
+            zone_steering: vec![],
+            zone_offset: vec![],
             lit: [0; 256],
             skid: [0; 256],
             blood: [0; 256],
@@ -473,6 +509,7 @@ mod tests {
         assert_eq!(*turned.image.pixels.last().unwrap(), first);
         assert_eq!(turned.mask.pixels, [3, 2, 1]);
         assert_eq!(turned.zones.pixels, [5, 4]);
+        assert_eq!(turned.guide.pixels, [7, 6]);
         assert_eq!(turned.info.power_ups[0], [89, 29]);
         assert_eq!(turned.info.power_ups[1], [0, 0]);
         assert_eq!(&turned.info.pedestrians[0][..2], &[73, 13]);

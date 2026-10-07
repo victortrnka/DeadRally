@@ -6,7 +6,7 @@ use deadrally_gamedata::bpa::Archive;
 use deadrally_gamedata::bpk;
 use deadrally_gamedata::race::RaceError;
 
-use super::buffer::{Buffer, STRIDE};
+use super::buffer::{Buffer, LEFT, STRIDE};
 
 /// The speed gauge's 162 marks (`sub_4022A0` 0x4022A0: degrees 11 to 172 on a circle of 26
 /// across and 25 high, rounded as it rounds them in doubles).
@@ -34,6 +34,9 @@ const BOARD_STRIDE: usize = 8704;
 const NO_WEAPONS_BOARDS: usize = 34816;
 /// The damage pictures: 6 of 64 x 21 a car, cars 8064 bytes apart.
 const DAMAGE_PICTURES: usize = 8064;
+/// The small boards (64 x 32) by the player's place on the grid, those without weapons four
+/// places on (0x402C9F).
+const SMALL_BOARD: usize = 2048;
 
 /// The HUD's pictures (`loadRaceImagesHUD`, `IBFILES.BPA`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +52,8 @@ pub(crate) struct HudImages {
     mine: Vec<u8>,
     slider: Vec<u8>,
     wreck: Vec<u8>,
+    /// The small board shown while the status bar is away (`SMALLBAR.BPK`, 0x50E720).
+    small_board: Vec<u8>,
 }
 
 pub(super) fn decoded(archive: &Archive, name: &str) -> Result<Vec<u8>, RaceError> {
@@ -116,6 +121,11 @@ impl HudImages {
             mine: decoded(ib_files, "SIDEBOM1.BPK")?,
             slider: decoded(ib_files, "DAMSLID.BPK")?,
             wreck: decoded(ib_files, "RASTI1.BPK")?,
+            small_board: slice(
+                &decoded(ib_files, "SMALLBAR.BPK")?,
+                SMALL_BOARD * (player + if weapons { 0 } else { 4 }),
+                SMALL_BOARD,
+            ),
         })
     }
 }
@@ -140,6 +150,9 @@ pub(crate) struct Player {
     pub(crate) weapons_bar: i32,
     pub(crate) turbo_bar: i32,
     pub(crate) mines: i32,
+    /// In a race without weapons, the ticks of the time shown: the last lap's for a while
+    /// after each lap, else the lap's clock.
+    pub(crate) time: i32,
 }
 
 /// The boards' medals rolling from place to place (`drawLeftRaceBar_414220` from 0x4147B0):
@@ -200,6 +213,45 @@ impl Medals {
             self.last[index] = place;
         }
         shown
+    }
+}
+
+/// The calls on the player's car that the HUD and the small board make after its damage
+/// (0x414E28 and 0x414028): effect 1 once a race when the damage bar is first under a fifth
+/// (0x5000, flag 0x456ADC) and once when first under a tenth (0x2800, 0x456AE0), and
+/// effect 32 once when the tough driver (the name at 0x441250) is wrecked (0x456AE8); the
+/// race's set-up clears the flags (`initRaceValues` 0x409B77).
+pub(crate) const DAMAGE_CALL: u8 = 1;
+pub(crate) const TOUGH_WRECKED: u8 = 32;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DamageCalls {
+    fifth: bool,
+    tenth: bool,
+    wrecked: bool,
+}
+
+impl DamageCalls {
+    /// The calls for the player's `damage_bar` this frame, in their order; `tough` when the
+    /// player is the tough driver.
+    pub(crate) fn check(&mut self, damage_bar: i32, tough: bool) -> Vec<u8> {
+        let mut calls = Vec::new();
+        let mut once = |flag: &mut bool, effect: u8| {
+            if !*flag {
+                calls.push(effect);
+            }
+            *flag = true;
+        };
+        if damage_bar < 0x5000 {
+            once(&mut self.fifth, DAMAGE_CALL);
+        }
+        if damage_bar < 0x2800 {
+            once(&mut self.tenth, DAMAGE_CALL);
+        }
+        if damage_bar == 0 && tough {
+            once(&mut self.wrecked, TOUGH_WRECKED);
+        }
+        calls
     }
 }
 
@@ -293,24 +345,12 @@ pub(crate) fn draw(
         buffer.slant(left + 32 + ((y as i64) << 9) + x as i64, x, 32, 33 - y, 0);
     }
     if player.weapons {
-        let used = (f64::from(player.weapons_bar) * 0.000537109375) as i64;
-        let used = if used < 0 { 0 } else { used as u8 as i64 };
-        buffer.fill(left + used + 24100, 55 - used, 3, 0);
-        for mine in 0..player.mines.max(0) as i64 {
-            buffer.draw(&images.mine, 8, 6, left + 21024 + 8 * mine);
-        }
+        weapons_bar(buffer, images, player, (left + 24100, left + 21024));
+    } else {
+        time(buffer, &images.small_font, player.time, left + 0x583B);
     }
-    let turbo = (f64::from(player.turbo_bar) * 0.000556640625) as i64;
-    let turbo = if turbo < 0 { 0 } else { turbo as u8 as i64 };
-    buffer.paint_lit(left + turbo + 17444, 58 - turbo, 7, 0);
-    let damage = (100.0 - (f64::from(boards[0].damage_bar) * 0.0009765625).ceil()) as i32;
-    let end = number(buffer, &images.big_digits, damage, left + 36398);
-    buffer.draw(
-        images.big_digits.get(0x320..0x320 + 80).unwrap_or(&[]),
-        8,
-        10,
-        end,
-    );
+    turbo_bar(buffer, player.turbo_bar, left + 17444);
+    damage_number(buffer, images, boards[0].damage_bar, left + 36398);
     let level = ((f64::from(boards[0].damage_bar) * 0.000048828125).ceil() as i64).max(0);
     let start = (6720 - 1344 * level).max(0) as usize;
     buffer.draw_opaque(
@@ -326,37 +366,135 @@ pub(crate) fn draw(
     }
 }
 
-/// `drawSprite_402590` with the big digits (8 x 10, step −8, hundreds −16): `n` right of
-/// `at`, its digits left to right; where the next picture goes.
-fn number(buffer: &mut Buffer, digits: &[u8], n: i32, at: i64) -> i64 {
-    let glyph = |d: i32| {
-        let start = 80 * d.clamp(0, 9) as usize;
-        digits.get(start..start + 80).unwrap_or(&[]).to_vec()
+/// The small board at the view's top left while the status bar is away (0x413C90), over the
+/// track: its picture, the turbo bar, the weapons bar and the mines or, in a race without
+/// weapons, the time, and the damage.
+pub(crate) fn draw_small(
+    buffer: &mut Buffer,
+    images: &HudImages,
+    player: &Player,
+    damage_bar: i32,
+) {
+    buffer.draw(&images.small_board, 64, 32, LEFT as i64);
+    turbo_bar(buffer, player.turbo_bar, 0xE64);
+    if player.weapons {
+        weapons_bar(buffer, images, player, (0x2664, 0x1A60));
+    } else {
+        time(buffer, &images.small_font, player.time, 0x207B);
+    }
+    damage_number(buffer, images, damage_bar, 0x2C90);
+}
+
+/// `drawTurboBar_43B3A0` over the turbo bar from `at`: its used part, 58 pixels long full,
+/// painted dark.
+fn turbo_bar(buffer: &mut Buffer, turbo: i32, at: i64) {
+    let turbo = (f64::from(turbo) * 0.000556640625) as i64;
+    let turbo = if turbo < 0 { 0 } else { turbo as u8 as i64 };
+    buffer.paint_lit(at + turbo, 58 - turbo, 7, 0);
+}
+
+/// The weapons bar from `at` (its used part, 55 pixels long full, cleared) and the mines from
+/// `mines`.
+fn weapons_bar(buffer: &mut Buffer, images: &HudImages, player: &Player, (at, mines): (i64, i64)) {
+    let used = (f64::from(player.weapons_bar) * 0.000537109375) as i64;
+    let used = if used < 0 { 0 } else { used as u8 as i64 };
+    buffer.fill(at + used, 55 - used, 3, 0);
+    for mine in 0..player.mines.max(0) as i64 {
+        buffer.draw(&images.mine, 8, 6, mines + 8 * mine);
+    }
+}
+
+/// The damage in per cent with its sign, in the big digits right of `at`.
+fn damage_number(buffer: &mut Buffer, images: &HudImages, damage_bar: i32, at: i64) {
+    let damage = (100.0 - (f64::from(damage_bar) * 0.0009765625).ceil()) as i32;
+    let big = Digits {
+        font: &images.big_digits,
+        width: 8,
+        height: 10,
+        zero: 0,
     };
-    let (width, step, hundreds) = (8i64, -8i64, -16i64);
+    let end = number(buffer, &big, damage, at, (-8, -16));
+    buffer.draw(
+        images.big_digits.get(0x320..0x320 + 80).unwrap_or(&[]),
+        8,
+        10,
+        end,
+    );
+}
+
+/// A font's digits as `drawSprite_402590` draws them: glyphs `width` x `height`, the digit 0
+/// at glyph `zero`.
+struct Digits<'a> {
+    font: &'a [u8],
+    width: usize,
+    height: usize,
+    zero: i32,
+}
+
+/// `drawSprite_402590`: `n` (0 below 0, nothing past 999) at `at`, its digits left to right:
+/// one at `at`, after a 0 a glyph before it when `step` is positive; two from `at` plus
+/// `step`, less a glyph more when `step` is positive; three from `at` plus `hundreds`. Where
+/// the next picture goes.
+fn number(
+    buffer: &mut Buffer,
+    digits: &Digits,
+    n: i32,
+    at: i64,
+    (step, hundreds): (i64, i64),
+) -> i64 {
+    let area = digits.width * digits.height;
+    let put = |buffer: &mut Buffer, d: i32, x: i64| {
+        let start = usize::try_from(d + digits.zero).unwrap_or(0) * area;
+        let glyph = digits.font.get(start..start + area).unwrap_or(&[]);
+        buffer.draw(glyph, digits.width, digits.height, x);
+    };
+    let width = digits.width as i64;
     let n = n.max(0);
     let mut x = at;
     if n < 10 {
-        buffer.draw(&glyph(n), 8, 10, x);
+        if step > 0 {
+            x -= step;
+            put(buffer, 0, x);
+            x += width;
+        }
+        put(buffer, n, x);
         x += width;
     }
     if (10..100).contains(&n) {
+        if step > 0 {
+            x -= 2 * step;
+        }
         x += step;
-        buffer.draw(&glyph(n / 10), 8, 10, x);
+        put(buffer, n / 10, x);
         x += width;
-        buffer.draw(&glyph(n % 10), 8, 10, x);
+        put(buffer, n % 10, x);
         x += width;
     }
     if (100..1000).contains(&n) {
         x += hundreds;
-        buffer.draw(&glyph(n / 100), 8, 10, x);
+        put(buffer, n / 100, x);
         x += width;
-        buffer.draw(&glyph(n % 100 / 10), 8, 10, x);
+        put(buffer, n % 100 / 10, x);
         x += width;
-        buffer.draw(&glyph(n % 10), 8, 10, x);
+        put(buffer, n % 10, x);
         x += width;
     }
     x
+}
+
+/// A time of `ticks` in the small font (0x414B82, 0x413E0C): the minutes right of `at`, the
+/// seconds and the hundredths as two digits each 14 and 28 pixels on.
+fn time(buffer: &mut Buffer, font: &[u8], ticks: i32, at: i64) {
+    let digits = Digits {
+        font,
+        width: 6,
+        height: 6,
+        zero: 16,
+    };
+    let [minutes, seconds, hundredths] = super::laps::time(ticks);
+    number(buffer, &digits, minutes, at, (-6, 0));
+    number(buffer, &digits, seconds, at + 14, (6, 0));
+    number(buffer, &digits, hundredths, at + 28, (6, 0));
 }
 
 #[cfg(test)]
@@ -379,6 +517,7 @@ mod tests {
             mine: some(4000),
             slider: some(64 * 9),
             wreck: some(4000),
+            small_board: some(2048),
         }
     }
 
@@ -404,6 +543,7 @@ mod tests {
             weapons_bar: FULL_BAR,
             turbo_bar: FULL_BAR,
             mines: 0,
+            time: 0,
         };
         let boards = [board(0), board(110), board(255), board(40)];
         draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
@@ -421,9 +561,90 @@ mod tests {
             weapons_bar: FULL_BAR,
             turbo_bar: FULL_BAR,
             mines: 0,
+            time: 0,
         };
         let boards = [board(0), board(0), board(0), board(0)];
         draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
+    }
+
+    /// A font whose glyph `g` is 36 pixels of colour `g`, so the buffer tells which glyph
+    /// was drawn where.
+    fn numbered_font() -> Vec<u8> {
+        (0..96u8).flat_map(|glyph| [glyph; 36]).collect()
+    }
+
+    /// The glyph drawn at the HUD's column `x` (shown, from the screen's left) of row `y`.
+    fn glyph_at(buffer: &Buffer, x: usize, y: usize) -> u8 {
+        buffer.pixel(x, y)
+    }
+
+    /// In a race without weapons the player's board shows a clock where the weapons bar
+    /// would be: minutes, then seconds and hundredths of two digits each, in the small font.
+    /// A clock in the wrong place or with a missing leading zero reads as a different time.
+    #[test]
+    fn a_race_without_weapons_shows_the_time_as_minutes_seconds_and_hundredths() {
+        let mut images = images();
+        images.small_font = numbered_font();
+        let player = Player {
+            speed: 0.0,
+            engine: 1.0,
+            weapons: false,
+            weapons_bar: FULL_BAR,
+            turbo_bar: FULL_BAR,
+            mines: 0,
+            // 1 minute, 5 seconds and 35 ticks: 49 hundredths.
+            time: (65 * 70) + 35,
+        };
+        let boards = [board(0), board(0), board(0), board(0)];
+        let mut buffer = Buffer::default();
+        draw(&mut buffer, &images, 64, &boards, &player, 4);
+        let digit = |d: u8| 16 + d;
+        assert_eq!(glyph_at(&buffer, 27, 44), digit(1));
+        assert_eq!(glyph_at(&buffer, 35, 44), digit(0));
+        assert_eq!(glyph_at(&buffer, 41, 44), digit(5));
+        assert_eq!(glyph_at(&buffer, 49, 49), digit(4));
+        assert_eq!(glyph_at(&buffer, 60, 49), digit(9));
+        // Ten minutes and more push the minutes' first digit a glyph left.
+        let player = Player {
+            time: 12 * 60 * 70,
+            ..player
+        };
+        draw(&mut buffer, &images, 64, &boards, &player, 4);
+        assert_eq!(glyph_at(&buffer, 21, 44), digit(1));
+        assert_eq!(glyph_at(&buffer, 27, 44), digit(2));
+    }
+
+    /// With the status bar slid away the small board at the view's top left keeps the race
+    /// readable: its picture, the time in a race without weapons (here 1:05:49) and the
+    /// damage (37 % with its sign). Missing it, the player would race blind to both.
+    #[test]
+    fn the_small_board_shows_the_time_and_the_damage() {
+        let mut images = images();
+        images.small_font = numbered_font();
+        images.big_digits = (0..11u8).flat_map(|digit| [100 + digit; 80]).collect();
+        images.small_board = vec![0; 2048];
+        images.small_board[64 * 30 + 2] = 99;
+        let player = Player {
+            speed: 0.0,
+            engine: 1.0,
+            weapons: false,
+            weapons_bar: FULL_BAR,
+            turbo_bar: FULL_BAR,
+            mines: 0,
+            time: (65 * 70) + 35,
+        };
+        let mut buffer = Buffer::default();
+        draw_small(&mut buffer, &images, &player, (100 - 37) << 10);
+        let digit = |d: u8| 16 + d;
+        assert_eq!(glyph_at(&buffer, 2, 30), 99, "the board's picture");
+        assert_eq!(glyph_at(&buffer, 27, 16), digit(1));
+        assert_eq!(glyph_at(&buffer, 35, 16), digit(0));
+        assert_eq!(glyph_at(&buffer, 41, 16), digit(5));
+        assert_eq!(glyph_at(&buffer, 49, 16), digit(4));
+        assert_eq!(glyph_at(&buffer, 55, 16), digit(9));
+        assert_eq!(glyph_at(&buffer, 40, 22), 103);
+        assert_eq!(glyph_at(&buffer, 48, 22), 107);
+        assert_eq!(glyph_at(&buffer, 56, 22), 110, "the per cent sign");
     }
 
     /// A place changed rolls the board's medal through the pictures between the old place
@@ -444,5 +665,43 @@ mod tests {
         // Two ticks between frames roll twice as far.
         let mut medals = Medals::new(&[1, 2]);
         assert_eq!(medals.roll(&[2, 1], 2), [1, 6]);
+    }
+
+    /// The HUD warns the player once a race as the car's damage bar falls under a fifth and
+    /// again under a tenth, and the tough driver wrecked has a call of his own. A warning
+    /// sounding every frame under the line, or not at all, is what the player would hear go
+    /// wrong; a car starting the race nearly wrecked hears both warnings at once.
+    #[test]
+    fn the_damage_calls_sound_once_a_race_each() {
+        let mut calls = DamageCalls::default();
+        assert!(
+            calls.check(0x5000, false).is_empty(),
+            "a fifth left is not under it"
+        );
+        assert_eq!(calls.check(0x4FFF, false), [DAMAGE_CALL]);
+        assert!(calls.check(0x3000, false).is_empty(), "once a race");
+        assert!(
+            calls.check(0x2800, false).is_empty(),
+            "a tenth left is not under it"
+        );
+        assert_eq!(calls.check(0x27FF, false), [DAMAGE_CALL]);
+        assert!(calls.check(0x1000, false).is_empty(), "once a race");
+        assert!(
+            calls.check(0, false).is_empty(),
+            "only the tough driver's wreck has a call"
+        );
+        let mut calls = DamageCalls::default();
+        assert_eq!(
+            calls.check(0, true),
+            [DAMAGE_CALL, DAMAGE_CALL, TOUGH_WRECKED]
+        );
+        assert!(calls.check(0, true).is_empty(), "once a race");
+        let mut calls = DamageCalls::default();
+        assert_eq!(calls.check(1, true), [DAMAGE_CALL, DAMAGE_CALL]);
+        assert_eq!(
+            calls.check(0, true),
+            [TOUGH_WRECKED],
+            "the tough driver's call comes with the wreck itself"
+        );
     }
 }

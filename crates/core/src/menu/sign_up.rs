@@ -8,10 +8,14 @@
 use super::draw::Focus;
 use super::hall_of_fame::Wipe;
 use super::{MOVE_SOUND, Menu, State};
-use crate::campaign::{Offer, PLAYER, SignUp};
+use crate::campaign::{Offer, SignUp};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
+/// The music's volume as the screen fades after signing up for no race: from 0xFFDC down by
+/// 0x51E a step.
+const NO_SIGN_UP_VOLUME: u32 = 0xFFDC;
+const NO_SIGN_UP_VOLUME_STEP: u32 = 0x51E;
 /// The three races' columns are 160 pixels apart; their snapshots, prices, popups and border.
 const COLUMN: usize = 160;
 const SNAPSHOT: (usize, usize) = (32, 128);
@@ -58,6 +62,8 @@ pub(crate) enum PopupThen {
     Market,
     /// The race after the sabotage's popup.
     Race,
+    /// The shop after a race, after one of its popups.
+    Shop,
 }
 
 /// What happens on the sign-up screen between its waits.
@@ -79,6 +85,7 @@ impl Menu {
             &mut campaign.rand,
             &order,
             &mut campaign.last_circuits,
+            campaign.player_index,
         ));
         campaign.entered_race = None;
         // 0x435806: the copper ramp, entries 176 to 182.
@@ -268,6 +275,7 @@ impl Menu {
             PopupThen::SignUp => self.after_welcome(),
             PopupThen::Market => self.after_market_welcome(),
             PopupThen::Race => self.open_preview(),
+            PopupThen::Shop => self.shop_popup_told(),
         }
     }
 
@@ -396,9 +404,10 @@ impl Menu {
             true,
         );
         let sign_up = self.campaign.sign_up.as_mut().expect("a sign-up is on");
-        let place = sign_up.enter(race, PLAYER);
+        let player = self.campaign.player_index;
+        let place = sign_up.enter(race, player);
         self.campaign.entered_race = Some(race);
-        self.draw_entry(race, place, PLAYER);
+        self.draw_entry(race, place, player);
         self.shown = self.screen.clone();
         State::SignUp {
             second: false,
@@ -467,13 +476,25 @@ impl Menu {
         State::NoSignUpFade { step: 0 }
     }
 
-    /// The fade to black after the "no race" popup: 51 steps of 2 %.
+    /// The fade to black after the "no race" popup: 51 steps of 2 %, the music fading with it
+    /// when the sign-up was reached through the Underground Market (0x435C00); then its music's
+    /// order back as an Escape from the market brings it (0x435CA3), and the results.
     pub(super) fn no_sign_up_fade(&mut self, step: u32) -> State {
+        let through_market = self.campaign.use_weapons && self.shop.continue_seen;
+        if through_market {
+            self.sound
+                .set_mask((NO_SIGN_UP_VOLUME - NO_SIGN_UP_VOLUME_STEP * step) >> 8);
+        }
         self.palette.fade(100 - 2 * i64::from(step));
         if step < 50 {
             return State::NoSignUpFade { step: step + 1 };
         }
-        self.race_stand_in()
+        if through_market {
+            self.sound.set_music_order(self.music_order);
+            self.shop.market_escaped = true;
+            self.sound.stop_channel(1);
+        }
+        self.results_without_race()
     }
 
     /// Every race is full: the entrants sorted, then the sabotage's popup or an offer, else
@@ -504,8 +525,9 @@ impl Menu {
     /// damaged by 25 to 49 % (`rand()` seeded again from the clock) and the popup says so.
     fn sabotage(&mut self) -> Option<State> {
         let campaign = &mut self.campaign;
+        let me = campaign.player_index;
         for (index, driver) in campaign.drivers.iter_mut().enumerate() {
-            if index != PLAYER {
+            if index != me {
                 driver.damage = 0;
             }
         }
@@ -582,7 +604,7 @@ impl Menu {
             let entrants = self.race_entrants();
             let victim = loop {
                 let driver = entrants[(self.campaign.rand.next() % 4) as usize];
-                if driver != PLAYER {
+                if driver != self.campaign.player_index {
                     break driver;
                 }
             };
@@ -634,6 +656,8 @@ impl Menu {
                 Some(Offer::Hit { level, victim }) => {
                     campaign.hit = level;
                     campaign.hit_victim = victim;
+                    // 0x43215D: the name kept for the shop after the race.
+                    campaign.hit_victim_name = campaign.drivers[victim].name().to_vec();
                 }
                 None => {}
             }
@@ -653,9 +677,8 @@ impl Menu {
         self.open_preview()
     }
 
-    /// Until the race's end and results exist (M4c, M5), the races end here: back to the shop
-    /// with nothing changed but the welcome, which the shop shows once after the first race
-    /// (spec M3a §2, M3b §2).
+    /// A race whose data does not load ends here: back to the shop with nothing changed but
+    /// the welcome, which the shop shows once after the first race (spec M3a §2, M3b §2).
     pub(super) fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;

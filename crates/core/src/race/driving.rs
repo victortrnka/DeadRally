@@ -235,6 +235,8 @@ pub(super) struct Car {
     pub(super) zone: i32,
     /// The ticks a power-up's effect on the player's view lasts (0x4A8050).
     pub(super) effect: i32,
+    /// What its driving as an opponent keeps from tick to tick.
+    pub(super) ai: super::ai::Memory,
     /// Its machine guns' shots, flashes and sparks.
     pub(super) gunfire: super::guns::Gunfire,
     /// The smoke puffs off its rear wheels, left and right: age (0 for none) and place
@@ -292,6 +294,7 @@ impl Car {
             skids: 0,
             zone: 0,
             effect: 0,
+            ai: super::ai::Memory::default(),
             gunfire: super::guns::Gunfire::default(),
             puffs: [[[0; 3]; super::marks::PUFFS]; 2],
             handling,

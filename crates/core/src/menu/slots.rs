@@ -8,7 +8,7 @@ use deadrally_gamedata::save_game::{self, DRIVERS_BYTES, NAME_BYTES, SaveGame};
 use super::draw::Focus;
 use super::licence::Nickname;
 use super::{MAIN_MENU, Menu, START_MENU, State, Submenu};
-use crate::campaign::{DRIVER_BYTES, DRIVERS, Driver, PLAYER};
+use crate::campaign::{DRIVER_BYTES, DRIVERS, Driver};
 use crate::canvas::at;
 use crate::keys;
 
@@ -36,16 +36,14 @@ pub(crate) enum Quick {
     NotFound,
 }
 
-/// Only a single-player game (driver 19) whose player holds numbers a game can have loads;
-/// another, or a damaged file, is as good as empty.
+/// Only a game whose player (any of the drivers, as the results sort them; 0x422428) holds
+/// numbers a game can have loads; a damaged file is as good as empty.
 fn playable(game: &SaveGame) -> bool {
-    usize::from(game.driver_id) == PLAYER
-        && game
-            .drivers
-            .as_chunks::<DRIVER_BYTES>()
-            .0
-            .get(PLAYER)
-            .is_some_and(|record| Driver::from_bytes(record).is_playable())
+    game.drivers
+        .as_chunks::<DRIVER_BYTES>()
+        .0
+        .get(usize::from(game.driver_id))
+        .is_some_and(|record| Driver::from_bytes(record).is_playable())
 }
 
 impl Menu {
@@ -145,6 +143,7 @@ impl Menu {
     /// difficulty into `dr.cfg`.
     fn take_game(&mut self, game: &SaveGame) {
         let campaign = &mut self.campaign;
+        campaign.player_index = usize::from(game.driver_id);
         campaign.use_weapons = game.use_weapons != 0;
         for (driver, record) in campaign
             .drivers
@@ -168,7 +167,7 @@ impl Menu {
             drivers.extend_from_slice(&driver.to_bytes());
         }
         let game = SaveGame {
-            driver_id: PLAYER as u8,
+            driver_id: self.campaign.player_index as u8,
             use_weapons: u8::from(self.campaign.use_weapons),
             difficulty: self.config.difficulty() as u8,
             name: padded,

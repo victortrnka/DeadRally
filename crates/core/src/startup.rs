@@ -92,6 +92,8 @@ pub(crate) struct Startup {
     pub(crate) slot_files: Vec<Option<Vec<u8>>>,
     /// The clock the sabotage reads, when fixed (see [`crate::Game::fix_sabotage_clock`]).
     pub(crate) sabotage_clock: Option<u32>,
+    /// Whether the races keep the opponents still (see [`crate::Game::keep_opponents_still`]).
+    pub(crate) still_opponents: bool,
 }
 
 impl Startup {
@@ -117,6 +119,7 @@ impl Startup {
             seed,
             slot_files: vec![None; deadrally_gamedata::save_game::SLOTS],
             sabotage_clock: None,
+            still_opponents: false,
         };
         if startup.assets.intro.is_empty() {
             // `openAnimation` plays nothing when the file has no frames.
@@ -151,7 +154,12 @@ impl Startup {
             self.audio,
             &self.palette,
             (self.config, self.save),
-            (self.seed, self.slot_files, self.sabotage_clock),
+            (
+                self.seed,
+                self.slot_files,
+                self.sabotage_clock,
+                self.still_opponents,
+            ),
         )
     }
 

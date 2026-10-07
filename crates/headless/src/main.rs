@@ -23,6 +23,7 @@ use deadrally_core::{
 };
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::bpa::Archive;
+use deadrally_gamedata::dr_cfg::DrCfg;
 use deadrally_gamedata::{DATA_ENV_VAR, Located, Outcome, config_path, locate};
 use deadrally_gamedata::{save_game, sound};
 use sha2::{Digest, Sha256};
@@ -37,8 +38,8 @@ const USAGE: &str = "usage:
   deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... --out FILE.png
   deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]...
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--ticks N] SHOT.png...
-  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--seconds S] --out FILE.wav
+  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--ticks N] SHOT.png...
+  deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--no-ai] [--cfg DR.CFG] [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
   deadrally-headless compare-audio ORIGINAL.wav OURS.wav [--min-overlap S]";
@@ -87,6 +88,7 @@ enum Command {
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
+        still: bool,
         out: PathBuf,
     },
     Compare {
@@ -100,6 +102,7 @@ enum Command {
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
+        still: bool,
     },
     Find {
         data: Option<PathBuf>,
@@ -107,6 +110,7 @@ enum Command {
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
+        still: bool,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -116,6 +120,8 @@ enum Command {
         keys: Vec<Press>,
         seed: u32,
         saves: Vec<(usize, PathBuf)>,
+        still: bool,
+        cfg: Option<PathBuf>,
         seconds: Option<u64>,
         out: PathBuf,
     },
@@ -160,9 +166,16 @@ fn main() -> ExitCode {
             seed,
             saves,
             clock,
+            still,
             out,
-        } => render(data.as_deref(), tick, &keys, (seed, &saves, clock), &out)
-            .map(|()| ExitCode::SUCCESS),
+        } => render(
+            data.as_deref(),
+            tick,
+            &keys,
+            (seed, &saves, clock, still),
+            &out,
+        )
+        .map(|()| ExitCode::SUCCESS),
         Command::Compare { a, b } => compare(&a, &b),
         Command::Trace {
             data,
@@ -171,29 +184,41 @@ fn main() -> ExitCode {
             seed,
             saves,
             clock,
-        } => trace(data.as_deref(), tick, &keys, (seed, &saves, clock)).map(|()| ExitCode::SUCCESS),
+            still,
+        } => trace(data.as_deref(), tick, &keys, (seed, &saves, clock, still))
+            .map(|()| ExitCode::SUCCESS),
         Command::Find {
             data,
             keys,
             seed,
             saves,
             clock,
+            still,
             ticks,
             shots,
-        } => find(data.as_deref(), &keys, (seed, &saves, clock), ticks, &shots),
+        } => find(
+            data.as_deref(),
+            &keys,
+            (seed, &saves, clock, still),
+            ticks,
+            &shots,
+        ),
         Command::RenderAudio {
             data,
             source,
             keys,
             seed,
             saves,
+            still,
+            cfg,
             seconds,
             out,
         } => render_audio(
             data.as_deref(),
             &source,
             &keys,
-            (seed, &saves, None),
+            (seed, &saves, None, still),
+            cfg.as_deref(),
             seconds,
             &out,
         )
@@ -248,6 +273,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             "--data",
             "--seed",
             "--save",
+            "--cfg",
             "--music",
             "--effect",
             "--number",
@@ -266,11 +292,17 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut seed = 0;
     let mut saves = Vec::new();
     let mut clock = None;
+    let mut still = false;
+    let mut cfg = None;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
         if command == "render-audio" && name == "--startup" {
             startup = true;
+        } else if matches!(command, "render" | "trace" | "find" | "render-audio")
+            && name == "--no-ai"
+        {
+            still = true;
         } else if options.contains(&name) {
             let value = args.next().ok_or(format!("{name} needs a value"))?;
             let number = || {
@@ -282,6 +314,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             match name {
                 "--data" => data = Some(PathBuf::from(value)),
                 "--out" => out = Some(PathBuf::from(value)),
+                "--cfg" => cfg = Some(PathBuf::from(value)),
                 "--ticks" => ticks = Some(number()?),
                 "--tick" => tick = Some(number()?),
                 "--key-at" => keys.push(press(&value.to_string_lossy())?),
@@ -339,6 +372,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             seed,
             saves,
             clock,
+            still,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "trace" => Ok(Command::Trace {
@@ -348,6 +382,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             seed,
             saves,
             clock,
+            still,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
             Ok([a, b]) => Ok(Command::Compare { a, b }),
@@ -378,12 +413,20 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             if source != AudioSource::Startup && !saves.is_empty() {
                 return Err("--save only applies to --startup".into());
             }
+            if source != AudioSource::Startup && still {
+                return Err("--no-ai only applies to --startup".into());
+            }
+            if source != AudioSource::Startup && cfg.is_some() {
+                return Err("--cfg only applies to --startup".into());
+            }
             Ok(Command::RenderAudio {
                 data,
                 source,
                 keys,
                 seed,
                 saves,
+                still,
+                cfg,
                 seconds,
                 out: out.ok_or("render-audio needs --out FILE.wav")?,
             })
@@ -398,6 +441,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 seed,
                 saves,
                 clock,
+                still,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -502,9 +546,10 @@ struct Press {
 }
 
 /// The keys `--key-at T:KEY` can name; `T` alone presses Space.
-const KEY_NAMES: [(&str, Key); 11] = [
+const KEY_NAMES: [(&str, Key); 22] = [
     ("space", Key::Space),
     ("ctrl", Key::LeftCtrl),
+    ("alt", Key::LeftAlt),
     ("enter", Key::Enter),
     ("escape", Key::Escape),
     ("up", Key::Up),
@@ -514,6 +559,16 @@ const KEY_NAMES: [(&str, Key); 11] = [
     ("y", Key::Y),
     ("n", Key::N),
     ("q", Key::Q),
+    ("a", Key::A),
+    ("d", Key::D),
+    ("e", Key::E),
+    ("i", Key::I),
+    ("l", Key::L),
+    ("o", Key::O),
+    ("p", Key::P),
+    ("r", Key::R),
+    ("v", Key::V),
+    ("w", Key::W),
 ];
 
 /// The saved games given with `--save`, slot by slot.
@@ -591,17 +646,33 @@ fn play(game: &mut Game, ticks: u64, keys: &[Press], mut each: impl FnMut(u64, &
 }
 
 /// Writes the frame after `tick` ticks as the original's window would show it.
-/// How a run starts: `rand()`'s seed, the saved games given, the sabotage's clock if fixed.
-type Start<'a> = (u32, &'a [(usize, PathBuf)], Option<u32>);
+/// How a run starts: `rand()`'s seed, the saved games given, the sabotage's clock if fixed,
+/// and whether the opponents stay still (`--no-ai`).
+type Start<'a> = (u32, &'a [(usize, PathBuf)], Option<u32>, bool);
 
 /// A game started as `start` says.
-fn started(located: &Located, (seed, saves, clock): Start) -> Result<Game, String> {
+/// `cfg` is a `dr.cfg` to start from instead of the defaults a fresh one has.
+fn started(
+    located: &Located,
+    (seed, saves, clock, still): Start,
+    cfg: Option<&Path>,
+) -> Result<Game, String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
-    let config = assets.menu.default_config.clone();
+    let config = match cfg {
+        Some(path) => {
+            let bytes =
+                std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+            DrCfg::parse(&bytes).ok_or(format!("{}: not a dr.cfg", path.display()))?
+        }
+        None => assets.menu.default_config.clone(),
+    };
     let mut game = Game::with_seed(assets, config, seed);
     game.set_saved_games(read_saves(saves)?);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
+    }
+    if still {
+        game.keep_opponents_still();
     }
     Ok(game)
 }
@@ -614,7 +685,7 @@ fn render(
     out: &Path,
 ) -> Result<(), String> {
     let located = locate_data(data)?;
-    let mut game = started(&located, start)?;
+    let mut game = started(&located, start, None)?;
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame())?.write_png(out)
 }
@@ -623,7 +694,7 @@ fn render(
 /// with the original's memory as `scripts/reference-watch.py` logs it.
 fn trace(data: Option<&Path>, tick: u64, keys: &[Press], start: Start) -> Result<(), String> {
     let located = locate_data(data)?;
-    let mut game = started(&located, start)?;
+    let mut game = started(&located, start, None)?;
     play(&mut game, tick, keys, |done, game| {
         if let Some(state) = game.race_trace() {
             println!("{done} {state}");
@@ -738,7 +809,7 @@ fn timeline(
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
-    let mut game = started(located, start)?;
+    let mut game = started(located, start, None)?;
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -783,6 +854,7 @@ fn render_audio(
     source: &AudioSource,
     keys: &[Press],
     start: Start,
+    cfg: Option<&Path>,
     seconds: Option<u64>,
     out: &Path,
 ) -> Result<(), String> {
@@ -810,7 +882,7 @@ fn render_audio(
                     intro_ticks.sum::<u64>() + STARTUP_AFTER_INTRO_TICKS
                 }
             };
-            let mut game = started(&located, start)?;
+            let mut game = started(&located, start, cfg)?;
             let mut audio = Vec::new();
             for done in 0..ticks {
                 press_due(&mut game, keys, done);
@@ -1034,6 +1106,7 @@ mod tests {
                 seed: 0,
                 saves: vec![],
                 clock: None,
+                still: false,
                 out: PathBuf::from("a.png")
             })
         );
@@ -1052,9 +1125,77 @@ mod tests {
                 seed: 0,
                 saves: vec![],
                 clock: None,
+                still: false,
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })
+        );
+    }
+
+    /// The race's sound is recorded from runs of the original with `--no-ai`; our render of
+    /// such a run must keep the opponents still too, or their crashes and horns would not be
+    /// the recording's.
+    #[test]
+    fn render_audio_keeps_the_opponents_still_with_no_ai() {
+        assert_eq!(
+            parse(&args(&[
+                "render-audio",
+                "--startup",
+                "--no-ai",
+                "--out",
+                "a.wav"
+            ])),
+            Ok(Command::RenderAudio {
+                data: None,
+                source: AudioSource::Startup,
+                keys: vec![],
+                seed: 0,
+                saves: vec![],
+                still: true,
+                cfg: None,
+                seconds: None,
+                out: PathBuf::from("a.wav")
+            })
+        );
+    }
+
+    /// The original's effects are recorded under a `dr.cfg` with the music off
+    /// (`reference-run.sh --cfg`), so that short sounds can be heard on their own; our render
+    /// of such a run must start from the same `dr.cfg`.
+    #[test]
+    fn render_audio_starts_from_the_dr_cfg_given() {
+        assert_eq!(
+            parse(&args(&[
+                "render-audio",
+                "--startup",
+                "--cfg",
+                "quiet.cfg",
+                "--out",
+                "a.wav"
+            ])),
+            Ok(Command::RenderAudio {
+                data: None,
+                source: AudioSource::Startup,
+                keys: vec![],
+                seed: 0,
+                saves: vec![],
+                still: false,
+                cfg: Some(PathBuf::from("quiet.cfg")),
+                seconds: None,
+                out: PathBuf::from("a.wav")
+            })
+        );
+        assert!(
+            parse(&args(&[
+                "render-audio",
+                "--music",
+                "X",
+                "--cfg",
+                "a",
+                "--out",
+                "a.wav"
+            ]))
+            .is_err()
         );
     }
 

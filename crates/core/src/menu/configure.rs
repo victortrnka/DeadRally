@@ -126,9 +126,9 @@ impl Menu {
             }
             (Submenu::Start, 0) => self.start_or_enter(),
             (Submenu::Start, 1) => self.ask_end_game(),
+            (Submenu::Start, 2) => self.open_statistics(),
             (Submenu::Start, 3) => self.open_slots(Submenu::Load),
             (Submenu::Start, 4) => self.open_slots(Submenu::Save),
-            // The statistics come with M3c.
             (Submenu::Start, _) => self.submenu_pass(Submenu::Start),
             (Submenu::Load, slot) => self.load_slot(slot),
             (Submenu::Save, slot) => self.ask_save_name(slot),

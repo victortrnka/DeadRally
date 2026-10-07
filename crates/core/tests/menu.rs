@@ -888,8 +888,17 @@ fn through_a_new_game(game: &mut Game) {
     run(game, 4);
     step(game, Key::Escape);
     step(game, Key::Space);
-    // The fade to black, then the shop wiped in.
+    // The fade to black and the results fading in; Escape adds the races' points without
+    // their pages, then the statistics; a key, the results fading out and the shop in.
     run(game, 120);
+    step(game, Key::Escape);
+    run(game, 4);
+    step(game, Key::Space);
+    // The shop fades in with the welcome to it, deaf for its first eleven passes; Escape
+    // there closes it, then leaves the shop.
+    run(game, 120);
+    step(game, Key::Escape);
+    run(game, 30);
     step(game, Key::Escape);
     run(game, 60);
 }
@@ -1060,6 +1069,36 @@ fn saved_game_with_money(money: i32) -> Vec<u8> {
     let price = 19 * 108 + 60;
     game.drivers[price..price + 4].copy_from_slice(&500i32.to_le_bytes());
     game.encode(3)
+}
+
+#[test]
+fn a_saved_game_whose_player_is_not_driver_19_loads_and_saves_as_it_was() {
+    // After a race the standings move the player's record (0x463CE8 follows it), so a later
+    // save holds them anywhere in the table; such a game must load, and save back with the
+    // player where they were, not driver 19's record mistaken for theirs.
+    let mut file = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(5_000));
+    file.drivers.copy_within(19 * 108..20 * 108, 5 * 108);
+    file.drivers[19 * 108..20 * 108].fill(0);
+    file.drivers[19 * 108] = b'o';
+    file.driver_id = 5;
+    let mut game = in_shop(file.encode(3));
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (_, saved) = game.take_saved_game().expect("a game was saved");
+    let saved = deadrally_gamedata::save_game::SaveGame::decode(&saved);
+    assert_eq!(saved.driver_id, 5);
+    assert_eq!(saved.drivers[5 * 108], b'p', "the player's own record");
+    assert_eq!(
+        field(&saved.drivers[5 * 108..6 * 108], 48),
+        5_000,
+        "with their money"
+    );
 }
 
 /// The player's record in the game saved into slot 1 after `keys` in the shop of
@@ -1393,6 +1432,19 @@ fn a_quick_save_happens_once_however_long_f2_is_held() {
 }
 
 #[test]
+fn a_loan_due_leaves_the_way_on_without_its_border() {
+    // 0x42914B: the shop draws the continue item's border only when no popup of its own is
+    // due (the welcome, a sponsor's, a deal's or a loan due): the border would show around
+    // the way on beside the popup the original shows without one.
+    let border_line = |loan_races: i32| {
+        let game = in_shop(saved_game_with(5000, &[(52, 0), (56, loan_races)]));
+        pixel(&game, (450, 245))
+    };
+    assert_eq!(border_line(3), 0x16, "the border with the loan not yet due");
+    assert_ne!(border_line(4), 0x16, "no border with the loan due");
+}
+
+#[test]
 fn a_hand_made_loan_or_car_worth_does_not_stop_the_game() {
     // A save may hold any loan count or car worth; the debt and the car's worth wrap as the
     // original's ints do instead of stopping the game.
@@ -1413,6 +1465,39 @@ fn a_hand_made_loan_or_car_worth_does_not_stop_the_game() {
         saved_game_with(10_000, &[(60, i32::MAX - 10)]),
         &[&left[..], &[Key::Enter]].concat(),
     );
+}
+
+#[test]
+fn the_shops_cheat_words_give_money_and_points() {
+    // 0x4396B0: DRAW gives $1000, DROOL makes it $500000, DROP takes 10 points; the letters
+    // must come in order with nothing between, and do nothing else in the shop.
+    use Key::{A, D, E, I, L, O, P, R, V, W};
+    let money = |keys: &[Key]| field(&player_after_shopping(5_000, keys), 48);
+    assert_eq!(money(&[D, R, A, W]), 6_000);
+    assert_eq!(money(&[D, R, A, W, D, R, A, W]), 7_000);
+    assert_eq!(money(&[D, R, O, O, L]), 500_000);
+    assert_eq!(money(&[D, R, E, A, W]), 5_000, "a wrong letter between");
+    let points = field(&player_after_shopping(5_000, &[D, R, O, P]), 68);
+    assert_eq!(points, -10, "the last driver stays last with 10 fewer");
+    // DRIVE: 10 more points move the player up the sorted standings, so the game saves its
+    // player at another place in the drivers' table.
+    let mut game = in_shop(saved_game_with_money(5_000));
+    for key in [D, R, I, V, E] {
+        step(&mut game, key);
+    }
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Q);
+    step(&mut game, Key::Enter);
+    let (_, file) = game.take_saved_game().expect("a game was saved");
+    let saved = deadrally_gamedata::save_game::SaveGame::decode(&file);
+    let at = usize::from(saved.driver_id) * 108;
+    assert_ne!(saved.driver_id, 19);
+    assert_eq!(field(&saved.drivers[at..at + 108], 68), 10);
 }
 
 /// [`player_after_shopping`] from `file`.

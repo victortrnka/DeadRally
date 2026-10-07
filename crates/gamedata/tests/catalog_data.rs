@@ -411,5 +411,8 @@ fn every_track_loads_with_its_scene_and_shadows() {
             track.shadows.triangles.len()
         );
         assert!(!track.scene.objects.is_empty(), "TR{number} has no scene");
+        // The opponents drive by two tables of 256 floats and one of 256 ints a zone.
+        let len = |suffix: &str| archive.read(&format!("TR{number}-{suffix}")).unwrap().len();
+        assert_eq!((len("DRV.DAT"), len("OHI.DAT")), (2048, 1024), "TR{number}");
     }
 }

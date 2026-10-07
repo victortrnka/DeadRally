@@ -2,6 +2,7 @@
 //! a buffer of rows 512 bytes apart ([`buffer`]), which the window shows doubled from row 40;
 //! the track's view is 256 wide right of the HUD's 64.
 
+mod ai;
 mod buffer;
 mod cars;
 mod collisions;
@@ -20,6 +21,7 @@ mod power_ups;
 mod raster;
 mod scene;
 mod semaphore;
+mod waver;
 
 use deadrally_gamedata::image::Palette;
 use deadrally_gamedata::race::{RaceArchives, RaceError, Track};
@@ -42,14 +44,11 @@ pub(crate) const VIEW_WIDTH: usize = 320;
 pub(crate) const VIEW_HEIGHT: usize = 200;
 pub(crate) const WINDOW_TOP: usize = 40;
 /// The HUD's width once slid in (`leftMenuInRaceWidth` 0x456AA0), and the track's view right
-/// of it (`raceEffectiveWidth` 256 and its half 128 from `initRaceValues` 0x409AB9,
-/// `raceEffectiveHeight` 200 and its half 100).
+/// of it (`raceEffectiveWidth` 256 from `initRaceValues` 0x409AB9, `raceEffectiveHeight` 200
+/// and its half 100). The status bar sliding away (TAB) widens the view to 320.
 const HUD_WIDTH: i64 = 64;
 const TRACK_VIEW_WIDTH: i32 = 256;
-const HALF_WIDTH: i32 = 128;
 const HALF_HEIGHT: i32 = 100;
-/// Each row copies 4 bytes past the view (`(width >> 2) + 1` dwords).
-const ROW_COPY: usize = TRACK_VIEW_WIDTH as usize + 4;
 
 /// A driver in the race as the preview hands them over, in their place on the grid.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -123,12 +122,12 @@ fn car_ramp(palette: &mut Palette, first: usize, [r, g, b]: [u8; 3]) {
     }
 }
 
-/// Whether `drawShadows` draws a shadow with these corners in the view: one corner across
-/// the view and one (maybe another) down it; a shadow whose corners all lie outside is left
-/// out even where it would cover the view.
-fn shadow_in_view(points: [(i32, i32); 3]) -> bool {
+/// Whether `drawShadows` draws a shadow with these corners in a view `half_width` across from
+/// its middle: one corner across the view and one (maybe another) down it; a shadow whose
+/// corners all lie outside is left out even where it would cover the view.
+fn shadow_in_view(points: [(i32, i32); 3], half_width: i32) -> bool {
     let near = |value: i32, half: i32| (value - half).abs() < half;
-    points.iter().any(|&(x, _)| near(x, HALF_WIDTH))
+    points.iter().any(|&(x, _)| near(x, half_width))
         && points.iter().any(|&(_, y)| near(y, HALF_HEIGHT))
 }
 
@@ -170,12 +169,18 @@ pub(crate) struct Race {
     /// (0x4AA508): the race ends past 300.
     race_over_lines: Vec<Vec<u8>>,
     over_ticks: i32,
+    /// The box's lines when P pauses the game.
+    paused_lines: Vec<Vec<u8>>,
+    /// The music's and the effects' volumes in `dr.cfg`, which F2 and F3 turn back on.
+    volumes: (u32, u32),
     /// The help's pages and texts, the gamepad's inputs for the controls (`dr.cfg`), and
     /// whether the pause asked for the help (F1 left held, 0x4069BA).
     help_pages: help::Pages,
     help_texts: HelpTexts,
     pads: [u32; 7],
     help_asked: bool,
+    /// The opponents kept still.
+    still: bool,
     /// The scancodes of the eight controls in `dr.cfg`.
     controls: [u32; 8],
     /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
@@ -186,8 +191,10 @@ pub(crate) struct Race {
     rocket_ticks: i32,
     /// The view's lead ahead of the player's car.
     lead: Lead,
-    /// The view's corner on the track for the frame being drawn (0x456ABC, 0x456AC0).
+    /// The view's corner on the track for the frame being drawn (0x456ABC, 0x456AC0), and its
+    /// width (0x445010), 256 right of the HUD and up to 320 with the status bar slid away.
     view: (usize, usize),
+    view_width: i32,
     /// The smoke puffs' pictures (`SMOKE.BPK`).
     smoke: Vec<u8>,
     power_ups: power_ups::PowerUps,
@@ -200,8 +207,12 @@ pub(crate) struct Race {
     /// The laps' clocks, times and calls, and the wrecks in the order they were wrecked.
     laps_state: laps::Laps,
     wrecks: Vec<usize>,
-    /// The car of the driver whose armour counts 2.2 times, who has a call when winning.
+    /// The car of the driver whose armour counts 2.2 times, who has a call when winning;
+    /// whether it is the player's, who has a call when wrecked.
     tough: Option<usize>,
+    player_tough: bool,
+    /// The HUD's calls on the player's damage made this race.
+    damage_calls: hud::DamageCalls,
     /// What a money power-up is worth (0x4A7AB0), and whether the player took the bonus
     /// power-up (0x4A7AAC).
     pickup_money: i32,
@@ -221,9 +232,72 @@ pub(crate) struct Race {
     fire: Vec<u8>,
     /// The HUD's medals of the places.
     medals: hud::Medals,
-    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`) and the one shown (0x456AFC).
+    /// The rocket's flames (`ROCKET1.BPK`, `ROCKET2.BPK`); the one shown is the session's.
     rocket_flames: [Vec<u8>; 2],
+    /// The effect power-up's waves.
+    waves: waver::Waves,
+    /// What the original keeps from race to race.
+    session: Session,
+}
+
+/// What the original keeps in its globals from race to race, never set back: the switches
+/// the race's keys turn (TAB the status bar 0x445028 and its press 0x46F200, F2 the music
+/// 0x445020, F3 the effects 0x445024, F4 the scene's pictures 0x44502C, F5 the shadows
+/// 0x445030), all on at the game's start; the effect power-up's waves' phase (0x456AF4); and
+/// the rocket flames' picture (0x456AFC), which only a flame's turn writes (0x40F651).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Session {
+    status_bar: bool,
+    tab_held: bool,
+    music: bool,
+    effects: bool,
+    pictures: bool,
+    shadows: bool,
+    waves: i32,
     flame_phase: usize,
+}
+
+impl Session {
+    /// The race's switch keys in a pass (0x416D13). The music's and the effects' switches
+    /// that F2 and F3 turned.
+    fn keys(&mut self, keys: &mut Keys, wrecked: bool) -> [Option<bool>; 2] {
+        let tab = keys.held(TAB);
+        if tab && !self.tab_held {
+            self.status_bar = !self.status_bar;
+        }
+        self.tab_held = tab;
+        if wrecked {
+            self.status_bar = true;
+        }
+        let mut turn = |switch: &mut bool, code: u8| {
+            let held = keys.held(code);
+            if held {
+                *switch = !*switch;
+                keys.release(code);
+            }
+            held.then_some(*switch)
+        };
+        let music = turn(&mut self.music, MUSIC_KEY);
+        let effects = turn(&mut self.effects, EFFECTS_KEY);
+        turn(&mut self.pictures, PICTURES_KEY);
+        turn(&mut self.shadows, SHADOWS_KEY);
+        [music, effects]
+    }
+}
+
+impl Default for Session {
+    fn default() -> Session {
+        Session {
+            status_bar: true,
+            tab_held: false,
+            music: true,
+            effects: true,
+            pictures: true,
+            shadows: true,
+            waves: 0,
+            flame_phase: 0,
+        }
+    }
 }
 
 /// How a race is set up: the circuit (0 to 17, past 8 the track turned round) and its laps,
@@ -239,11 +313,16 @@ pub(crate) struct Setup {
     pub(crate) weapons: bool,
     pub(crate) pause_lines: Vec<Vec<u8>>,
     pub(crate) race_over_lines: Vec<Vec<u8>>,
+    pub(crate) paused_lines: Vec<Vec<u8>>,
     pub(crate) help: HelpTexts,
     pub(crate) controls: [u32; 8],
     pub(crate) pads: [u32; 7],
+    /// The opponents kept still (the reference runner's `--no-ai`).
+    pub(crate) still: bool,
     pub(crate) pickup_money: i32,
     pub(crate) lap_record: [i32; 3],
+    /// What the last race left in the original's globals.
+    pub(crate) session: Session,
 }
 
 /// `recalculateCircuitImageOffset`'s lead (0x40D560): the view runs ahead of a moving car,
@@ -332,17 +411,30 @@ enum Stage {
     Loop {
         first: bool,
     },
-    Intro(Box<intro::Intro>),
+    /// The intro; whether the race was abandoned before it, and ends once it is over.
+    Intro {
+        intro: Box<intro::Intro>,
+        ending: bool,
+    },
     /// The pause; whether it came before the intro, or is the box at the race's end.
     Pause {
         pause: Box<pause::Pause>,
         first: bool,
         ending: bool,
     },
-    /// The help (F1), and the music's order it interrupted.
+    /// The help (F1), the music's order it interrupted, and whether it came in the loop's
+    /// first pass, before the intro.
     Help {
         help: Box<help::Help>,
         order: usize,
+        first: bool,
+    },
+    /// The game paused (P): the box, the music's order it interrupted, and whether it came in
+    /// the loop's first pass.
+    Paused {
+        pause: Box<pause::Pause>,
+        order: usize,
+        first: bool,
     },
     /// The race ended, abandoned or over: the loop's last frame shown, the view tilting away
     /// from the next tick.
@@ -364,14 +456,37 @@ pub(crate) enum Outcome {
     Over,
 }
 
+/// What follows the pause once its box has flown apart (from 0x4176F8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterPause {
+    /// The race goes on.
+    Race,
+    /// The race goes on, from the intro the pause came before.
+    Intro,
+    /// The race is abandoned: its last frame, then the view tilting away.
+    End,
+    /// The race is abandoned, but the intro the pause came before still runs first.
+    IntroThenEnd,
+}
+
+/// The pause's `answer`, the pause having come before the intro when `first`: abandoning the
+/// race (0x41770D) goes on to 0x417862 like the other answers, where the loop's first pass
+/// runs the intro, and only then leaves the loop.
+fn after_pause(answer: pause::Answer, first: bool) -> AfterPause {
+    match (answer, first) {
+        (pause::Answer::Abort, true) => AfterPause::IntroThenEnd,
+        (pause::Answer::Abort, false) => AfterPause::End,
+        (_, true) => AfterPause::Intro,
+        (_, false) => AfterPause::Race,
+    }
+}
+
 /// Escape's scancode, which pauses the race.
 const ESCAPE: u8 = 0x01;
-/// The channels the pause silences first (1 to 13), and the one its own sounds play on.
-const CHANNELS: usize = 13;
-/// The race's end: past these ticks of its counter, the channels its box silences (1 to 14),
-/// and its call.
+/// The channels the pauses, the help and the race's end silence (1 to 14).
+const CHANNELS: usize = 14;
+/// The race's end: past these ticks of its counter, and its call.
 const OVER_TICKS: i32 = 300;
-const END_CHANNELS: usize = 14;
 const END_CALL: u8 = 5;
 /// F1's scancode, the music's orders the help plays by the track (`TR0` to `TR9`, 0x416B6E),
 /// and the sound's masks during the help and after.
@@ -379,6 +494,17 @@ const HELP_KEY: u8 = 0x3B;
 const HELP_ORDERS: [usize; 10] = [0x1E, 0x37, 0x2D, 0x32, 0x2D, 0x37, 0x32, 0x32, 0x32, 0x32];
 const HELP_MASK: u32 = 0x8000 >> 8;
 const FULL_MASK: u32 = 0x1_0000 >> 8;
+/// The race's other keys (0x416D13): TAB the status bar, F2 the music, F3 the effects, F4 the
+/// scene's pictures, F5 the shadows, P the game paused.
+const TAB: u8 = 0x0F;
+const MUSIC_KEY: u8 = 0x3C;
+const EFFECTS_KEY: u8 = 0x3D;
+const PICTURES_KEY: u8 = 0x3E;
+const SHADOWS_KEY: u8 = 0x3F;
+const PAUSE_KEY: u8 = 0x19;
+/// The status bar slides away 2 pixels a tick and back 4 (0x417497).
+const SLIDE_OUT: i32 = 2;
+const SLIDE_IN: i32 = 4;
 const PAUSE_CHANNEL: usize = 5;
 const PAUSE_PITCH: u32 = 0x2_8000;
 
@@ -399,11 +525,14 @@ impl Race {
             weapons,
             pause_lines,
             race_over_lines,
+            paused_lines,
             help,
             controls,
             pads,
+            still,
             pickup_money,
             lap_record,
+            session,
         } = setup;
         let number = circuit % 9 + 1;
         // The second half's circuits run their tracks the other way round (0x432532).
@@ -478,12 +607,14 @@ impl Race {
                 hud::decoded(&archives.engine, "SPLAT4.BPK")?,
             ],
         );
-        let tough = drivers.iter().position(|driver| {
+        let is_tough = |driver: &Driver| {
             let tough = &archives.handling.tough;
             let mut name = driver.name.clone();
             name.push(0);
             name.get(..tough.len()) == Some(tough.as_slice())
-        });
+        };
+        let tough = drivers.iter().position(is_tough);
+        let player_tough = is_tough(&drivers[player]);
         let mut palette = track.palette.clone();
         for (driver, &first) in drivers.iter().zip(&RAMPS) {
             car_ramp(&mut palette, first, driver.colour);
@@ -524,12 +655,15 @@ impl Race {
             pause_lines,
             race_over_lines,
             over_ticks: 0,
+            paused_lines,
+            volumes: (0, 0),
             help_pages: help::Pages {
                 keys: page(&archives.engine, "KEYCOM3")?,
                 info: page(&archives.engine, "INFO2")?,
             },
             help_texts: help,
             pads,
+            still,
             help_asked: false,
             controls,
             samples: [0; 16],
@@ -537,6 +671,7 @@ impl Race {
             rocket_ticks: 0,
             lead: Lead::default(),
             view: (0, 0),
+            view_width: TRACK_VIEW_WIDTH,
             smoke: hud::decoded(&archives.engine, "SMOKE.BPK")?,
             power_ups,
             squeal: 0,
@@ -566,9 +701,12 @@ impl Race {
                 hud::decoded(&archives.engine, "ROCKET1.BPK")?,
                 hud::decoded(&archives.engine, "ROCKET2.BPK")?,
             ],
-            flame_phase: 0,
             wrecks: Vec::new(),
             tough,
+            player_tough,
+            damage_calls: hud::DamageCalls::default(),
+            waves: waver::Waves::default(),
+            session,
         };
         let places: Vec<i32> = race
             .board_order()
@@ -581,11 +719,12 @@ impl Race {
 
     /// The race's sound set up (0x416215: the menu's stopped, the track's music started at
     /// the configured volumes but silent until the intro raises it, the player's engine), then
-    /// the race loop's first frame, up to its wait.
+    /// the race loop's first pass, its keys checked as every pass's are, up to its wait.
     pub(crate) fn begin(
         &mut self,
         sound: &mut Sound,
         (music_volume, effects_volume): (u32, u32),
+        keys: &mut Keys,
         rand: &mut Rand,
     ) {
         sound.stop();
@@ -593,10 +732,18 @@ impl Race {
         sound.set_mask(0);
         sound.play_music(&self.music, 0, music_volume);
         sound.set_effects_volume(effects_volume);
+        // 0x4162D1: the music or the effects the player turned off stay off.
+        self.volumes = (music_volume, effects_volume);
+        if !self.session.music {
+            sound.set_music_volume(0);
+        }
+        if !self.session.effects {
+            sound.set_effects_volume(0);
+        }
         let car = self.drivers[self.player].car as u8;
         sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
         self.frame(sound, rand);
-        self.draw(sound);
+        self.keys_and_draw(sound, keys, rand);
     }
 
     /// A pass of the race loop up to its wait (0x416390): the player's keys of the ticks
@@ -690,6 +837,24 @@ impl Race {
     /// The cars' step of a tick once the race is on (0x4164B6): the opponents' driving comes
     /// with M5, so they hold no keys.
     fn drive(&mut self, tick: usize, sound: &mut Sound, rand: &mut Rand) {
+        // 0x4164C1: the opponents decide their keys.
+        if !self.still {
+            let mines = self.mines.places();
+            let guide = ai::Guide {
+                guide: &self.track.guide.pixels,
+                zones: &self.track.zones.pixels,
+                width: self.track.zones.width as i32,
+                speed: &self.track.zone_speed,
+                steering: &self.track.zone_steering,
+                offset: &self.track.zone_offset,
+                track: (self.track.info.width as i32, self.track.info.height as i32),
+                mines: &mines,
+                sprites: &self.sprites,
+            };
+            for slot in (0..self.cars.len()).filter(|&slot| slot != self.player) {
+                ai::steer(&mut self.cars, slot, tick, &guide, rand);
+            }
+        }
         for car in &mut self.cars {
             car.wall = 0;
         }
@@ -916,29 +1081,34 @@ impl Race {
     /// From this wait to the next: the frame drawn onto the screen and, on the first, the
     /// intro; or the intro's next step, and once it is over the loop's next frame.
     pub(crate) fn tick(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) -> Outcome {
-        self.samples[self.sampled] = sample(keys, &self.controls);
+        self.samples[self.sampled] = sample(keys, &self.controls, &self.pads);
         self.sampled = (self.sampled + 1) % 16;
         self.clock.tick();
         match &mut self.stage {
             Stage::Loop { first } => {
                 let first = *first;
-                self.show_buffer();
+                self.show_frame();
                 // 0x417517: Escape pauses the race.
                 if keys.held(ESCAPE) {
                     self.pause(sound, keys, rand, first);
                     return Outcome::Racing;
                 }
                 if first {
-                    self.start_intro(sound);
+                    self.start_intro(sound, false);
                     return Outcome::Racing;
                 }
             }
-            Stage::Intro(intro) => {
+            Stage::Intro { intro, ending } => {
                 let going = intro.wait();
                 sound.set_mask(intro.volume() >> 8);
                 self.screen.copy_from_slice(intro.screen());
                 self.shown = intro.palette().clone();
                 if going {
+                    return Outcome::Racing;
+                }
+                if *ending {
+                    // 0x41795D: the race abandoned before the intro leaves the loop after it.
+                    self.start_outro(sound, Outcome::Aborted);
                     return Outcome::Racing;
                 }
                 self.clock.restart();
@@ -963,30 +1133,41 @@ impl Race {
                 };
                 if ending {
                     // 0x417387: the loop's last frame, then the end.
-                    self.show_buffer();
+                    self.show_frame();
                     self.stage = Stage::Ended(Outcome::Over);
                     return Outcome::Racing;
                 }
                 self.clock.restart();
-                if answer == pause::Answer::Abort {
+                let after = after_pause(answer, first);
+                if matches!(after, AfterPause::End | AfterPause::IntroThenEnd) {
                     // 0x4176F8: the player drops behind the cars racing, and the race ends.
                     laps::abandon(&mut self.cars, self.player);
-                    self.show_buffer();
-                    self.stage = Stage::Ended(Outcome::Aborted);
-                    return Outcome::Racing;
+                }
+                match after {
+                    AfterPause::End => {
+                        self.show_buffer();
+                        self.stage = Stage::Ended(Outcome::Aborted);
+                        return Outcome::Racing;
+                    }
+                    AfterPause::IntroThenEnd => {
+                        // The intro runs on the same frame, then the race ends.
+                        self.start_intro(sound, true);
+                        return Outcome::Racing;
+                    }
+                    AfterPause::Intro | AfterPause::Race => {}
                 }
                 // 0x41771D: the engine again; F1 left held for the race's pass, which opens the
                 // help.
                 self.help_asked = answer == pause::Answer::Help;
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                if first {
+                if after == AfterPause::Intro {
                     // The pause came before the intro, which now runs on the same frame.
-                    self.start_intro(sound);
+                    self.start_intro(sound, false);
                     return Outcome::Racing;
                 }
             }
-            Stage::Help { help, order } => {
+            Stage::Help { help, order, first } => {
                 let waiting = help.waiting();
                 let pressed = waiting && (0..=255).any(|code| keys.held(code));
                 let going = help.wait(pressed);
@@ -1000,13 +1181,43 @@ impl Race {
                 }
                 // 0x416CC2: the music back where it was, at full volume, and the engine; then
                 // the pass the help came in is drawn.
-                let order = *order;
+                let (order, first) = (*order, *first);
                 keys.release_all();
                 sound.set_music_order(order);
                 sound.set_mask(FULL_MASK);
                 let car = self.drivers[self.player].car as u8;
                 sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
-                self.stage = Stage::Loop { first: false };
+                self.stage = Stage::Loop { first };
+                self.keys_then_draw(sound, keys, rand);
+                return Outcome::Racing;
+            }
+            Stage::Paused {
+                pause,
+                order,
+                first,
+            } => {
+                let (order, first) = (*order, *first);
+                let mut asked = Vec::new();
+                let step = pause.wait(|code| keys.held(code), rand, &mut asked);
+                self.screen.copy_from_slice(pause.screen());
+                Self::pause_sounds(sound, &asked);
+                let answer = match step {
+                    pause::Step::Waiting => return Outcome::Racing,
+                    pause::Step::Leaving => {
+                        keys.release_all();
+                        return Outcome::Racing;
+                    }
+                    pause::Step::Over(answer) => answer,
+                };
+                // 0x417063: Y does not abort here; the music back where it was at full volume,
+                // the engine again, F1 left held for the next pass; then the pass is drawn.
+                self.clock.restart();
+                self.help_asked = answer == pause::Answer::Help;
+                sound.set_music_order(order);
+                sound.set_mask(FULL_MASK);
+                let car = self.drivers[self.player].car as u8;
+                sound.trigger_at(ENGINE_CHANNEL, ENGINE_SOUND + car, FULL, ENGINE_PITCH);
+                self.stage = Stage::Loop { first };
                 self.draw_pass(sound, keys, rand);
                 return Outcome::Racing;
             }
@@ -1017,7 +1228,9 @@ impl Race {
             }
             Stage::Outro { outro, outcome } => {
                 let going = outro.wait();
-                sound.set_mask(outro.volume() >> 8);
+                if let Some(volume) = outro.volume() {
+                    sound.set_mask(volume >> 8);
+                }
                 self.screen.copy_from_slice(outro.screen());
                 self.shown = outro.palette().clone();
                 if going {
@@ -1031,14 +1244,45 @@ impl Race {
         }
         self.stage = Stage::Loop { first: false };
         self.frame(sound, rand);
-        // 0x416B21: F1 opens the help before the pass is drawn.
+        self.keys_and_draw(sound, keys, rand);
+        Outcome::Racing
+    }
+
+    /// A pass after its logic (0x416B21): F1 opens the help before the pass is drawn, else
+    /// the race's other keys, then the drawing.
+    fn keys_and_draw(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
         if keys.held(HELP_KEY) || self.help_asked {
             self.help_asked = false;
             self.start_help(sound);
-            return Outcome::Racing;
+            return;
+        }
+        self.keys_then_draw(sound, keys, rand);
+    }
+
+    /// Whether the pass under way is the loop's first, before the intro.
+    fn first_pass(&self) -> bool {
+        matches!(self.stage, Stage::Loop { first: true })
+    }
+
+    /// The race's other keys before the pass is drawn (0x416D13): TAB turns the status bar
+    /// away or back once a press, and a wrecked player always has it; F2 and F3 turn the music
+    /// and the effects off or back to `dr.cfg`'s volumes, F4 and F5 the scene's pictures and
+    /// the shadows, each once and the key let go; P pauses the game, and the pass is drawn
+    /// after it.
+    fn keys_then_draw(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
+        let wrecked = self.cars[self.player].handling.damage <= 0;
+        let [music, effects] = self.session.keys(keys, wrecked);
+        if let Some(on) = music {
+            sound.set_music_volume(if on { self.volumes.0 } else { 0 });
+        }
+        if let Some(on) = effects {
+            sound.set_effects_volume(if on { self.volumes.1 } else { 0 });
+        }
+        if keys.held(PAUSE_KEY) {
+            self.game_paused(sound, keys, rand);
+            return;
         }
         self.draw_pass(sound, keys, rand);
-        Outcome::Racing
     }
 
     /// The pass drawn, then the race over (0x417283) its box.
@@ -1052,7 +1296,7 @@ impl Race {
     /// The help (0x416B30): every channel but the last two silenced, the track's music on to
     /// a calmer order at half volume, up to the help's first wait.
     fn start_help(&mut self, sound: &mut Sound) {
-        for channel in 1..=END_CHANNELS {
+        for channel in 1..=CHANNELS {
             sound.stop_channel(channel);
         }
         let order = sound.music_order();
@@ -1070,16 +1314,24 @@ impl Race {
         self.stage = Stage::Help {
             help: Box::new(help),
             order,
+            first: self.first_pass(),
         };
     }
 
     /// The view tilting away (`sub_4055A0`, 0x417963) from the loop's last frame in the
     /// buffer and the race's palette (0x4A9BA0, the intro's too), over the screen as shown, up
-    /// to its first wait.
+    /// to its first wait; or, the status bar not all in (TAB), the frame spinning away.
     fn start_outro(&mut self, sound: &mut Sound, outcome: Outcome) {
-        let (view, hud) = self.view_and_hud();
-        let outro = outro::Outro::new(&self.palette, &self.screen, &view, &hud);
-        sound.set_mask(outro.volume() >> 8);
+        let frame: Vec<u8> = (0..VIEW_HEIGHT)
+            .flat_map(|y| (0..VIEW_WIDTH).map(move |x| (x, y)))
+            .map(|(x, y)| self.buffer.pixel(x, y))
+            .collect();
+        let shown = (self.screen.as_slice(), &self.shown);
+        let left = i64::from(self.left());
+        let outro = outro::Outro::new(&self.palette, shown, &frame, left);
+        if let Some(volume) = outro.volume() {
+            sound.set_mask(volume >> 8);
+        }
         self.screen.copy_from_slice(outro.screen());
         self.shown = outro.palette().clone();
         self.stage = Stage::Outro {
@@ -1091,12 +1343,17 @@ impl Race {
     /// The race over (0x4172A7): every channel but the last two silenced, the end's call, and
     /// the box saying so, up to its first wait.
     fn end_box(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
-        for channel in 1..=END_CHANNELS {
+        for channel in 1..=CHANNELS {
             sound.stop_channel(channel);
         }
         sound.trigger_at(CALL_CHANNEL, END_CALL, FULL, CALL_PITCH);
         let lines = self.race_over_lines.clone();
-        let asked = self.open_box(&lines, keys, rand, false, true);
+        let (pause, asked) = self.open_box(&lines, keys, rand);
+        self.stage = Stage::Pause {
+            pause,
+            first: false,
+            ending: true,
+        };
         Self::pause_sounds(sound, &asked);
     }
 
@@ -1112,13 +1369,17 @@ impl Race {
         (view, hud)
     }
 
-    /// The intro (0x41787C), over the loop's first frame, up to its first wait.
-    fn start_intro(&mut self, sound: &mut Sound) {
+    /// The intro (0x41787C), over the loop's first frame, up to its first wait; `ending` when
+    /// the race was abandoned before it.
+    fn start_intro(&mut self, sound: &mut Sound, ending: bool) {
         let (view, hud) = self.view_and_hud();
         let intro = intro::Intro::new(&self.palette, self.player, &view, &hud);
         sound.set_mask(intro.volume() >> 8);
         self.show_intro(&intro);
-        self.stage = Stage::Intro(Box::new(intro));
+        self.stage = Stage::Intro {
+            intro: Box::new(intro),
+            ending,
+        };
     }
 
     /// The pause (0x417544): every channel silenced, the box with its lines, up to its first
@@ -1128,20 +1389,45 @@ impl Race {
             sound.stop_channel(channel);
         }
         let lines = self.pause_lines.clone();
-        let asked = self.open_box(&lines, keys, rand, first, false);
+        let (pause, asked) = self.open_box(&lines, keys, rand);
+        self.stage = Stage::Pause {
+            pause,
+            first,
+            ending: false,
+        };
         Self::pause_sounds(sound, &asked);
     }
 
-    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the screen as shown; the
-    /// sounds it asks for at its start.
+    /// The game paused (P, 0x416E24): every channel silenced, the track's music on to the
+    /// help's calmer order at half volume, and the box saying so, up to its first wait.
+    fn game_paused(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
+        for channel in 1..=CHANNELS {
+            sound.stop_channel(channel);
+        }
+        let order = sound.music_order();
+        if let Some(&calm) = HELP_ORDERS.get(self.number) {
+            sound.set_music_order(calm);
+        }
+        sound.set_mask(HELP_MASK);
+        let lines = self.paused_lines.clone();
+        let first = self.first_pass();
+        let (pause, asked) = self.open_box(&lines, keys, rand);
+        self.stage = Stage::Paused {
+            pause,
+            order,
+            first,
+        };
+        Self::pause_sounds(sound, &asked);
+    }
+
+    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the screen as shown; and
+    /// the sounds it asks for at its start.
     fn open_box(
         &mut self,
         lines: &[Vec<u8>],
         keys: &mut Keys,
         rand: &mut Rand,
-        first: bool,
-        ending: bool,
-    ) -> Vec<pause::Sound> {
+    ) -> (Box<pause::Pause>, Vec<pause::Sound>) {
         let mut picture = self.pause_box.clone();
         picture.resize(204 * 76, 0);
         for (line, text) in lines.iter().enumerate() {
@@ -1161,14 +1447,9 @@ impl Race {
             }
         }
         keys.release_all();
-        let (pause, asked) = pause::Pause::new(&self.screen, picture, rand);
+        let (pause, asked) = pause::Pause::new(&self.screen, picture, self.left(), rand);
         self.screen.copy_from_slice(pause.screen());
-        self.stage = Stage::Pause {
-            pause: Box::new(pause),
-            first,
-            ending,
-        };
-        asked
+        (Box::new(pause), asked)
     }
 
     fn pause_sounds(sound: &mut Sound, asked: &[pause::Sound]) {
@@ -1182,17 +1463,40 @@ impl Race {
         }
     }
 
+    /// How the race ended (`sub_402240` at its end): each car's place, its damage in percent
+    /// (100 less the bar's 1024ths rounded up) and the money power-ups it picked up; whether
+    /// the player was lapped and took the bonus power-up; the laps, the race's time and the
+    /// best lap.
+    pub(crate) fn outcome(&self) -> crate::books::Outcome {
+        crate::books::Outcome {
+            finishes: self
+                .cars
+                .iter()
+                .map(|car| crate::books::Finish {
+                    place: car.place,
+                    damage: ftol(100.0 - (f64::from(car.handling.damage) * 0.0009765625).ceil()),
+                    money: car.handling.money,
+                })
+                .collect(),
+            lapped: self.laps_state.lapped,
+            bonus: self.bonus,
+            laps: self.laps,
+            race_time: laps::time(self.laps_state.race_clock),
+            best_lap: self.laps_state.best,
+        }
+    }
+
     /// The race's state for comparing with the original's memory (`scripts/reference-watch.py`):
-    /// the frame, then for each car its numbers in the original's layout, floats as their
-    /// bits.
+    /// the frame and the rocket flames' picture (`fp`, 0x456AFC), then for each car its
+    /// numbers in the original's layout, floats as their bits.
     pub(crate) fn trace(&self) -> String {
-        let mut line = format!("{}", self.clock.frame);
+        let mut line = format!("{} fp{}", self.clock.frame, self.session.flame_phase);
         for car in &self.cars {
             let h = &car.handling;
             line += &format!(
                 " | z{} d{} s{} w{} k{},{} t{:08x} a{:08x} v{:08x} x{:08x} y{:08x} sl{:08x} \
                  g{:08x} px{:08x} py{:08x} sp{:08x} l{} p{} f{} dx{:08x} dy{:08x} st{} kn{} \
-                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{}",
+                 e{:08x} dm{} tb{} mc{} hn{} mn{} fi{} at{} bo{} av{} mw{} ho{} ef{}",
                 car.zone,
                 car.direction,
                 car.sprite,
@@ -1223,6 +1527,12 @@ impl Race {
                 i32::from(car.horn),
                 h.mines,
                 car.fire,
+                car.ai.turning,
+                car.ai.back_off,
+                car.ai.avoid,
+                car.ai.mine_wait,
+                i32::from(car.ai.horn),
+                car.effect,
             );
         }
         line
@@ -1231,6 +1541,36 @@ impl Race {
     /// The palette as shown.
     pub(crate) fn shown(&self) -> &Palette {
         &self.shown
+    }
+
+    /// The pass's frame onto the screen after the wait (0x4173AD): wavering while the
+    /// player's effect power-up lasts, else as it is, the player's count then cleared; then
+    /// every car's count run down by the ticks between the last two frames (0x41746C).
+    fn show_frame(&mut self) {
+        if self.cars[self.player].effect > 0 {
+            let left = self.left();
+            waver::show(
+                &mut self.screen,
+                &self.buffer,
+                &self.waves,
+                &mut self.session.waves,
+                left,
+            );
+        } else {
+            self.show_buffer();
+            self.cars[self.player].effect = 0;
+        }
+        for car in &mut self.cars {
+            if car.effect > 0 {
+                car.effect -= self.clock.between;
+            }
+        }
+        self.view_width = slide(self.view_width, self.session.status_bar, self.clock.between);
+    }
+
+    /// What the race leaves in the original's globals for the next.
+    pub(crate) fn session(&self) -> Session {
+        self.session
     }
 
     /// The frame in the buffer copied onto the screen (0x4173E0).
@@ -1267,9 +1607,9 @@ impl Race {
             lead.steps = steps - 1;
         }
         let info = &self.track.info;
-        let max_x = info.width as i32 - TRACK_VIEW_WIDTH;
+        let max_x = info.width as i32 - self.view_width;
         let max_y = info.height as i32 - VIEW_HEIGHT as i32;
-        let x = (ftol(f64::from(car.x)) - HALF_WIDTH + lead.at[0])
+        let x = (ftol(f64::from(car.x)) - (self.view_width >> 1) + lead.at[0])
             .min(max_x)
             .max(0);
         let y = (ftol(f64::from(car.y)) - HALF_HEIGHT + lead.at[1])
@@ -1281,6 +1621,11 @@ impl Race {
     /// The view's corner on the track for this frame.
     fn camera(&self) -> (usize, usize) {
         self.view
+    }
+
+    /// The HUD's width (0x456AA0): the track's view starts this far from the screen's left.
+    fn left(&self) -> i32 {
+        VIEW_WIDTH as i32 - self.view_width
     }
 
     /// The HUD's drivers: the player, then the others in their places.
@@ -1309,21 +1654,23 @@ impl Race {
         order
     }
 
-    /// A frame: the track under the camera copied right of the HUD (0x4170C1), the HUD.
+    /// A frame: the track under the camera copied right of the HUD (0x4170C1), each row's
+    /// `(width >> 2) + 1` dwords; what is on the track; the HUD.
     fn draw(&mut self, sound: &mut Sound) {
         self.move_view();
         let (x, y) = self.camera();
         let width = self.track.info.width as usize;
         let image = &self.track.image.pixels;
+        let left = self.left();
+        let copied = (((self.view_width >> 2) + 1) * 4) as usize;
         for row in 0..VIEW_HEIGHT {
             let from = (y + row) * width + x;
-            let end = (from + ROW_COPY).min(image.len());
-            let at = (row * STRIDE + LEFT) as i64 + HUD_WIDTH;
+            let end = (from + copied).min(image.len());
+            let at = (row * STRIDE + LEFT) as i64 + i64::from(left);
             self.buffer.copy(at, &image[from..end]);
         }
         let car = (self.cars[self.player].x, self.cars[self.player].y);
         let view = (x as i32, y as i32);
-        let left = HUD_WIDTH as i32;
         let now = self.clock.timer;
         self.pedestrians
             .draw(&mut self.buffer, now, car, view, left);
@@ -1339,7 +1686,9 @@ impl Race {
         }
         self.draw_cars();
         self.mines.draw(&mut self.buffer, view, left, now);
-        self.draw_shadows();
+        if self.session.shadows {
+            self.draw_shadows();
+        }
         for car in &mut self.cars {
             guns::draw_flash(&mut self.buffer, car, &self.flashes, view, left);
         }
@@ -1348,38 +1697,32 @@ impl Race {
                 &mut self.buffer,
                 car,
                 &self.rocket_flames,
-                &mut self.flame_phase,
+                &mut self.session.flame_phase,
                 now,
             );
         }
         let (x, y) = self.camera();
         let camera = (x as i32, y as i32);
         let cull = self.number != 0;
-        let left = HUD_WIDTH as i32;
         scene::draw(
             &mut self.buffer,
             &self.track.scene,
             &self.scene,
             camera,
             cull,
-            left,
+            (left, self.view_width),
+            self.session.pictures,
         );
         let camera = (self.view.0 as i32, self.view.1 as i32);
         for car in &mut self.cars {
-            guns::draw_sparks(
-                &mut self.buffer,
-                car,
-                &self.sparks,
-                camera,
-                HUD_WIDTH as i32,
-            );
+            guns::draw_sparks(&mut self.buffer, car, &self.sparks, camera, left);
         }
         self.power_ups.draw_notes(
             &mut self.buffer,
             &self.hud.small_font,
             self.pickup_money,
             camera,
-            HUD_WIDTH as i32,
+            left,
             self.clock.between,
         );
         if self.clock.frame < 290 {
@@ -1409,24 +1752,67 @@ impl Race {
             self.laps_state.race_clock += self.clock.between;
             self.laps_state.lap_clock += self.clock.between;
         }
+        let left = self.left();
+        if self.view_width == VIEW_WIDTH as i32 {
+            // 0x414110: the status bar away, the last lap's time counted down a first time,
+            // and only the small board.
+            self.laps_state.count_down(self.clock.between);
+            self.draw_small_board(sound);
+            return;
+        }
+        // 0x41430A: the status bar sliding, the small board under it.
+        if left < HUD_WIDTH as i32 {
+            self.draw_small_board(sound);
+        }
+        let gauge = self.gauge();
+        let boards = self.boards();
+        hud::draw(
+            &mut self.buffer,
+            &self.hud,
+            i64::from(left),
+            &boards,
+            &gauge,
+            self.laps,
+        );
+        self.damage_calls(sound);
+        if !self.weapons {
+            self.laps_state.count_down(self.clock.between);
+        }
+    }
+
+    /// The calls on the player's damage after the HUD's or the small board's damage
+    /// (0x414E28, 0x414028), on the race's calls' channel.
+    fn damage_calls(&mut self, sound: &mut Sound) {
+        let damage = self.cars[self.player].handling.damage;
+        for effect in self.damage_calls.check(damage, self.player_tough) {
+            sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
+        }
+    }
+
+    /// What the HUD shows of the player's car.
+    fn gauge(&self) -> hud::Player {
         let player = &self.cars[self.player];
-        let gauge = hud::Player {
+        hud::Player {
             speed: player.speed,
             engine: player.handling.engine,
             weapons: self.weapons,
             weapons_bar: player.handling.weapons_bar,
             turbo_bar: player.handling.turbo,
             mines: player.handling.mines,
-        };
-        let boards = self.boards();
-        hud::draw(
-            &mut self.buffer,
-            &self.hud,
-            HUD_WIDTH,
-            &boards,
-            &gauge,
-            self.laps,
-        );
+            time: self.laps_state.time_shown(),
+        }
+    }
+
+    /// The small board (0x413C90), the last lap's time counted down as it shows it, and the
+    /// calls on the player's damage.
+    fn draw_small_board(&mut self, sound: &mut Sound) {
+        let gauge = self.gauge();
+        let damage = self.cars[self.player].handling.damage;
+        hud::draw_small(&mut self.buffer, &self.hud, &gauge, damage);
+        self.damage_calls(sound);
+        if !self.weapons {
+            self.laps_state.count_down(self.clock.between);
+        }
     }
 
     /// Where the player's car is on the screen (0x40D929): where the view's lead puts it,
@@ -1446,8 +1832,9 @@ impl Race {
         };
         let width = info.width as i32;
         let height = info.height as i32;
+        let view_width = self.view_width;
         (
-            axis(car.x, self.lead.at[0], HALF_WIDTH, width, TRACK_VIEW_WIDTH) + HUD_WIDTH as i32,
+            axis(car.x, self.lead.at[0], view_width >> 1, width, view_width) + self.left(),
             axis(
                 car.y,
                 self.lead.at[1],
@@ -1462,7 +1849,7 @@ impl Race {
     /// player's sprite and the others' over it, those far off the view left out.
     fn draw_cars(&mut self) {
         let (camera_x, camera_y) = self.camera();
-        let left = HUD_WIDTH as i32;
+        let left = self.left();
         let on_screen: Vec<(i32, i32)> = (0..self.cars.len())
             .map(|slot| {
                 if slot == self.player {
@@ -1535,8 +1922,8 @@ impl Race {
                 let (x, y) = shadows.points[corner];
                 (x - camera_x as i32, y - camera_y as i32)
             });
-            if shadow_in_view(points) {
-                let on_screen = points.map(|(x, y)| (x + HUD_WIDTH as i32, y));
+            if shadow_in_view(points, self.view_width >> 1) {
+                let on_screen = points.map(|(x, y)| (x + self.left(), y));
                 raster::light_triangle(&mut self.buffer, on_screen, &self.shade);
             }
         }
@@ -1558,6 +1945,26 @@ impl Race {
     }
 }
 
+/// The track's view's width a frame `between` ticks on (0x417497): with the status bar wanted
+/// back it narrows 4 a tick to 256, else it widens 2 a tick to 320.
+fn slide(width: i32, status_bar: bool, between: i32) -> i32 {
+    if status_bar {
+        let width = if width > TRACK_VIEW_WIDTH {
+            width - SLIDE_IN * between
+        } else {
+            width
+        };
+        width.max(TRACK_VIEW_WIDTH)
+    } else {
+        let width = if width < VIEW_WIDTH as i32 {
+            width + SLIDE_OUT * between
+        } else {
+            width
+        };
+        width.min(VIEW_WIDTH as i32)
+    }
+}
+
 /// Degrees to radians as the original has it (0x4412B0).
 const RADIANS: f64 = 0.017_453_292_519_944_444;
 
@@ -1565,8 +1972,9 @@ const RADIANS: f64 = 0.017_453_292_519_944_444;
 /// controls' scancodes in `dr.cfg` (accelerate, brake, left, right, turbo, gun, mine and horn)
 /// and the arrows, which always drive; the arrows count for the controls set to their
 /// extended codes. The mine control's key is let go once seen; the horn holds the brake and
-/// the mine bits together.
-fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
+/// the mine bits together. Then, with the gamepad on, the seven controls' gamepad inputs
+/// (`pads`, no horn among them).
+fn sample(keys: &mut Keys, controls: &[u32; 8], pads: &[u32; 7]) -> u32 {
     let held = |keys: &Keys, code: u32| u8::try_from(code).is_ok_and(|code| keys.held(code));
     let mut bits = 0;
     let arrows = [
@@ -1606,6 +2014,23 @@ fn sample(keys: &mut Keys, controls: &[u32; 8]) -> u32 {
     }
     if held(keys, controls[7]) {
         bits |= driving::MINE | driving::BRAKE;
+    }
+    // 0x413A3E: the gamepad, after the mine key has taken the brake away; the pad's mine is
+    // seen every tick it is held (its letting the mine key go again changes nothing: the key
+    // was let go above when held).
+    let pad_bits = [
+        driving::ACCELERATE,
+        driving::BRAKE,
+        driving::LEFT,
+        driving::RIGHT,
+        driving::TURBO,
+        guns::GUN,
+        driving::MINE,
+    ];
+    for (&input, bit) in pads.iter().zip(pad_bits) {
+        if keys.pad_held(input) {
+            bits |= bit;
+        }
     }
     if bits & driving::TURBO != 0 {
         bits |= driving::ACCELERATE;
@@ -1682,6 +2107,8 @@ mod tests {
     /// The defaults `dr.cfg` gets: A, Z, the arrows' extended codes, left shift, left
     /// control, left alt and space.
     const DEFAULT_CONTROLS: [u32; 8] = [0x1E, 0x2C, 0xCB, 0xCD, 0x2A, 0x1D, 0x38, 0x39];
+    /// No gamepad input for any control.
+    const NO_PADS: [u32; 7] = [0; 7];
 
     fn holding(held: &[Key]) -> Keys {
         let mut keys = Keys::default();
@@ -1697,12 +2124,12 @@ mod tests {
     fn the_arrows_always_drive_and_the_turbo_accelerates() {
         let mut keys = holding(&[Key::Up, Key::Left]);
         assert_eq!(
-            sample(&mut keys, &DEFAULT_CONTROLS),
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
             driving::ACCELERATE | driving::LEFT
         );
         let mut keys = holding(&[Key::Down, Key::Right, Key::LeftShift]);
         assert_eq!(
-            sample(&mut keys, &DEFAULT_CONTROLS),
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
             driving::BRAKE | driving::RIGHT | driving::TURBO | driving::ACCELERATE
         );
     }
@@ -1712,13 +2139,89 @@ mod tests {
     #[test]
     fn a_mine_key_counts_once_and_takes_the_brake() {
         let mut keys = holding(&[Key::Z, Key::LeftAlt]);
-        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS), driving::MINE);
-        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS), driving::BRAKE);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
+            driving::MINE
+        );
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
+            driving::BRAKE
+        );
         let mut keys = holding(&[Key::Space]);
         assert_eq!(
-            sample(&mut keys, &DEFAULT_CONTROLS),
+            sample(&mut keys, &DEFAULT_CONTROLS, &NO_PADS),
             driving::MINE | driving::BRAKE
         );
+    }
+
+    /// Gamepad inputs for the seven controls: the stick up, down, left and right, buttons 1
+    /// to 3 (Define Gamepad's numbers).
+    const PADS: [u32; 7] = [3, 4, 1, 2, 5, 6, 7];
+
+    fn pad(keys: &mut Keys, events: &[InputEvent]) {
+        for &event in events {
+            keys.event(event);
+        }
+    }
+
+    /// With the gamepad switched on in Configure, each control also answers to its gamepad
+    /// input in `dr.cfg`; switched off, a pad in the player's hands does nothing in a race.
+    #[test]
+    fn the_gamepad_drives_through_the_inputs_dr_cfg_gives_the_controls() {
+        use crate::input::{PadAxis, PadButton};
+        let mut keys = Keys::default();
+        let events = [
+            InputEvent::PadConnected { connected: true },
+            InputEvent::PadAxis {
+                axis: PadAxis::StickX,
+                value: -20_000,
+            },
+            InputEvent::PadButton {
+                button: PadButton::B,
+                pressed: true,
+            },
+        ];
+        pad(&mut keys, &events);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), 0);
+        keys.set_pad_on(true);
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &PADS),
+            driving::LEFT | guns::GUN
+        );
+        pad(
+            &mut keys,
+            &[InputEvent::PadButton {
+                button: PadButton::A,
+                pressed: true,
+            }],
+        );
+        assert_eq!(
+            sample(&mut keys, &DEFAULT_CONTROLS, &PADS),
+            driving::LEFT | guns::GUN | driving::TURBO | driving::ACCELERATE
+        );
+    }
+
+    /// The gamepad is read after the keyboard's mine has taken the brake away: unlike the
+    /// mine key, the pad's mine keeps a brake held with it (the horn's two bits), and counts
+    /// every tick it is held rather than once a press.
+    #[test]
+    fn the_gamepads_mine_counts_every_tick_and_keeps_the_brake() {
+        use crate::input::PadButton;
+        let mut keys = holding(&[Key::Z]);
+        keys.set_pad_on(true);
+        let press = |pressed| InputEvent::PadButton {
+            button: PadButton::X,
+            pressed,
+        };
+        pad(
+            &mut keys,
+            &[InputEvent::PadConnected { connected: true }, press(true)],
+        );
+        let both = driving::BRAKE | driving::MINE;
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), both);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), both);
+        pad(&mut keys, &[press(false)]);
+        assert_eq!(sample(&mut keys, &DEFAULT_CONTROLS, &PADS), driving::BRAKE);
     }
 
     fn horn_car(slot: usize, model: usize, x: f32) -> Car {
@@ -1782,12 +2285,80 @@ mod tests {
         assert!(horns(&mut cars, 1, 0).is_empty());
     }
 
+    /// TAB turns the status bar away or back once a press however long it is held, and a
+    /// wrecked player always gets it back; F2 to F5 turn their switch once and let the key go,
+    /// so a key held on does not flicker it. A wrong count would leave the player without
+    /// the HUD, or with the music off, after one press.
+    #[test]
+    fn the_switch_keys_turn_once_a_press() {
+        let mut session = Session::default();
+        let mut keys = holding(&[Key::Tab]);
+        assert_eq!(session.keys(&mut keys, false), [None, None]);
+        assert!(!session.status_bar, "TAB took the status bar away");
+        session.keys(&mut keys, false);
+        assert!(!session.status_bar, "TAB still held");
+        keys.event(InputEvent::Key {
+            key: Key::Tab,
+            pressed: false,
+        });
+        session.keys(&mut keys, false);
+        keys.event(InputEvent::Key {
+            key: Key::Tab,
+            pressed: true,
+        });
+        session.keys(&mut keys, false);
+        assert!(session.status_bar, "TAB pressed again");
+        keys.event(InputEvent::Key {
+            key: Key::Tab,
+            pressed: false,
+        });
+        session.status_bar = false;
+        session.keys(&mut keys, true);
+        assert!(session.status_bar, "a wreck has the status bar");
+        let mut keys = holding(&[Key::F2, Key::F3, Key::F4, Key::F5]);
+        assert_eq!(session.keys(&mut keys, false), [Some(false), Some(false)]);
+        assert!(!session.pictures && !session.shadows);
+        assert_eq!(
+            session.keys(&mut keys, false),
+            [None, None],
+            "the keys were let go"
+        );
+        let mut keys = holding(&[Key::F2]);
+        assert_eq!(session.keys(&mut keys, false), [Some(true), None]);
+    }
+
+    /// The status bar slides away 2 pixels a tick of the frame and back 4, from and to the
+    /// track's view's 256 and the screen's 320.
+    #[test]
+    fn the_status_bar_slides_away_slowly_and_back_quickly() {
+        assert_eq!(slide(256, false, 1), 258);
+        assert_eq!(slide(318, false, 2), 320);
+        assert_eq!(slide(320, false, 3), 320);
+        assert_eq!(slide(320, true, 1), 316);
+        assert_eq!(slide(258, true, 1), 256);
+        assert_eq!(slide(256, true, 4), 256);
+        assert_eq!(slide(300, true, 0), 300);
+    }
+
+    /// A race abandoned in a pause before its intro (Escape held while the race loads) still
+    /// runs the intro, the view tilting up and the colours coming back, before the view tilts
+    /// away; the player must not see the race end on a black screen.
+    #[test]
+    fn a_pause_answered_before_the_intro_goes_on_to_the_intro() {
+        use pause::Answer::{Abort, Help, Resume};
+        assert_eq!(after_pause(Abort, true), AfterPause::IntroThenEnd);
+        assert_eq!(after_pause(Abort, false), AfterPause::End);
+        assert_eq!(after_pause(Resume, true), AfterPause::Intro);
+        assert_eq!(after_pause(Help, true), AfterPause::Intro);
+        assert_eq!(after_pause(Resume, false), AfterPause::Race);
+    }
+
     /// The original checks a shadow's corners, not its area: one stretched across the whole
     /// view with its corners outside is never drawn, and cars under it stay lit.
     #[test]
     fn a_shadow_with_every_corner_off_the_view_is_left_out() {
-        assert!(!shadow_in_view([(-10, -10), (300, -10), (-10, 250)]));
-        assert!(shadow_in_view([(5, -10), (300, 300), (-10, 199)]));
-        assert!(!shadow_in_view([(5, -10), (300, 300), (-10, 200)]));
+        assert!(!shadow_in_view([(-10, -10), (300, -10), (-10, 250)], 128));
+        assert!(shadow_in_view([(5, -10), (300, 300), (-10, 199)], 128));
+        assert!(!shadow_in_view([(5, -10), (300, 300), (-10, 200)], 128));
     }
 }

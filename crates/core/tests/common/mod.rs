@@ -51,8 +51,13 @@ pub const SHOP: u8 = 53;
 /// The drug dealer's and the hitman's pictures in their offers.
 pub const DRUG_DEALER: u8 = SHOP + 30;
 pub const HITMAN: u8 = SHOP + 31;
+/// The sponsor's and the reaper's pictures in the shop's popups after a race.
+pub const SPONSOR: u8 = SHOP + 32;
+pub const REAPER: u8 = SHOP + 33;
 /// The race's preview: its banner, the grid's frame, the circuit's picture.
 pub const PREVIEW: u8 = 110;
+/// The results' pictures (spec M5): 120 on.
+pub const RESULTS: u8 = 120;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -178,6 +183,16 @@ fn texts() -> Texts {
             prize: b"P".to_vec(),
             abort_race: vec![b"A".to_vec(); 9],
             race_over: vec![b"A".to_vec(); 9],
+            game_paused: vec![b"A".to_vec(); 9],
+            results_titles: vec![b"R".to_vec(); 3],
+            results_points: vec![vec![b"+".to_vec(); 3]; 3],
+            please_wait: b"W".to_vec(),
+            press_to_go_on: b"K".to_vec(),
+            statistics: b"S".to_vec(),
+            statistics_rows: vec![b"r".to_vec(); 13],
+            race_kinds: vec![b"k".to_vec(); 4],
+            label_separator: b": ".to_vec(),
+            headlines: vec![vec![b"N".to_vec(); 4]; 19],
         },
         shop: shop_texts(),
         help: deadrally_gamedata::text::HelpTexts {
@@ -188,6 +203,31 @@ fn texts() -> Texts {
             key_names: vec![b"N".to_vec(); 256],
             pad_names: vec![b"D".to_vec(); 9],
         },
+        shop_popups: shop_popup_texts(),
+    }
+}
+
+/// Every popup of the shop after a race ten lines of one letter, the pieces around the deals'
+/// pay and the hit's victim one letter each.
+pub fn shop_popup_texts() -> deadrally_gamedata::text::ShopPopupTexts {
+    let lines = |c: u8| vec![vec![c]; 10];
+    deadrally_gamedata::text::ShopPopupTexts {
+        welcome: lines(b'w'),
+        lapped: lines(b'l'),
+        win_streak: vec![lines(b's'); 6],
+        clean_race: vec![lines(b'c'); 6],
+        all_wrecked: vec![lines(b'a'); 6],
+        drug_run: lines(b'd'),
+        drug_run_end: b".".to_vec(),
+        drug_run_failed: lines(b'f'),
+        hit: lines(b'h'),
+        hit_victim_end: b"-".to_vec(),
+        hit_end: b".".to_vec(),
+        hit_failed: lines(b'm'),
+        loan_repaid: lines(b'r'),
+        loan_unpaid: lines(b'u'),
+        end_of_road: lines(b'e'),
+        too_slow: lines(b't'),
     }
 }
 
@@ -292,6 +332,18 @@ pub fn menu_assets() -> MenuAssets {
         colour_slider: solid(294, 16, LICENCE + 13),
         colour_knob: solid(10, 24, LICENCE + 14),
         price_digits: (0..11).map(|k| solid(16, 13, LICENCE + 15 + k)).collect(),
+        results: deadrally_gamedata::assets::ResultsPictures {
+            ranking: solid(54, 386, RESULTS),
+            panel: solid(272, 386, RESULTS + 1),
+            placing: solid(202, 74, RESULTS + 2),
+            races: (0..3).map(|k| solid(272, 20, RESULTS + 3 + k)).collect(),
+            points: (0..3).map(|k| solid(42, 18, RESULTS + 6 + k)).collect(),
+            player_row: [31, 101, 53].map(|w| solid(w, 18, RESULTS + 9)).to_vec(),
+            other_row: [31, 101, 53].map(|w| solid(w, 18, RESULTS + 10)).to_vec(),
+            cars: (0..24)
+                .map(|k| solid(100, 52, RESULTS + 11 + k % 4))
+                .collect(),
+        },
         sign_up_title: solid(640, 32, SIGN_UP),
         side_panel: solid(96, 224, SIGN_UP + 1),
         side_cars: (0..6).map(|k| solid(96, 64, SIGN_UP + 2 + k)).collect(),
@@ -319,6 +371,8 @@ pub fn menu_assets() -> MenuAssets {
         car_colours: Palette::BLACK,
         drug_dealer: solid(104, 128, DRUG_DEALER),
         hitman: solid(104, 128, HITMAN),
+        sponsor: solid(104, 128, SPONSOR),
+        reaper: solid(104, 128, REAPER),
         preview_banner: solid(640, 54, PREVIEW),
         preview_grid: solid(225, 274, PREVIEW + 1),
         track_shapes: (0..19).map(|_| solid(360, 274, PREVIEW + 2)).collect(),

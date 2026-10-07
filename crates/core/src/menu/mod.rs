@@ -13,9 +13,11 @@ mod licence;
 mod market;
 pub(crate) mod palette;
 mod preview;
+mod results;
 mod shop;
 mod sign_up;
 mod slots;
+mod sponsors;
 
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::dr_cfg::DrCfg;
@@ -167,6 +169,38 @@ enum State {
     Race {
         ticks: u32,
     },
+    /// The race's results (M5): the first page fading in, the waits for a key after each
+    /// race's page (`page` 1 to 3) and after the shop has loaded (4), the wait while it loads,
+    /// and the way out, faded or not.
+    ResultsFadeIn {
+        step: u32,
+    },
+    ResultsWait {
+        page: u8,
+    },
+    ResultsLoading,
+    ResultsOut {
+        step: u32,
+        fade: bool,
+    },
+    /// The Start Racing menu's statistics (`sub_42C940`, `postRaceMain(2)`): the menu out,
+    /// the statistics in, their wait for a key, out, 51 waits, the menu back in.
+    StatsMenuOut {
+        step: u32,
+    },
+    StatsIn {
+        step: u32,
+    },
+    StatsWait,
+    StatsOut {
+        step: u32,
+    },
+    StatsHold {
+        waits: u32,
+    },
+    StatsMenuIn {
+        step: u32,
+    },
     ToBlack {
         k: i32,
     },
@@ -314,6 +348,13 @@ pub(crate) struct Menu {
     /// Start, Configure, Define Keyboard, Define Gamepad and the slots, by [`Submenu::table`].
     submenus: [MenuTable; 5],
     panel: Panel,
+    /// How the player's last race ended, what the results show of it, and the count of the
+    /// results' blinking line (0x456BE4).
+    outcome: crate::books::Outcome,
+    books: crate::books::Books,
+    press_blink: u32,
+    /// Whether the results follow a race (`postRaceMain(0)`) or no race (1).
+    results_after_race: bool,
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
     save: bool,
@@ -357,7 +398,12 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        (seed, slot_files, sabotage_clock): (u32, Vec<Option<Vec<u8>>>, Option<u32>),
+        (seed, slot_files, sabotage_clock, still_opponents): (
+            u32,
+            Vec<Option<Vec<u8>>>,
+            Option<u32>,
+            bool,
+        ),
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -391,6 +437,10 @@ impl Menu {
                 SLOTS_MENU,
             ],
             panel,
+            outcome: crate::books::Outcome::default(),
+            books: crate::books::Books::default(),
+            press_blink: 0,
+            results_after_race: true,
             config,
             save,
             back: Canvas::default(),
@@ -400,6 +450,7 @@ impl Menu {
             assets,
             campaign: Campaign {
                 fixed_clock: sabotage_clock,
+                still_opponents,
                 ..Campaign::new(seed)
             },
             nickname: licence::Nickname::default(),
@@ -565,6 +616,16 @@ impl Menu {
             State::PreviewHold { waits } => self.preview_hold(waits),
             State::ToBlack { k } => self.fading_out(k),
             State::Race { ticks } => self.race_tick(ticks),
+            State::ResultsFadeIn { step } => self.results_fade_in(step),
+            State::ResultsWait { page } => self.results_wait(page),
+            State::ResultsLoading => self.results_loaded(),
+            State::ResultsOut { step, fade } => self.results_out(step, fade),
+            State::StatsMenuOut { step } => self.stats_menu_out(step),
+            State::StatsIn { step } => self.stats_in(step),
+            State::StatsWait => self.stats_wait(),
+            State::StatsOut { step } => self.stats_out(step),
+            State::StatsHold { waits } => self.stats_hold(waits),
+            State::StatsMenuIn { step } => self.stats_menu_in(step),
             State::Confirm { then } => self.confirm_tick(then),
             State::Shop { second } => self.shop_tick(second),
             State::CarTurn { right, waits } => self.car_turn_tick(right, waits),
@@ -961,6 +1022,9 @@ impl Menu {
         campaign.welcome = true;
         self.init_drivers();
         self.campaign.player_mut().colour = colour;
+        // 0x438879: `postLoadedOrLicense` counts the new car's trade-in on its way to the
+        // sign-up.
+        self.shop.trade_in = self.trade_in();
         self.palette.fade(100);
         let texts = &self.assets.menu.texts.campaign;
         let (shop, racing) = (
@@ -978,15 +1042,7 @@ impl Menu {
     /// for the player's colour (`sub_4224E0`).
     fn init_drivers(&mut self) {
         let texts = &self.assets.menu.texts.campaign;
-        let campaign = &mut self.campaign;
-        crate::campaign::init_drivers(
-            &mut campaign.drivers,
-            &mut campaign.rand,
-            &texts.cars,
-            &texts.driver_names,
-        );
-        campaign.selected_race = 0;
-        campaign.restock();
+        self.campaign.init_drivers(&texts.cars, &texts.driver_names);
         self.shop.reset();
         self.car_frame = 0;
         self.compose_palette();
@@ -1007,29 +1063,35 @@ impl Menu {
         self.yes_no_open(Question::EndGame, true)
     }
 
-    /// "Yes" ends the game: the menus as at the start, the drivers set up afresh.
+    /// "Yes" ends the game, the palette at full brightness after it.
     fn end_game_answer(&mut self, answer: Option<bool>) -> State {
         if answer == Some(true) {
-            let texts = &self.assets.menu.texts.campaign;
-            let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
-            self.graphics.set_row(START_MENU.text, 0, new);
-            self.graphics.set_row(MAIN_MENU.text, 0, racing);
-            let start = &mut self.submenus[Submenu::Start as usize];
-            for row in [1, 2, 4] {
-                start.active[row] = false;
-            }
-            // 0x439F7D: the highlight back on the first row.
-            start.selected = 0;
-            let campaign = &mut self.campaign;
-            campaign.warn_hard = false;
-            campaign.warn_medium = false;
-            campaign.underground_popup = false;
-            campaign.welcome = false;
-            campaign.started = false;
-            self.init_drivers();
+            self.end_game();
             self.palette.fade(100);
         }
         self.start_pass()
+    }
+
+    /// The game ended (`endGame` 0x4291D0, inlined at 0x439EDA): the menus as at the start,
+    /// the drivers set up afresh.
+    fn end_game(&mut self) {
+        let texts = &self.assets.menu.texts.campaign;
+        let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
+        self.graphics.set_row(START_MENU.text, 0, new);
+        self.graphics.set_row(MAIN_MENU.text, 0, racing);
+        let start = &mut self.submenus[Submenu::Start as usize];
+        for row in [1, 2, 4] {
+            start.active[row] = false;
+        }
+        // 0x439F7D: the highlight back on the first row.
+        start.selected = 0;
+        let campaign = &mut self.campaign;
+        campaign.warn_hard = false;
+        campaign.warn_medium = false;
+        campaign.underground_popup = false;
+        campaign.welcome = false;
+        campaign.started = false;
+        self.init_drivers();
     }
 
     fn exit_answer(&mut self, answer: Option<bool>) -> State {
