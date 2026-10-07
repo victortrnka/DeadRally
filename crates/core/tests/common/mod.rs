@@ -57,6 +57,8 @@ pub const PREVIEW: u8 = 110;
 pub const ADVERSARY_FACE: u8 = 114;
 /// The results' pictures (spec M5): 120 on.
 pub const RESULTS: u8 = 120;
+/// The Adversary's screen: its title, the Adversary and the Escape box.
+pub const ADVERSARY: u8 = 135;
 
 /// A `dr.cfg` with the original's default volumes, gamepad off.
 pub fn config() -> DrCfg {
@@ -195,6 +197,7 @@ fn texts() -> Texts {
             race_kinds: vec![b"k".to_vec(); 4],
             label_separator: b": ".to_vec(),
             headlines: vec![vec![b"N".to_vec(); 4]; 19],
+            end_lines: vec![b"E".to_vec(); 4],
         },
         shop: shop_texts(),
         help: deadrally_gamedata::text::HelpTexts {
@@ -309,6 +312,9 @@ pub fn menu_assets() -> MenuAssets {
         colour_slider: solid(294, 16, LICENCE + 13),
         colour_knob: solid(10, 24, LICENCE + 14),
         price_digits: (0..11).map(|k| solid(16, 13, LICENCE + 15 + k)).collect(),
+        adversary_title: solid(440, 16, ADVERSARY),
+        adversary: solid(256, 228, ADVERSARY + 1),
+        escape_box: solid(115, 104, ADVERSARY + 2),
         results: deadrally_gamedata::assets::ResultsPictures {
             ranking: solid(54, 386, RESULTS),
             panel: solid(272, 386, RESULTS + 1),

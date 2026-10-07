@@ -45,6 +45,12 @@ pub struct Assets {
     pub intro_effects: Bank,
     /// `MEN-MUS.CMF`: the music that starts when the intro ends and goes on into the menus.
     pub menu_music: Module,
+    /// `ENDANI0.HAF` with `ENDANI0E.CMF`: the Adversary's animation when a player first leads
+    /// (spec M6); `ENDANI.HAF` with `ENDANI-E.CMF`: the end. Both play under `TR0-MUS.CMF`.
+    pub adversary_animation: Animation,
+    pub adversary_effects: Bank,
+    pub end_animation: Animation,
+    pub end_effects: Bank,
     pub menu: MenuAssets,
     pub race: crate::race::RaceArchives,
 }
@@ -118,6 +124,11 @@ pub struct MenuAssets {
     pub price_digits: Vec<Image>,
     /// The race's results' pictures.
     pub results: ResultsPictures,
+    /// The Adversary's screen (spec M6): its title `BADTIT`, the Adversary `BADSNAP` and
+    /// the box saying Escape backs out `ESCBOX`.
+    pub adversary_title: Image,
+    pub adversary: Image,
+    pub escape_box: Image,
     /// The sign-up (spec M3a §3): its title `ENTERTX2`, the side panel
     /// `STATBAS7` with the cars `SCENECAR` and the upgrade lamps `STATPOP4`, and the line under
     /// the player's entry `SIGNLINE`.
@@ -265,6 +276,12 @@ impl Assets {
             intro_effects: sound::load_effects(&musics, "SANIM-E.CMF")
                 .map_err(AssetError::Sound)?,
             menu_music: sound::load_music(&musics, "MEN-MUS.CMF").map_err(AssetError::Sound)?,
+            adversary_animation: Animation::open(&path("ENDANI0.HAF"))
+                .map_err(AssetError::Animation)?,
+            adversary_effects: sound::load_effects(&musics, "ENDANI0E.CMF")
+                .map_err(AssetError::Sound)?,
+            end_animation: Animation::open(&path("ENDANI.HAF")).map_err(AssetError::Animation)?,
+            end_effects: sound::load_effects(&musics, "ENDANI-E.CMF").map_err(AssetError::Sound)?,
             menu: menu_assets(&menu, &musics, &path("END.BMP"), &exe)?,
             race: crate::race::RaceArchives {
                 tracks: (0..10)
@@ -473,6 +490,9 @@ fn menu_assets(
         wipe: frames(menu, "15X150.BPK")?,
         border_corners: frames(menu, "CHOO2.BPK")?,
         licence: frames(menu, "LICENCE3.BPK")?.remove(0),
+        adversary_title: frames(menu, "BADTIT.BPK")?.remove(0),
+        adversary: frames(menu, "BADSNAP.BPK")?.remove(0),
+        escape_box: frames(menu, "ESCBOX.BPK")?.remove(0),
         results: ResultsPictures {
             ranking: frames(menu, "RANK1C.BPK")?.remove(0),
             panel: frames(menu, "RESUPOK1.BPK")?.remove(0),

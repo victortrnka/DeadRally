@@ -471,6 +471,10 @@ impl Menu {
         self.sound(ON_SOUND);
         // 0x4366CA: the selection left on the sabotage, as the original leaves it.
         self.shop.market = 4;
+        // 0x4366A0: a leader meets the Adversary instead of signing up.
+        if self.campaign.player_leads() {
+            return self.open_adversary();
+        }
         self.open_sign_up()
     }
 

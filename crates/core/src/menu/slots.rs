@@ -144,6 +144,7 @@ impl Menu {
     fn take_game(&mut self, game: &SaveGame) {
         let campaign = &mut self.campaign;
         campaign.player_index = usize::from(game.driver_id);
+        campaign.was_leading = false;
         campaign.use_weapons = game.use_weapons != 0;
         for (driver, record) in campaign
             .drivers

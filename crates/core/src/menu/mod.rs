@@ -6,6 +6,7 @@
 //! wait starts. Here [`State`] names the wait the menu stands at, and [`Menu::tick`] runs the
 //! code from it to the next one.
 
+mod adversary;
 mod configure;
 pub(crate) mod draw;
 mod ending;
@@ -188,6 +189,33 @@ enum State {
     StatsMenuOut {
         step: u32,
     },
+    /// The Adversary's screen (M6): its wait for Enter or Escape, and the fade after Escape.
+    AdversaryWait {
+        waits: u32,
+    },
+    AdversaryOut {
+        step: u32,
+    },
+    /// An animation playing in the 320x200 mode (M6): the Adversary's after the results that
+    /// first make the player the leader (then the way out as `fade` says), or the end.
+    Film {
+        film: results::Film,
+        fade: bool,
+    },
+    /// The end (M6): the title in and out, the best ten with the winner in, its wait, out.
+    EndTitleIn {
+        step: u32,
+    },
+    EndTitleOut {
+        step: u32,
+    },
+    EndFameIn {
+        step: u32,
+    },
+    EndFameWait,
+    EndFameOut {
+        step: u32,
+    },
     StatsIn {
         step: u32,
     },
@@ -353,8 +381,12 @@ pub(crate) struct Menu {
     outcome: crate::books::Outcome,
     books: crate::books::Books,
     press_blink: u32,
-    /// Whether the results follow a race (`postRaceMain(0)`) or no race (1).
-    results_after_race: bool,
+    /// What the results follow: a race (`postRaceMain(0)`), or no race (1).
+    results_from: results::ResultsFrom,
+    /// Whether these results first made the player the leader (0x463DF8), and the animation
+    /// playing.
+    newly_leading: bool,
+    film: Option<crate::animation::Player>,
     /// The player's `dr.cfg`, and whether the original would write it now.
     config: DrCfg,
     save: bool,
@@ -440,7 +472,9 @@ impl Menu {
             outcome: crate::books::Outcome::default(),
             books: crate::books::Books::default(),
             press_blink: 0,
-            results_after_race: true,
+            results_from: results::ResultsFrom::Race,
+            newly_leading: false,
+            film: None,
             config,
             save,
             back: Canvas::default(),
@@ -478,12 +512,6 @@ impl Menu {
         self.race.as_ref().map(crate::race::Race::trace)
     }
 
-    /// [`crate::Game::start_arena_now`]: the menus leave whatever they wait at for the race in
-    /// the Arena.
-    pub(crate) fn start_arena_now(&mut self) {
-        self.state = self.start_arena();
-    }
-
     pub(crate) fn quit_requested(&self) -> bool {
         self.state == State::Ended
     }
@@ -496,6 +524,9 @@ impl Menu {
     }
 
     pub(crate) fn frame(&self) -> Frame<'_> {
+        if let (State::Film { .. }, Some(film)) = (&self.state, &self.film) {
+            return film.frame();
+        }
         Frame {
             width: WIDTH as u32,
             height: HEIGHT as u32,
@@ -627,6 +658,14 @@ impl Menu {
             State::ResultsLoading => self.results_loaded(),
             State::ResultsOut { step, fade } => self.results_out(step, fade),
             State::StatsMenuOut { step } => self.stats_menu_out(step),
+            State::AdversaryWait { waits } => self.adversary_wait(waits),
+            State::AdversaryOut { step } => self.adversary_out(step),
+            State::Film { film, fade } => self.film_tick(film, fade),
+            State::EndTitleIn { step } => self.end_title_in(step),
+            State::EndTitleOut { step } => self.end_title_out(step),
+            State::EndFameIn { step } => self.end_fame_in(step),
+            State::EndFameWait => self.end_fame_wait(),
+            State::EndFameOut { step } => self.end_fame_out(step),
             State::StatsIn { step } => self.stats_in(step),
             State::StatsWait => self.stats_wait(),
             State::StatsOut { step } => self.stats_out(step),
@@ -1078,14 +1117,18 @@ impl Menu {
     /// "Yes" ends the game: the menus as at the start, the drivers set up afresh.
     fn end_game_answer(&mut self, answer: Option<bool>) -> State {
         if answer == Some(true) {
-            self.end_game();
+            self.reset_game();
+            // 0x439F7D: the highlight back on the first row.
+            self.submenus[Submenu::Start as usize].selected = 0;
+            self.palette.fade(100);
         }
         self.start_pass()
     }
 
-    /// The game ended, by the Start Racing menu's question or by winning in the Arena
-    /// (0x4354F9): the menus' rows as at the start, the flags reset, the drivers set up afresh.
-    fn end_game(&mut self) {
+    /// A game over, ended or won: the menus' first rows back to a new game, the rows that need
+    /// a game off, the warnings and popups off, the drivers set up afresh (0x439F40,
+    /// 0x4354F9).
+    fn reset_game(&mut self) {
         let texts = &self.assets.menu.texts.campaign;
         let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
         self.graphics.set_row(START_MENU.text, 0, new);
@@ -1094,8 +1137,6 @@ impl Menu {
         for row in [1, 2, 4] {
             start.active[row] = false;
         }
-        // 0x439F7D, 0x43559F: the highlight back on the first row.
-        start.selected = 0;
         let campaign = &mut self.campaign;
         campaign.warn_hard = false;
         campaign.warn_medium = false;
@@ -1103,7 +1144,6 @@ impl Menu {
         campaign.welcome = false;
         campaign.started = false;
         self.init_drivers();
-        self.palette.fade(100);
     }
 
     fn exit_answer(&mut self, answer: Option<bool>) -> State {

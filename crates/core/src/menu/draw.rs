@@ -378,17 +378,28 @@ impl Panel {
         self.lines.push(PanelLine { text, font });
     }
 
-    /// The news after a race (0x4279C0): the panel moved up six lines, all but the last line
-    /// moving and the last staying (so it shows below as well), then a headline not told yet,
-    /// drawn by `rand()` until one is, in small B on lines 17 to 20; after the nineteenth all
-    /// count as untold again.
-    pub(crate) fn tell_headline(&mut self, rand: &mut Rand, headlines: &[Vec<Vec<u8>>]) {
+    /// `lines` told in the panel (0x4279C0, `sub_427BC0`): the panel moved up six lines, all
+    /// but the last line moving and the last staying, then `lines` in small B from line 17.
+    pub(crate) fn tell(&mut self, lines: &[Vec<u8>]) {
         let last = self.lines.len() - 1;
         for _ in 0..HEADLINE_SCROLL {
             for line in 0..last {
                 self.lines[line] = self.lines[line + 1].clone();
             }
         }
+        for (line, text) in lines.iter().enumerate() {
+            self.lines[HEADLINE_FIRST + line] = PanelLine {
+                text: text.clone(),
+                font: 1,
+            };
+        }
+    }
+
+    /// The news after a race (0x4279C0): the panel moved up six lines, all but the last line
+    /// moving and the last staying (so it shows below as well), then a headline not told yet,
+    /// drawn by `rand()` until one is, in small B on lines 17 to 20; after the nineteenth all
+    /// count as untold again.
+    pub(crate) fn tell_headline(&mut self, rand: &mut Rand, headlines: &[Vec<Vec<u8>>]) {
         let headline = loop {
             let k = (rand.next() % HEADLINES as i32) as usize;
             if !self.told[k] {
@@ -396,12 +407,7 @@ impl Panel {
             }
         };
         self.told[headline] = true;
-        for (line, text) in headlines[headline].iter().enumerate() {
-            self.lines[HEADLINE_FIRST + line] = PanelLine {
-                text: text.clone(),
-                font: 1,
-            };
-        }
+        self.tell(&headlines[headline]);
         self.told_count += 1;
         if usize::from(self.told_count) >= HEADLINES {
             self.told = [false; HEADLINES];
@@ -553,6 +559,7 @@ pub(crate) mod tests {
                 race_kinds: vec![b"k".to_vec(); 4],
                 label_separator: b": ".to_vec(),
                 headlines: vec![vec![b"N".to_vec(); 4]; 19],
+                end_lines: vec![b"E".to_vec(); 4],
             },
             shop: shop_texts(),
             help: deadrally_gamedata::text::HelpTexts {

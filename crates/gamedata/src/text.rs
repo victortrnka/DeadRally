@@ -247,6 +247,8 @@ const LABEL_SEPARATOR: u32 = 0x44_35F8;
 /// The headlines after a race (0x4279C0): 19 of four lines, 0x118 apart, the lines 0x46.
 const HEADLINES: u32 = 0x45_5150;
 const HEADLINE_COUNT: u32 = 19;
+/// The panel's four lines when the game is won (`sub_427BC0`), 0x46 apart.
+const END_LINES: u32 = 0x45_6618;
 const PRESS_ENTER: u32 = 0x44_24D4;
 const GAME_PAUSED: u32 = 0x44_24F8;
 const BOX_LINE: usize = 32;
@@ -445,8 +447,10 @@ pub struct CampaignTexts {
     pub statistics_rows: Vec<Vec<u8>>,
     pub race_kinds: Vec<Vec<u8>>,
     pub label_separator: Vec<u8>,
-    /// The bottom panel's headlines after a race, four lines each.
+    /// The bottom panel's headlines after a race, four lines each, and its lines when the
+    /// game is won.
     pub headlines: Vec<Vec<Vec<u8>>>,
+    pub end_lines: Vec<Vec<u8>>,
 }
 
 /// Six lines of a shop item's description, in `writeTextInScreen`'s font codes.
@@ -732,6 +736,9 @@ impl Texts {
                             .map(|line| text(HEADLINES + 0x118 * k + 0x46 * line, 0x45))
                             .collect()
                     })
+                    .collect::<Result<_, _>>()?,
+                end_lines: (0..4)
+                    .map(|line| text(END_LINES + 0x46 * line, 0x45))
                     .collect::<Result<_, _>>()?,
                 race_over: [BOX_BLANK, BOX_BLANK, BOX_BLANK, RACE_OVER]
                     .into_iter()

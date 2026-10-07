@@ -97,6 +97,16 @@ fn assets() -> Assets {
             instruments: Vec::new(),
         },
         menu_music: music(false),
+        adversary_animation: Animation::from_frames(Vec::new(), Vec::new()),
+        adversary_effects: Bank {
+            linear_frequencies: true,
+            instruments: Vec::new(),
+        },
+        end_animation: Animation::from_frames(Vec::new(), Vec::new()),
+        end_effects: Bank {
+            linear_frequencies: true,
+            instruments: Vec::new(),
+        },
         menu: common::menu_assets(),
         race: common::race_archives(),
     }
@@ -1067,6 +1077,63 @@ fn saved_game_with_money(money: i32) -> Vec<u8> {
     game.encode(3)
 }
 
+/// [`saved_game_with_money`] with the player ahead of every other driver on points.
+fn saved_game_of_a_leader() -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&saved_game_with_money(5_000));
+    let at = 19 * 108 + 68;
+    game.drivers[at..at + 4].copy_from_slice(&10i32.to_le_bytes());
+    game.encode(3)
+}
+
+/// From the shop of `file` through the Underground Market's way on.
+fn through_the_market(file: Vec<u8>) -> Game {
+    let mut game = in_shop(file);
+    step(&mut game, Key::Enter);
+    run(&mut game, MARKET_FADES);
+    step(&mut game, Key::Enter);
+    game
+}
+
+#[test]
+fn a_leader_meets_the_adversary_instead_of_the_sign_up() {
+    // adversaryPreviewScreen (0x435320): a player ahead of everyone on points goes from the
+    // market's way on to the Adversary, wiped in over the market, not to the sign-up.
+    let mut game = through_the_market(saved_game_of_a_leader());
+    run(&mut game, 60);
+    assert_eq!(
+        pixel(&game, (300, 240)),
+        common::ADVERSARY + 1,
+        "the Adversary"
+    );
+    assert_eq!(
+        pixel(&game, (60, 300)),
+        common::ADVERSARY + 2,
+        "the Escape box"
+    );
+    let mut follower = through_the_market(saved_game_with_money(5_000));
+    run(&mut follower, 60);
+    assert_ne!(
+        pixel(&follower, (300, 240)),
+        common::ADVERSARY + 1,
+        "the sign-up"
+    );
+}
+
+#[test]
+fn escape_on_the_adversarys_screen_shows_the_other_races_results() {
+    // 0x4355B0: Escape fades the screen out and shows the results of races the player is not
+    // in; the Enter that would race is not needed to leave.
+    let mut game = through_the_market(saved_game_of_a_leader());
+    run(&mut game, 60);
+    step(&mut game, Key::Escape);
+    run(&mut game, 51 + 60);
+    assert_eq!(
+        pixel(&game, (360, 300)),
+        common::RESULTS + 1,
+        "the results' panel"
+    );
+}
+
 /// The player's record in the game saved into slot 1 after `keys` in the shop of
 /// [`saved_game_with_money`].
 fn player_after_shopping(money: i32, keys: &[Key]) -> Vec<u8> {
@@ -1485,16 +1552,15 @@ fn the_race_s_preview_wipes_in_after_the_sign_up() {
     assert_eq!(pixel(&game, (400, 200)), common::PREVIEW + 2, "the circuit");
 }
 
-/// A driver's points in their record.
-const POINTS: usize = 68;
-
 #[test]
 fn the_arenas_preview_shows_the_adversary_and_the_player_alone() {
-    // previewRaceScreen(2) for the Arena (0x4327CE, 0x432AF9): the Adversary's face and
-    // name in the first place, without a rank; the player's in the second; the two places
-    // without a car hatched every other pixel (0x43235E); the Arena's own picture.
-    let mut game = in_shop(saved_game_with(1000, &[(POINTS, 150)]));
-    game.start_arena_now();
+    // Enter on the Adversary's screen, previewRaceScreen(2) for the Arena (0x4327CE,
+    // 0x432AF9): the Adversary's face and name in the first place, without a rank; the
+    // player's in the second; the two places without a car hatched every other pixel
+    // (0x43235E); the Arena's own picture.
+    let mut game = through_the_market(saved_game_of_a_leader());
+    run(&mut game, 60);
+    step(&mut game, Key::Enter);
     run(&mut game, 60);
     assert_eq!(pixel(&game, (60, 140)), common::ADVERSARY_FACE, "its face");
     assert_eq!(pixel(&game, (25, 202)), common::MEDIUM, "its name");
