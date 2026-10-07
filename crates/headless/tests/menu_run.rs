@@ -5040,10 +5040,10 @@ const LEADER_TURN_MARKET_KEYS: [(u64, Key); 14] = [
     (2419, Key::Enter),
     (2613, Key::Enter),
     (2788, Key::Space),
-    (13_184, Key::Enter),
+    (13_179, Key::Enter),
     (13_541, Key::Enter),
     (13_893, Key::Enter),
-    (16_541, Key::Enter),
+    (16_535, Key::Enter),
 ];
 
 #[test]
@@ -5103,6 +5103,36 @@ fn after_the_leader_s_animation_the_market_s_way_out_fades_a_black_screen() {
         }
     }
     panic!("the leader's animation was not seen");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_leader_turn_market_run_matches_the_committed_manifest() {
+    // Written after 260 of the run's 261 screenshots equalled our frames and every frame of
+    // the race's state equalled the original's memory (docs/verification/m6.md): with weapons
+    // on, the results that first make the player the leader keep the screen while every colour
+    // fades, the Adversary's animation plays, the Underground Market fades a black screen out,
+    // the shop fades in and its way on leads to the market.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_armed_save(&assets.menu.texts));
+    let held = leader_turn_held(
+        "leader-turn-market.keys",
+        include_str!("leader-turn-market.keys"),
+        12_827,
+    );
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&LEADER_TURN_MARKET_KEYS, &held),
+        &leader_turn_shots(include_str!("leader-turn-market.shots")),
+        16_840,
+        slots,
+    );
+    check_manifest(
+        "leader-turn-market-run.sha256",
+        &lines,
+        "the leader turn run with weapons",
+    );
 }
 
 #[test]
