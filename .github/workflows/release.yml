@@ -1,0 +1,105 @@
+name: Release
+
+# Packs the game for players (spec M7c). A `v*` tag also makes a draft GitHub release with the
+# packages, which the owner publishes. Run by hand, or on a push that changes the packing, it
+# only uploads them as artifacts.
+on:
+  push:
+    # A branch's push needs a path below; a tag's paths are never looked at.
+    branches: ["**"]
+    tags: ["v*"]
+    paths:
+      - .github/workflows/release.yml
+      - scripts/package.sh
+      - scripts/smoke-test.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported Ubuntu runner, so the program runs on older glibc too.
+          - system: linux
+            os: ubuntu-22.04
+          - system: windows
+            os: windows-latest
+          - system: macos
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.system == 'linux'
+        run: scripts/install-linux-deps.sh && sudo apt-get install -y xvfb
+      - run: rustup toolchain install
+      - if: matrix.system == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.system }}" = macos ]; then
+            cargo build --release -p deadrally --locked --target aarch64-apple-darwin
+            cargo build --release -p deadrally --locked --target x86_64-apple-darwin
+          else
+            cargo build --release -p deadrally --locked
+          fi
+      - name: Pack
+        id: pack
+        shell: bash
+        run: |
+          version=$GITHUB_REF_NAME
+          if [ "$GITHUB_REF_TYPE" != tag ]; then version="dev-${GITHUB_SHA::7}"; fi
+          echo "file=$(scripts/package.sh ${{ matrix.system }} "$version" dist)" >>"$GITHUB_OUTPUT"
+      - name: The packed program starts
+        shell: bash
+        run: |
+          mkdir unpacked
+          case "${{ matrix.system }}" in
+            linux)
+              tar -C unpacked -xzf "${{ steps.pack.outputs.file }}"
+              xvfb-run -a scripts/smoke-test.sh unpacked/*/deadrally
+              ;;
+            windows)
+              7z x -ounpacked "${{ steps.pack.outputs.file }}" >/dev/null
+              scripts/smoke-test.sh unpacked/*/deadrally.exe
+              ;;
+            macos)
+              ditto -x -k "${{ steps.pack.outputs.file }}" unpacked
+              lipo -archs unpacked/*/DeadRally.app/Contents/MacOS/deadrally
+              codesign --verify --verbose unpacked/*/DeadRally.app
+              scripts/smoke-test.sh unpacked/*/DeadRally.app/Contents/MacOS/deadrally
+              ;;
+          esac
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.system }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY" --draft --generate-notes
+          --title "DeadRally $GITHUB_REF_NAME"

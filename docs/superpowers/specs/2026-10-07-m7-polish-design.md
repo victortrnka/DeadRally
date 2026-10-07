@@ -57,7 +57,7 @@ A player downloads DeadRally for their system and points it at their copy of the
 - **M7b, settings and the first start:**
   - `config.toml` keeps `window`, `smooth`, `nogl` and `vsync` next to `data_path`, and the command line overrides them.
   - When no game data is found, the system's folder dialog (SDL3's) asks for it, the choice is checked as `check-data` does, and it is written to `data_path`.
-- **M7c, the packages:** a release workflow on `v*` tags builds the three packages above. Each package holds the README and the licence, and the macOS one also has the app's icon and `Info.plist`.
+- **M7c, the packages:** a release workflow on `v*` tags builds the three packages above. Each package holds the README and the licence. The macOS app has its `Info.plist` and an ad-hoc signature (Apple Silicon starts no unsigned program), but no icon: the original's is Remedy's art, and DeadRally has none of its own yet.
 - **M7d, the documentation:**
   - The README for players: where to get the game data, where DeadRally keeps `dr.cfg`, its saves and its config, the options and keys, and what is known to differ from the original (from `docs/verification/`).
   - A CHANGELOG.
