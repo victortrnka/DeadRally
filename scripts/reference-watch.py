@@ -132,13 +132,62 @@ def game_pid(root):
     return None
 
 
+def find_value(pid, mem, value):
+    """The addresses of the writable memory of `pid` that hold `value` (4 bytes, aligned)."""
+    wanted = value.to_bytes(4, "little")
+    found = []
+    with open(f"/proc/{pid}/maps") as maps:
+        for line in maps:
+            span, perms = line.split()[:2]
+            if not perms.startswith("rw"):
+                continue
+            lo, hi = (int(part, 16) for part in span.split("-"))
+            if hi - lo > 0x4000000:
+                continue
+            try:
+                mem.seek(lo)
+                data = mem.read(hi - lo)
+            except OSError:
+                continue
+            at = data.find(wanted)
+            while at >= 0:
+                if at % 4 == 0:
+                    found.append(lo + at)
+                at = data.find(wanted, at + 1)
+    return found
+
+
+class RandState:
+    """`rand()`'s state, which the C runtime keeps in the thread's data: found as the address
+    holding VALUE at the race's frame FRAME (DeadRally's trace gives both, `rs`, before the
+    start, where it stands still), then read with every frame."""
+
+    def __init__(self, spec):
+        frame, value = spec.split(":")
+        self.frame, self.value = int(frame), int(value)
+        self.addresses = None
+
+    def read(self, pid, mem, frame):
+        if self.addresses is None:
+            if frame < self.frame:
+                return None
+            self.addresses = find_value(pid, mem, self.value)
+            print(f"rand()'s state: {len(self.addresses)} candidates", file=sys.stderr)
+        if not self.addresses:
+            return None
+        mem.seek(self.addresses[0])
+        return int.from_bytes(mem.read(4), "little")
+
+
 def main():
     out, command = sys.argv[1], sys.argv[sys.argv.index("--") + 1:]
     options = sys.argv[2:sys.argv.index("--")]
     driver = Driver(options[options.index("--drive") + 1]) if "--drive" in options else None
+    rand = RandState(options[options.index("--rand") + 1]) if "--rand" in options else None
     child = subprocess.Popen(command)
     start = time.monotonic()
     mem = None
+    pid = None
     last = None
     with open(out, "w") as log:
         while child.poll() is None:
@@ -168,6 +217,10 @@ def main():
                         mem.seek(address)
                         value = int.from_bytes(mem.read(4), "little", signed=True)
                         named.append(f"{name}{value}")
+                    if rand is not None and frame > 0:
+                        state = rand.read(pid, mem, frame)
+                        if state is not None:
+                            named.append(f"rs{state}")
                     ms = int((time.monotonic() - start) * 1000)
                     log.write(
                         f"{ms} {frame} {cars.hex()} {handling.hex()} {phase} {' '.join(named)}\n"

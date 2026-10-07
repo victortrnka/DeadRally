@@ -27,11 +27,13 @@ HANDLING = [
 
 
 # The race's globals both log by name: the rocket flames' picture (0x456AFC), the ticks
-# between the HUD's last two frames (0x4A9EA4) and before the next power-up (0x456AC4).
+# between the HUD's last two frames (0x4A9EA4) and before the next power-up (0x456AC4), and
+# `rand()`'s state where the watch found it (`--rand`).
 GLOBALS = [
     ("fp", "the flames' picture"),
     ("bt", "the ticks between frames"),
     ("pw", "the power-ups' wait"),
+    ("rs", "rand()'s state"),
 ]
 
 
