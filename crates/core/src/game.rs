@@ -124,6 +124,17 @@ impl Game {
         }
     }
 
+    /// In the menus, their count of waits, the background's copper row and the pulse
+    /// (0x456BA0, 0x456754 and 0x45EAA4 in the original), for comparing with the original's
+    /// memory (`scripts/reference-watch.py`'s `.menus` log, spec M7).
+    #[must_use]
+    pub fn menu_waits(&self) -> Option<(u32, usize, i64)> {
+        match &self.scene {
+            Scene::Menu(scene) => Some(scene.menu_waits()),
+            _ => None,
+        }
+    }
+
     /// The player chose to exit the game and its end screen is over: the frontend should close.
     #[must_use]
     pub fn quit_requested(&self) -> bool {

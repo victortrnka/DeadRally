@@ -509,6 +509,10 @@ impl Menu {
 
     /// The player chose to exit and the end screen is over.
     /// The race's state, while a race runs ([`crate::Game::race_trace`]).
+    pub(crate) fn menu_waits(&self) -> (u32, usize, i64) {
+        self.palette.waits()
+    }
+
     pub(crate) fn race_trace(&self) -> Option<String> {
         self.race
             .as_ref()
