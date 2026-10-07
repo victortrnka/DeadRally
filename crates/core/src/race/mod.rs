@@ -171,6 +171,8 @@ pub(crate) struct Race {
     over_ticks: i32,
     /// The box's lines when P pauses the game.
     paused_lines: Vec<Vec<u8>>,
+    /// The welcome box's lines, until it has shown after the intro.
+    welcome_lines: Option<Vec<Vec<u8>>>,
     /// The music's and the effects' volumes in `dr.cfg`, which F2 and F3 turn back on.
     volumes: (u32, u32),
     /// The help's pages and texts, the gamepad's inputs for the controls (`dr.cfg`), and
@@ -314,6 +316,8 @@ pub(crate) struct Setup {
     pub(crate) pause_lines: Vec<Vec<u8>>,
     pub(crate) race_over_lines: Vec<Vec<u8>>,
     pub(crate) paused_lines: Vec<Vec<u8>>,
+    /// The welcome box's lines when this is a new game's first race (0x464F44).
+    pub(crate) welcome_lines: Option<Vec<Vec<u8>>>,
     pub(crate) help: HelpTexts,
     pub(crate) controls: [u32; 8],
     pub(crate) pads: [u32; 7],
@@ -422,6 +426,12 @@ enum Stage {
         first: bool,
         ending: bool,
     },
+    /// The welcome box after a new game's first intro; whether the race was abandoned
+    /// before the intro, and ends once the box is answered.
+    Welcome {
+        pause: Box<pause::Pause>,
+        ending: bool,
+    },
     /// The help (F1), the music's order it interrupted, and whether it came in the loop's
     /// first pass, before the intro.
     Help {
@@ -526,6 +536,7 @@ impl Race {
             pause_lines,
             race_over_lines,
             paused_lines,
+            welcome_lines,
             help,
             controls,
             pads,
@@ -656,6 +667,7 @@ impl Race {
             race_over_lines,
             over_ticks: 0,
             paused_lines,
+            welcome_lines,
             volumes: (0, 0),
             help_pages: help::Pages {
                 keys: page(&archives.engine, "KEYCOM3")?,
@@ -1106,11 +1118,43 @@ impl Race {
                 if going {
                     return Outcome::Racing;
                 }
-                if *ending {
+                let ending = *ending;
+                if let Some(lines) = self.welcome_lines.take() {
+                    // 0x41788D: a new game's first race shows its welcome box now, over the
+                    // screen as the intro left it, its sound alone.
+                    let (pause, asked) = self.open_box(&lines, keys, rand);
+                    self.stage = Stage::Welcome { pause, ending };
+                    Self::pause_sounds(sound, &asked);
+                    return Outcome::Racing;
+                }
+                if ending {
                     // 0x41795D: the race abandoned before the intro leaves the loop after it.
                     self.start_outro(sound, Outcome::Aborted);
                     return Outcome::Racing;
                 }
+                self.clock.restart();
+            }
+            Stage::Welcome { pause, ending } => {
+                let ending = *ending;
+                let mut asked = Vec::new();
+                let step = pause.wait(|code| keys.held(code), rand, &mut asked);
+                self.screen.copy_from_slice(pause.screen());
+                Self::pause_sounds(sound, &asked);
+                let answer = match step {
+                    pause::Step::Waiting => return Outcome::Racing,
+                    pause::Step::Leaving => {
+                        keys.release_all();
+                        return Outcome::Racing;
+                    }
+                    pause::Step::Over(answer) => answer,
+                };
+                if ending {
+                    self.start_outro(sound, Outcome::Aborted);
+                    return Outcome::Racing;
+                }
+                // 0x41793C: Y does not abort here (0x464F68 is not -1); F1 is left held for
+                // the next pass.
+                self.help_asked = answer == pause::Answer::Help;
                 self.clock.restart();
             }
             Stage::Pause {
@@ -1420,8 +1464,9 @@ impl Race {
         Self::pause_sounds(sound, &asked);
     }
 
-    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the screen as shown; and
-    /// the sounds it asks for at its start.
+    /// `racePauseMenu` (0x4064A0) with the box's nine `lines`, over the race's buffer (from
+    /// 0x464F14, not the screen, which the intro or the effect power-up's waves may have left
+    /// otherwise); and the sounds it asks for at its start.
     fn open_box(
         &mut self,
         lines: &[Vec<u8>],
@@ -1447,7 +1492,11 @@ impl Race {
             }
         }
         keys.release_all();
-        let (pause, asked) = pause::Pause::new(&self.screen, picture, self.left(), rand);
+        let mut frame = Vec::with_capacity(VIEW_HEIGHT * VIEW_WIDTH);
+        for y in 0..VIEW_HEIGHT {
+            frame.extend((0..VIEW_WIDTH).map(|x| self.buffer.pixel(x, y)));
+        }
+        let (pause, asked) = pause::Pause::new(&frame, picture, self.left(), rand);
         self.screen.copy_from_slice(pause.screen());
         (Box::new(pause), asked)
     }

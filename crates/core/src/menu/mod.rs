@@ -1066,6 +1066,7 @@ impl Menu {
         campaign.warn_medium = true;
         campaign.underground_popup = true;
         campaign.welcome = true;
+        campaign.race_welcome = true;
         self.init_drivers();
         self.campaign.player_mut().colour = colour;
         // 0x438879: `postLoadedOrLicense` counts the new car's trade-in on its way to the
@@ -1145,6 +1146,7 @@ impl Menu {
         campaign.warn_medium = false;
         campaign.underground_popup = false;
         campaign.welcome = false;
+        campaign.race_welcome = false;
         campaign.started = false;
         self.init_drivers();
     }

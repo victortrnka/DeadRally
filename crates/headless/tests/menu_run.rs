@@ -2067,73 +2067,129 @@ const STATISTICS_SHOTS: [(u64, &str); 46] = [
 ];
 
 /// The keys of `scripts/reference/shop-welcome.scenario`'s run of `docs/verification/m5.md`
-/// after the new game run's: space ending the sign-up's wait, then (Escape and Y held) the
-/// race abandoned 2.49 s into it as in the original, whose first race shows its welcome box
-/// first (our keys from here on are the original's 444 ticks earlier), and Enter on each
-/// results screen, on the shop's welcome, on its last place's popup and on into the
-/// Underground Market.
+/// after the new game run's: space ending the sign-up's wait, then (each held) Enter on the
+/// first race's welcome box, Escape and Y abandoning the race 2.49 s into it as in the
+/// original, and Enter on each results screen, on the shop's welcome, on its last place's popup
+/// and on into the Underground Market.
 const SHOP_WELCOME_KEYS: [(u64, Key); 8] = [
     (3334, Key::Space),
-    (4533, Key::Enter),
-    (4747, Key::Enter),
-    (4961, Key::Enter),
-    (5160, Key::Enter),
-    (5374, Key::Enter),
-    (5589, Key::Enter),
-    (5803, Key::Enter),
+    (4977, Key::Enter),
+    (5191, Key::Enter),
+    (5405, Key::Enter),
+    (5604, Key::Enter),
+    (5818, Key::Enter),
+    (6033, Key::Enter),
+    (6247, Key::Enter),
 ];
-const SHOP_WELCOME_HELD: [Held; 2] = [(4105, Key::Escape, 7), (4248, Key::Y, 7)];
+const SHOP_WELCOME_HELD: [Held; 3] = [
+    (4120, Key::Enter, 7),
+    (4549, Key::Escape, 7),
+    (4692, Key::Y, 7),
+];
 
-/// The ticks after which our frame equalled each screenshot of that run above the bottom
-/// panel, whose headline after the race differs (the original's welcome box): the shop fading
-/// in with the welcome to it and its cursor, the last place's popup after it, the shop drawn
-/// again with its border, and the Underground Market's first visit.
-const SHOP_WELCOME_SHOTS: [(u64, &str); 45] = [
-    (5032, "w054"),
-    (5046, "w055"),
-    (5060, "w056"),
-    (5073, "w057"),
-    (5089, "w058"),
-    (5103, "w059"),
-    (5117, "w060"),
-    (5131, "w061"),
-    (5145, "w062"),
-    (5159, "w063"),
-    (5075, "w064"),
-    (5189, "w065"),
-    (5203, "w066"),
-    (5217, "w067"),
-    (5231, "w068"),
-    (5245, "w069"),
-    (5259, "w070"),
-    (5273, "w071"),
-    (5189, "w072"),
-    (5203, "w073"),
-    (5217, "w074"),
-    (5331, "w075"),
-    (5345, "w076"),
-    (5361, "w077"),
-    (5375, "w078"),
-    (5433, "w080"),
-    (5447, "w081"),
-    (5462, "w082"),
-    (5476, "w083"),
-    (5490, "w084"),
-    (5504, "w085"),
-    (5519, "w086"),
-    (5533, "w087"),
-    (5547, "w088"),
-    (5562, "w089"),
-    (5576, "w090"),
-    (5590, "w091"),
-    (6026, "w112"),
-    (5903, "w113"),
-    (5977, "w115"),
-    (5914, "w117"),
-    (5988, "w119"),
-    (5925, "w121"),
-    (5999, "w123"),
-    (5936, "w125"),
+/// The ticks after which our frame equalled each screenshot of that run: the race, its
+/// welcome box flying in, the pause, the results and the statistics, the shop fading in with
+/// the welcome to it and its cursor, the last place's popup after it, the shop drawn again
+/// with its border, and the Underground Market's first visit.
+const SHOP_WELCOME_SHOTS: [(u64, &str); 98] = [
+    (3540, "race-1"),
+    (3824, "race-2"),
+    (3861, "help"),
+    (4184, "race-3"),
+    (4334, "race-4"),
+    (4415, "race-5"),
+    (4619, "paused"),
+    (4705, "w000"),
+    (4720, "w001"),
+    (4734, "w002"),
+    (4748, "w003"),
+    (4764, "w004"),
+    (4778, "w005"),
+    (4792, "w006"),
+    (4858, "w011"),
+    (4857, "w012"),
+    (4877, "w013"),
+    (4897, "w014"),
+    (4915, "w015"),
+    (4930, "w016"),
+    (4944, "w017"),
+    (4942, "w018"),
+    (4906, "w019"),
+    (4981, "w020"),
+    (5001, "w021"),
+    (5015, "w022"),
+    (5030, "w023"),
+    (5044, "w024"),
+    (5058, "w025"),
+    (5065, "w026"),
+    (5051, "w027"),
+    (5033, "w028"),
+    (5056, "w029"),
+    (5062, "w030"),
+    (5062, "w031"),
+    (5048, "w032"),
+    (5173, "w033"),
+    (5188, "w034"),
+    (5200, "w035"),
+    (5208, "w036"),
+    (5195, "w037"),
+    (5257, "w039"),
+    (5272, "w040"),
+    (5272, "w041"),
+    (5258, "w042"),
+    (5244, "w043"),
+    (5261, "w044"),
+    (5275, "w045"),
+    (5269, "w046"),
+    (5254, "w047"),
+    (5250, "w048"),
+    (5266, "w049"),
+    (5461, "w053"),
+    (5476, "w054"),
+    (5490, "w055"),
+    (5504, "w056"),
+    (5517, "w057"),
+    (5533, "w058"),
+    (5547, "w059"),
+    (5561, "w060"),
+    (5575, "w061"),
+    (5589, "w062"),
+    (5603, "w063"),
+    (5519, "w064"),
+    (5633, "w065"),
+    (5647, "w066"),
+    (5661, "w067"),
+    (5675, "w068"),
+    (5689, "w069"),
+    (5703, "w070"),
+    (5717, "w071"),
+    (5633, "w072"),
+    (5647, "w073"),
+    (5661, "w074"),
+    (5775, "w075"),
+    (5789, "w076"),
+    (5805, "w077"),
+    (5819, "w078"),
+    (5877, "w080"),
+    (5891, "w081"),
+    (5906, "w082"),
+    (5920, "w083"),
+    (5934, "w084"),
+    (5948, "w085"),
+    (5963, "w086"),
+    (5977, "w087"),
+    (5991, "w088"),
+    (6006, "w089"),
+    (6020, "w090"),
+    (6034, "w091"),
+    (6470, "w112"),
+    (6347, "w113"),
+    (6421, "w115"),
+    (6358, "w117"),
+    (6432, "w119"),
+    (6369, "w121"),
+    (6443, "w123"),
+    (6380, "w125"),
 ];
 
 /// The ticks after which our frame equalled each screenshot of `scripts/reference/opponents.scenario`'s
@@ -4479,10 +4535,10 @@ fn the_statistics_run_matches_the_committed_manifest() {
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_shop_welcome_run_matches_the_committed_manifest() {
-    // Written after the screenshots of the run, but for the bottom panel, equalled our frames
-    // (docs/verification/m5.md): a new game's first race abandoned, its results, and the shop
-    // after them with the welcome to it drawn before its fade and without the continue item's
-    // border, then the last place's popup, then the shop drawn again.
+    // Written after the screenshots of the run equalled our frames (docs/verification/m5.md,
+    // m6.md): a new game's first race with its welcome box, abandoned, its results, and the
+    // shop after them with the welcome to it drawn before its fade and without the continue
+    // item's border, then the last place's popup, then the shop drawn again.
     let keys: Vec<(u64, Key)> = NEW_GAME_KEYS
         .iter()
         .chain(&SHOP_WELCOME_KEYS)
@@ -4492,7 +4548,7 @@ fn the_shop_welcome_run_matches_the_committed_manifest() {
         (SEED, None),
         (&keys, &SHOP_WELCOME_HELD),
         &SHOP_WELCOME_SHOTS,
-        6_050,
+        6_500,
         Vec::new(),
     );
     check_manifest("shop-welcome-run.sha256", &lines, "the shop welcome run");

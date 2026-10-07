@@ -251,6 +251,18 @@ const HEADLINE_COUNT: u32 = 19;
 const END_LINES: u32 = 0x45_6618;
 const PRESS_ENTER: u32 = 0x44_24D4;
 const GAME_PAUSED: u32 = 0x44_24F8;
+/// The box after a new game's first intro (0x4178A5): its nine lines.
+const RACE_WELCOME: [u32; 9] = [
+    0x44_2324,
+    BOX_BLANK,
+    0x44_2300,
+    0x44_22DC,
+    0x44_22B8,
+    0x44_2294,
+    0x44_2270,
+    BOX_BLANK,
+    PRESS_ENTER,
+];
 const BOX_LINE: usize = 32;
 const PRIZE: u32 = 0x44_4078;
 /// The shop's popups after a race (`postLoadedOrLicense` from 0x4389A6), ten lines of 80
@@ -451,6 +463,9 @@ pub struct CampaignTexts {
     /// The box when P pauses the race (0x416FC3): blank but for the fourth line, the game
     /// paused, and the ninth, how to go on.
     pub game_paused: Vec<Vec<u8>>,
+    /// The box after a new game's first intro (0x41788D): the welcome, the race's keys and
+    /// how to go on.
+    pub race_welcome: Vec<Vec<u8>>,
     /// The results: each race's title, the points of its first three places, the waits'
     /// lines and the statistics' title.
     pub results_titles: Vec<Vec<u8>>,
@@ -791,6 +806,10 @@ impl Texts {
                     .chain([BOX_BLANK; 4])
                     .chain([PRESS_ENTER])
                     .map(|address| text(address, BOX_LINE))
+                    .collect::<Result<_, _>>()?,
+                race_welcome: RACE_WELCOME
+                    .iter()
+                    .map(|&address| text(address, BOX_LINE))
                     .collect::<Result<_, _>>()?,
                 no_sign_up: shown(NO_SIGN_UP, MAX_LINE)?,
                 race_warnings: (0..2)
