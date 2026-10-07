@@ -4955,6 +4955,72 @@ fn the_arena_won_run_matches_the_committed_manifest() {
     check_manifest("arena-won-run.sha256", &lines, "the won Arena run");
 }
 
+/// The keys of `scripts/reference/leader-turn.scenario`'s run of `docs/verification/m6.md`
+/// after the race start's: Enter on the hard race's page, on the statistics, on their way out
+/// and on the shop's way on.
+const LEADER_TURN_KEYS: [(u64, Key); 4] = [
+    (13_180, Key::Enter),
+    (13_537, Key::Enter),
+    (13_890, Key::Enter),
+    (16_531, Key::Enter),
+];
+
+/// The leader turn run's held keys (`leader-turn.keys`: tick, key, ticks held): the player's
+/// car's four laps, from the original's memory (`scripts/compare-watch.py --keys`, tick = race
+/// frame + 3012), then Return held on the race-over box.
+fn leader_turn_held() -> Vec<Held> {
+    let mut held: Vec<Held> = include_str!("leader-turn.keys")
+        .lines()
+        .map(|line| {
+            let fields: Vec<&str> = line.split(' ').collect();
+            let key = match fields[1] {
+                "up" => Key::Up,
+                "left" => Key::Left,
+                "right" => Key::Right,
+                other => panic!("leader-turn.keys: unknown key {other}"),
+            };
+            (fields[0].parse().unwrap(), key, fields[2].parse().unwrap())
+        })
+        .collect();
+    held.push((12_823, Key::Enter, 7));
+    held
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_leader_turn_run_matches_the_committed_manifest() {
+    // Written after 256 of the run's 261 screenshots equalled our frames and every frame of the
+    // race's state, rand()'s included, equalled the original's memory (docs/verification/
+    // m6.md): the race won that first makes the player the leader ends its results with every
+    // colour faded out, the Adversary's animation and the menus' music, then the shop, whose
+    // way on leads to the Adversary. A way out that keeps the title lit, skips the animation or
+    // comes back to the wrong screen, or a leader not found, shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_save(&assets.menu.texts));
+    let keys: Vec<(u64, Key)> = RACE_START_KEYS
+        .iter()
+        .chain(&LEADER_TURN_KEYS)
+        .copied()
+        .collect();
+    let shots: Vec<(u64, String)> = include_str!("leader-turn.shots")
+        .lines()
+        .map(|line| {
+            let (tick, name) = line.split_once(' ').unwrap();
+            (tick.parse().unwrap(), name.to_owned())
+        })
+        .collect();
+    let shots: Vec<(u64, &str)> = shots.iter().map(|(t, n)| (*t, n.as_str())).collect();
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&keys, &leader_turn_held()),
+        &shots,
+        16_830,
+        slots,
+    );
+    check_manifest("leader-turn-run.sha256", &lines, "the leader turn run");
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_adversary_run_matches_the_committed_manifest() {
@@ -5255,6 +5321,18 @@ fn leader_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
     let mut game = deadrally_gamedata::save_game::SaveGame::decode(&test_save(texts));
     let at = 19 * 108 + 68;
     game.drivers[at..at + 4].copy_from_slice(&150i32.to_le_bytes());
+    game.encode(77)
+}
+
+/// The test game without weapons whose player (85 points) is one behind the leader (Jane
+/// Honda's 86) and whose first driver (Sam Speed, who wins the hard race) has 70: only a win of
+/// the easy race (3 points) makes the player lead (`captures/leader-turn.sg`).
+fn leader_turn_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let mut game = deadrally_gamedata::save_game::SaveGame::decode(&unarmed_save(texts));
+    for (driver, points) in [(19, 85i32), (0, 70)] {
+        let at = driver * 108 + 68;
+        game.drivers[at..at + 4].copy_from_slice(&points.to_le_bytes());
+    }
     game.encode(77)
 }
 
