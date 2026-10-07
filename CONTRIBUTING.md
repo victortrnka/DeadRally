@@ -51,7 +51,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-In the game: `-window` starts windowed, `-testscene` shows the M0 test scene instead (no game data needed), `--data <dir>` names the data directory; Alt+Enter toggles fullscreen, F12 toggles smoothing.
+In the game: `-window` starts windowed, `-smooth` and `-nogl` work as the original's (see the README), `-testscene` shows the M0 test scene instead (no game data needed), `--data <dir>` names the data directory; Alt+Enter toggles fullscreen, F12 toggles smoothing.
 
 ## Looking at the pictures
 

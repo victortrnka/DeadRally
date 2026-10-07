@@ -5,7 +5,7 @@
 #
 #   scripts/reference-run.sh [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE]
 #                            [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO]
-#                            [--rand FRAME:VALUE] SCENARIO OUT_DIR
+#                            [--rand FRAME:VALUE] [--smooth] SCENARIO OUT_DIR
 #
 # With --sound the original plays its sound into a PulseAudio null sink, which is recorded to
 # OUT_DIR/sound.wav (44.1 kHz, 16-bit stereo) from before the game starts until the last
@@ -30,6 +30,9 @@
 # (which watches too) the log also holds `rand()`'s state, found in memory as the value VALUE
 # at the race's frame FRAME (DeadRally's `trace` gives both: `rs` before the start).
 #
+# With --smooth the original starts with -smooth: its software picture of the 320x200 screens is
+# smoothed instead of doubled (spec M7, 0x43BA99).
+#
 # With --no-ai the opponents never drive in a race (spec M4, decision 2): the race loop's call
 # of calculateIAMovements is taken out, so they stay where DeadRally keeps them until M5.
 #
@@ -45,7 +48,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO] [--rand FRAME:VALUE] SCENARIO OUT_DIR" >&2
+    echo "usage: $0 [--data DIR] [--sound] [--cfg FILE] [--seed N] [--save SLOT:FILE] [--sabotage-clock N] [--no-ai] [--watch] [--drive PATH:FROM:TO] [--rand FRAME:VALUE] [--smooth] SCENARIO OUT_DIR" >&2
     exit 1
 }
 
@@ -55,6 +58,7 @@ cfg=
 seed=
 sabotage_clock=
 no_ai=false
+smooth_args=()
 watch=false
 drive=
 rand=
@@ -92,6 +96,10 @@ while [[ "${1:-}" == --* ]]; do
             ;;
         --no-ai)
             no_ai=true
+            shift
+            ;;
+        --smooth)
+            smooth_args=(-smooth)
             shift
             ;;
         --watch)
@@ -263,7 +271,7 @@ if $watch; then
     launch+=(-- wine)
     echo "watching the race's state into watch.log" >>"$log"
 fi
-(cd "$run" && exec "${launch[@]}" dr.exe -window -nogl "${sound_args[@]}") >>"$log" 2>&1 &
+(cd "$run" && exec "${launch[@]}" dr.exe -window -nogl "${smooth_args[@]}" "${sound_args[@]}") >>"$log" 2>&1 &
 game=$!
 window=$(timeout 30 xdotool search --sync --onlyvisible --name '.' | head -n1) || {
     echo "error: the original did not open a window within 30 s; see $log" >&2

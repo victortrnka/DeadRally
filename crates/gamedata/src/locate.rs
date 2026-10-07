@@ -110,6 +110,7 @@ pub fn locate(
             Some(Config {
                 data_path: Some(dir),
                 warnings,
+                ..
             }) => (DataSource::ConfigFile(path.to_path_buf()), dir, warnings),
             Some(Config {
                 data_path: None, ..

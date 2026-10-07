@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use deadrally_gamedata::{ConfigError, config_path, load_config};
+use deadrally_gamedata::{ConfigError, config_path, load_config, save_data_path};
 use tempfile::tempdir;
 
 #[test]
@@ -72,4 +72,62 @@ fn the_config_file_lives_in_a_deadrally_directory() {
     assert_eq!(path.file_name().unwrap(), "config.toml");
     let parent = path.parent().unwrap().to_string_lossy().to_lowercase();
     assert!(parent.contains("deadrally"), "{parent}");
+}
+
+#[test]
+fn the_originals_display_options_can_be_kept_in_the_file() {
+    // The original takes -window, -smooth and -nogl on its command line only; a player who
+    // wants them every time writes them once here (spec M7).
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    fs::write(&path, "window = true\nsmooth = true\nnogl = false\n").unwrap();
+    let config = load_config(&path).unwrap().unwrap();
+    assert_eq!(
+        (config.window, config.smooth, config.nogl, config.vsync),
+        (Some(true), Some(true), Some(false), None)
+    );
+    assert!(config.warnings.is_empty(), "{:?}", config.warnings);
+}
+
+#[test]
+fn a_display_option_that_is_not_true_or_false_is_a_warning() {
+    // "yes" must not be read as off without a word, nor stop the game from finding its data
+    // in the same file.
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    fs::write(&path, "smooth = \"yes\"\ndata_path = \"/games/dr\"\n").unwrap();
+    let config = load_config(&path).unwrap().unwrap();
+    assert_eq!(config.smooth, None);
+    assert_eq!(
+        config.data_path.as_deref(),
+        Some(std::path::Path::new("/games/dr"))
+    );
+    assert_eq!(config.warnings.len(), 1);
+    assert!(
+        config.warnings[0].contains("smooth"),
+        "{:?}",
+        config.warnings
+    );
+}
+
+#[test]
+fn the_chosen_data_folder_is_written_and_the_other_settings_kept() {
+    // The first start asks for the game's folder once; the next start must find it there
+    // without losing what the player wrote.
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("DeadRally").join("config.toml");
+    save_data_path(&path, std::path::Path::new("/games/first")).unwrap();
+    let config = load_config(&path).unwrap().unwrap();
+    assert_eq!(
+        config.data_path.as_deref(),
+        Some(std::path::Path::new("/games/first"))
+    );
+    fs::write(&path, "smooth = true\ndata_path = \"/games/old\"\n").unwrap();
+    save_data_path(&path, std::path::Path::new("/games/new")).unwrap();
+    let config = load_config(&path).unwrap().unwrap();
+    assert_eq!(
+        config.data_path.as_deref(),
+        Some(std::path::Path::new("/games/new"))
+    );
+    assert_eq!(config.smooth, Some(true));
 }

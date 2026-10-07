@@ -207,6 +207,27 @@ pub fn letterbox(output_width: u32, output_height: u32, aspect: (u32, u32)) -> V
     }
 }
 
+/// A picture of `size` at the largest whole scale that fits the output, centred, as `-nogl`
+/// shows the original's software picture (spec M7); an output smaller than the picture gets
+/// [`letterbox`]'s fit instead.
+#[must_use]
+pub fn whole_scale(output_width: u32, output_height: u32, size: (u32, u32)) -> Viewport {
+    let scale = match size {
+        (0, _) | (_, 0) => 0,
+        (width, height) => (output_width / width).min(output_height / height),
+    };
+    if scale == 0 {
+        return letterbox(output_width, output_height, size);
+    }
+    let (width, height) = (size.0 * scale, size.1 * scale);
+    Viewport {
+        x: (output_width - width) / 2,
+        y: (output_height - height) / 2,
+        width,
+        height,
+    }
+}
+
 /// Audio counters a frontend reports.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AudioReport {
@@ -473,6 +494,34 @@ mod tests {
                 height: 576
             }
         );
+    }
+
+    #[test]
+    fn the_software_picture_is_shown_at_the_largest_whole_scale() {
+        // A whole scale keeps the doubled pixels even; a fractional one would make some of
+        // the picture's rows and columns wider than others.
+        let shown = |width, height| whole_scale(width, height, (640, 480));
+        assert_eq!(
+            shown(1920, 1080),
+            Viewport {
+                x: 320,
+                y: 60,
+                width: 1280,
+                height: 960
+            }
+        );
+        assert_eq!(
+            shown(640, 480),
+            Viewport {
+                x: 0,
+                y: 0,
+                width: 640,
+                height: 480
+            }
+        );
+        // A window too small for it is fitted as the scaled picture is.
+        assert_eq!(shown(320, 240), letterbox(320, 240, (640, 480)));
+        assert_eq!(shown(0, 0), letterbox(0, 0, (640, 480)));
     }
 
     #[test]
