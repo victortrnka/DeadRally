@@ -25,7 +25,11 @@ A player downloads DeadRally for their system and points it at their copy of the
    - Linux: a tar.gz.
 
    All are built by CI from a `v*` tag. None is signed: the README says how to open an unsigned app. SDL3 is already linked in statically, so each package holds one program. *Cost if wrong:* an installer or signing later; nothing in the game changes.
-4. **Smoothing follows the original:** it applies only to the 320x200 screens (the race, the intro and the animations), not to the 640x480 menus. *Cost if wrong:* none; it can become an option.
+4. **Smoothing follows the original:**
+   - `-smooth` and F12 apply only to the 320x200 screens (the race, the intro and the animations).
+   - In the scaled (OpenGL-style) picture, the 640x480 menus are always filtered, as the original's are.
+
+   *Cost if wrong:* none; either can become an option.
 
 ## 3. Facts about the original
 
@@ -37,7 +41,7 @@ A player downloads DeadRally for their system and points it at their copy of the
   - F12 toggles 0x456A20 (0x43BCB9).
 - **The OpenGL output** (0x43B5B4):
   - In the 320x200 mode (0x456C14 = 0x13), the frame is uploaded as a 320x200 texture, filtered `GL_NEAREST` while 0x456A20 is set and `GL_LINEAR` otherwise (0x43B6A2).
-  - The 640x480 mode has its own path (0x43B7C0), which does not read 0x456A20.
+  - The 640x480 mode has its own path (0x43B7C0). It does not read 0x456A20 and always filters `GL_LINEAR` (0x43B898).
 - **The software output** (0x43B9A1):
   - The 320x200 mode is doubled into 640x400 from row 40 while 0x456A20 is set (0x43B9B9).
   - Smoothed (0x43BA99), each pixel goes to the even column of its even row. Each odd column is then the mean of its two neighbours, and each odd row the mean of the rows above and below it. A mean is `((a & 0xFCFCFC) + (b & 0xFCFCFC)) >> 1`, so each channel loses its low two bits first.
@@ -47,7 +51,7 @@ A player downloads DeadRally for their system and points it at their copy of the
 
 - **M7a, the display options:**
   - `-smooth`, which starts with smoothing on.
-  - Smoothing, and F12's toggle, only on the 320x200 screens.
+  - Smoothing, and F12's toggle, only on the 320x200 screens; the 640x480 screens always filtered when scaled.
   - `-nogl`, the software renderer's picture: 640x480, the 320x200 screens doubled at row 40 or, with smoothing on, smoothed as 0x43BA99 does; shown at the largest whole scale that fits.
   - `-window`, Alt+Enter and the desktop-resolution scaling are in already (M0).
 - **M7b, settings and the first start:**

@@ -24,7 +24,7 @@ mod test_scene;
 mod trig;
 
 pub use audio::{render_effect, render_music};
-pub use frame::{Frame, expand_6bit};
+pub use frame::{Frame, WINDOW_HEIGHT, WINDOW_WIDTH, expand_6bit};
 pub use game::Game;
 pub use input::{InputEvent, Key, PadAxis, PadButton};
 

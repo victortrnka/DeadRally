@@ -35,10 +35,10 @@ const USAGE: &str = "usage:
   deadrally-headless run --ticks N
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
-  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... --out FILE.png
+  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--smooth] --out FILE.png
   deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]...
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--ticks N] SHOT.png...
+  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--smooth] [--ticks N] SHOT.png...
   deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--no-ai] [--cfg DR.CFG] [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
@@ -89,6 +89,7 @@ enum Command {
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
         still: bool,
+        smooth: bool,
         out: PathBuf,
     },
     Compare {
@@ -111,6 +112,7 @@ enum Command {
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
         still: bool,
+        smooth: bool,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -167,12 +169,14 @@ fn main() -> ExitCode {
             saves,
             clock,
             still,
+            smooth,
             out,
         } => render(
             data.as_deref(),
             tick,
             &keys,
             (seed, &saves, clock, still),
+            smooth,
             &out,
         )
         .map(|()| ExitCode::SUCCESS),
@@ -194,12 +198,14 @@ fn main() -> ExitCode {
             saves,
             clock,
             still,
+            smooth,
             ticks,
             shots,
         } => find(
             data.as_deref(),
             &keys,
             (seed, &saves, clock, still),
+            smooth,
             ticks,
             &shots,
         ),
@@ -293,6 +299,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut saves = Vec::new();
     let mut clock = None;
     let mut still = false;
+    let mut smooth = false;
     let mut cfg = None;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
@@ -303,6 +310,8 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             && name == "--no-ai"
         {
             still = true;
+        } else if matches!(command, "render" | "find") && name == "--smooth" {
+            smooth = true;
         } else if options.contains(&name) {
             let value = args.next().ok_or(format!("{name} needs a value"))?;
             let number = || {
@@ -373,6 +382,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             saves,
             clock,
             still,
+            smooth,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "trace" => Ok(Command::Trace {
@@ -442,6 +452,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 saves,
                 clock,
                 still,
+                smooth,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -682,12 +693,13 @@ fn render(
     tick: u64,
     keys: &[Press],
     start: Start,
+    smooth: bool,
     out: &Path,
 ) -> Result<(), String> {
     let located = locate_data(data)?;
     let mut game = started(&located, start, None)?;
     play(&mut game, tick, keys, |_, _| {});
-    window::present(&game.frame())?.write_png(out)
+    window::present(&game.frame(), smooth)?.write_png(out)
 }
 
 /// The race's state after every tick up to `tick` (`tick race-frame | car | ...`), to compare
@@ -730,6 +742,7 @@ fn find(
     data: Option<&Path>,
     keys: &[Press],
     start: Start,
+    smooth: bool,
     ticks: u64,
     shots: &[PathBuf],
 ) -> Result<ExitCode, String> {
@@ -753,33 +766,47 @@ fn find(
     // First only exact matches, which fail fast on the first differing byte.
     let mut matches = vec![Vec::new(); shots.len()];
     let mut equal = vec![false; shots.len()];
-    timeline(&located, keys, start, ticks, |tick, window, changed| {
-        for (index, picture) in pictures.iter().enumerate() {
-            if changed {
-                equal[index] = window.pixels == picture.pixels;
+    timeline(
+        &located,
+        keys,
+        start,
+        smooth,
+        ticks,
+        |tick, window, changed| {
+            for (index, picture) in pictures.iter().enumerate() {
+                if changed {
+                    equal[index] = window.pixels == picture.pixels;
+                }
+                if equal[index] {
+                    matches[index].push(tick);
+                }
             }
-            if equal[index] {
-                matches[index].push(tick);
-            }
-        }
-    })?;
+        },
+    )?;
     // Then, for screenshots without a match, the nearest picture, to help find out why.
     let unmatched: Vec<usize> = (0..shots.len())
         .filter(|&index| matches[index].is_empty())
         .collect();
     let mut closest: Vec<Option<(Difference, u64)>> = vec![None; shots.len()];
     if !unmatched.is_empty() {
-        timeline(&located, keys, start, ticks, |tick, window, changed| {
-            if !changed {
-                return;
-            }
-            for &index in &unmatched {
-                let difference = window.difference(&pictures[index]).expect("window-sized");
-                if closest[index].is_none_or(|(best, _)| difference < best) {
-                    closest[index] = Some((difference, tick));
+        timeline(
+            &located,
+            keys,
+            start,
+            smooth,
+            ticks,
+            |tick, window, changed| {
+                if !changed {
+                    return;
                 }
-            }
-        })?;
+                for &index in &unmatched {
+                    let difference = window.difference(&pictures[index]).expect("window-sized");
+                    if closest[index].is_none_or(|(best, _)| difference < best) {
+                        closest[index] = Some((difference, tick));
+                    }
+                }
+            },
+        )?;
     }
     for (index, path) in shots.iter().enumerate() {
         match closest[index] {
@@ -806,6 +833,7 @@ fn timeline(
     located: &Located,
     keys: &[Press],
     start: Start,
+    smooth: bool,
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
@@ -818,7 +846,7 @@ fn timeline(
             .as_ref()
             .is_none_or(|(pixels, palette, _)| pixels != frame.pixels || palette != frame.palette);
         if changed {
-            match window::present(&frame) {
+            match window::present(&frame, smooth) {
                 Ok(window) => {
                     previous = Some((frame.pixels.to_vec(), frame.palette.to_vec(), window));
                 }
@@ -1107,6 +1135,7 @@ mod tests {
                 saves: vec![],
                 clock: None,
                 still: false,
+                smooth: false,
                 out: PathBuf::from("a.png")
             })
         );
@@ -1126,10 +1155,17 @@ mod tests {
                 saves: vec![],
                 clock: None,
                 still: false,
+                smooth: false,
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })
         );
+        // The reference runner's --smooth starts the original with -smooth; find must
+        // smooth our picture the same way to compare.
+        assert!(matches!(
+            parse(&args(&["find", "--smooth", "a.png"])),
+            Ok(Command::Find { smooth: true, .. })
+        ));
     }
 
     /// The race's sound is recorded from runs of the original with `--no-ai`; our render of

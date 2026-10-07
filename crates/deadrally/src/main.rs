@@ -2,11 +2,12 @@
 //! original's startup sequence on SDL3, silently until M1b.
 //!
 //! Options: `-window` starts windowed (default: borderless fullscreen at the desktop
-//! resolution); `-novsync` turns vsync off, for measuring present cost; `-testscene` runs the
-//! M0 test scene, which needs no game data; `--data <dir>` names the game data directory (else
+//! resolution); `-smooth` starts with the 320x200 screens smoothed; `-nogl` shows the original's
+//! software picture (640x480, at a whole scale) instead of scaling the screens to the desktop;
+//! `-novsync` turns vsync off, for measuring present cost; `-testscene` runs the M0 test scene,
+//! which needs no game data; `--data <dir>` names the game data directory (else
 //! `DEADRALLY_DATA`, else `data_path` in the config file). Alt+Enter toggles fullscreen, F12
-//! toggles bilinear smoothing, closing the window quits. One stats line per second goes to
-//! stdout.
+//! toggles the smoothing, closing the window quits. One stats line per second goes to stdout.
 
 mod keymap;
 
@@ -15,8 +16,10 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox};
-use deadrally_core::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis};
+use deadrally_core::host::{AudioGate, Pacer, RunStats, letterbox, whole_scale};
+use deadrally_core::{
+    AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, Game, InputEvent, PadAxis, WINDOW_HEIGHT, WINDOW_WIDTH,
+};
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::{DATA_ENV_VAR, LocateError, Outcome, config_path, locate};
 use deadrally_gamedata::{dr_cfg, save_game};
@@ -34,6 +37,8 @@ const BYTES_PER_SAMPLE: usize = 2;
 #[derive(Debug, PartialEq, Eq)]
 struct Options {
     windowed: bool,
+    smooth: bool,
+    nogl: bool,
     vsync: bool,
     test_scene: bool,
     data: Option<PathBuf>,
@@ -42,6 +47,8 @@ struct Options {
 fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
     let mut options = Options {
         windowed: false,
+        smooth: false,
+        nogl: false,
         vsync: true,
         test_scene: false,
         data: None,
@@ -50,6 +57,8 @@ fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, St
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("-window") => options.windowed = true,
+            Some("-smooth") => options.smooth = true,
+            Some("-nogl") => options.nogl = true,
             Some("-novsync") => options.vsync = false,
             Some("-testscene") => options.test_scene = true,
             Some("--data") => {
@@ -59,7 +68,8 @@ fn parse_options(args: impl IntoIterator<Item = OsString>) -> Result<Options, St
             }
             _ => {
                 return Err(format!(
-                    "unknown option {}; known: -window, -novsync, -testscene, --data <dir>",
+                    "unknown option {}; known: -window, -smooth, -nogl, -novsync, -testscene, \
+                     --data <dir>",
                     arg.to_string_lossy()
                 ));
             }
@@ -132,6 +142,16 @@ fn tell(flag: MessageBoxFlag, title: &str, message: &str) {
     let _ = show_simple_message_box(flag, &format!("DeadRally: {title}"), message, None);
 }
 
+/// How a screen `width` pixels wide is filtered when scaled: the original filters its 640x480
+/// screens always (0x43B898) and its 320x200 ones when smoothing is on (0x43B6A2).
+fn scale_mode(width: u32, smooth: bool) -> ScaleMode {
+    if smooth || width != 320 {
+        ScaleMode::Linear
+    } else {
+        ScaleMode::Nearest
+    }
+}
+
 fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
@@ -184,7 +204,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut rgba = Vec::new();
     let mut samples = Vec::new();
     let mut outgoing = Vec::new();
-    let mut smooth = false;
+    let mut smooth = options.smooth;
     let mut open_pads: Vec<Gamepad> = Vec::new();
 
     let mut pacer = Pacer::new();
@@ -338,26 +358,36 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let present_start = Instant::now();
         let frame = game.frame();
-        if texture.is_none() || texture_size != (frame.width, frame.height) {
+        // -nogl: the original's software picture, always 640x480, its pixels kept whole. Only
+        // the test scene has screens of other sizes, which are scaled as without it.
+        let software =
+            options.nogl && matches!((frame.width, frame.height), (640, 480) | (320, 200));
+        let size = if software {
+            (WINDOW_WIDTH, WINDOW_HEIGHT)
+        } else {
+            (frame.width, frame.height)
+        };
+        if texture.is_none() || texture_size != size {
             texture = Some(texture_creator.create_texture_streaming(
                 PixelFormat::RGBA32,
-                frame.width,
-                frame.height,
+                size.0,
+                size.1,
             )?);
-            texture_size = (frame.width, frame.height);
-            rgba.resize(frame.pixels.len() * 4, 0);
+            texture_size = size;
+            rgba.resize(size.0 as usize * size.1 as usize * 4, 0);
         }
         let texture = texture.as_mut().expect("created above");
-        frame.write_rgba(&mut rgba);
-        texture.update(None, &rgba, frame.width as usize * 4)?;
-        texture.set_scale_mode(if smooth {
-            ScaleMode::Linear
-        } else {
-            ScaleMode::Nearest
-        });
-
         let (output_width, output_height) = canvas.output_size()?;
-        let viewport = letterbox(output_width, output_height, frame.aspect);
+        let viewport = if software {
+            frame.write_window_rgba(smooth, &mut rgba)?;
+            texture.set_scale_mode(ScaleMode::Nearest);
+            whole_scale(output_width, output_height, size)
+        } else {
+            frame.write_rgba(&mut rgba);
+            texture.set_scale_mode(scale_mode(frame.width, smooth));
+            letterbox(output_width, output_height, frame.aspect)
+        };
+        texture.update(None, &rgba, size.0 as usize * 4)?;
         canvas.set_draw_color(Color::BLACK);
         canvas.clear();
         if viewport.width > 0 && viewport.height > 0 {
@@ -406,6 +436,27 @@ mod tests {
         assert!(options.windowed && options.test_scene && options.vsync);
         assert_eq!(options.data, Some(PathBuf::from("/games/dr")));
         assert_eq!(parse(&[]).unwrap().data, None);
+    }
+
+    #[test]
+    fn the_originals_display_options_are_known() {
+        // The 2009 readme tells players to add -smooth and -nogl; refusing them would stop
+        // the game for a player who follows it.
+        let options = parse(&["-smooth", "-nogl"]).unwrap();
+        assert!(options.smooth && options.nogl);
+        let plain = parse(&[]).unwrap();
+        assert!(!plain.smooth && !plain.nogl);
+    }
+
+    #[test]
+    fn smoothing_is_for_the_low_resolution_screens_and_the_menus_are_always_filtered() {
+        // The original filters its 640x480 screens whatever F12 says (0x43B898) and its
+        // 320x200 ones only when smoothing is on (0x43B6A2).
+        for smooth in [false, true] {
+            assert_eq!(scale_mode(640, smooth), ScaleMode::Linear);
+        }
+        assert_eq!(scale_mode(320, false), ScaleMode::Nearest);
+        assert_eq!(scale_mode(320, true), ScaleMode::Linear);
     }
 
     #[test]
