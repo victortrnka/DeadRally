@@ -46,7 +46,7 @@ const PICKUP_EASY: i32 = 50;
 const PICKUP_BY_RANK: [[i32; 2]; 4] = [[260, 500], [200, 300], [120, 150], [60, 80]];
 const PICKUP_LEADER: i32 = 400;
 /// A wreck's damage, and the damage under which a race counts as clean.
-const WRECKED: i32 = 100;
+pub(crate) const WRECKED: i32 = 100;
 const CLEAN: i32 = 3;
 /// The last place, which takes nobody's money power-ups.
 const LAST: i32 = 4;
@@ -59,6 +59,8 @@ impl Campaign {
         let me = self.player_racer();
         let mine = finish(me);
         let race = self.entered_race.unwrap_or(0);
+        // 0x433512: the place, for the results and for the shop after them.
+        self.place = mine.place;
         let mut books = Books {
             place: mine.place,
             ..Books::default()
@@ -97,10 +99,13 @@ impl Campaign {
                 }
             }
         }
-        // 0x433720: the loan's races; every driver's weapons gone; the market restocked.
+        // 0x433720: the loan's races; no welcome box from now on (0x433733); every driver's
+        // weapons gone; the market restocked.
+        self.race_welcome = false;
         let player = self.player_mut();
+        // The original's adds wrap on a hand-made save's numbers.
         if player.loan != -1 {
-            player.loan_races += 1;
+            player.loan_races = player.loan_races.wrapping_add(1);
         }
         for record in &mut self.drivers {
             record.mines = 0;
@@ -108,7 +113,7 @@ impl Campaign {
             record.rocket = 0;
             record.sabotage = 0;
         }
-        self.stock = [1, 1, 1, i32::from(!leading)];
+        self.restock();
         for racer in &self.racers {
             self.drivers[racer.driver].last_income = 0;
         }
@@ -147,27 +152,27 @@ impl Campaign {
                 }
                 if (1..=3).contains(&it.place) && it.damage != WRECKED {
                     let prize = PRIZES[race.min(2)][(it.place - 1) as usize];
-                    record.last_income += prize;
+                    record.last_income = record.last_income.wrapping_add(prize);
                     if racer == me {
                         books.prize = prize;
                     }
                 }
-                record.money += record.last_income;
-                record.total_income += record.last_income;
+                record.money = record.money.wrapping_add(record.last_income);
+                record.total_income = record.total_income.wrapping_add(record.last_income);
                 if it.place == 1 {
-                    record.wins += 1;
+                    record.wins = record.wins.wrapping_add(1);
                 }
             }
         }
         // 0x43443C: the races and the damage carried over.
         if self.player_leads() {
             let record = self.player_mut();
-            record.races += 1;
+            record.races = record.races.wrapping_add(1);
             record.damage = finish(1).damage;
         } else {
             for (racer, entry) in self.racers.clone().iter().enumerate() {
                 let record = &mut self.drivers[entry.driver];
-                record.races += 1;
+                record.races = record.races.wrapping_add(1);
                 record.damage = finish(racer).damage;
             }
         }
@@ -268,6 +273,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn only_a_new_games_first_race_shows_the_welcome_box() {
+        // The box naming the race's keys would otherwise greet the player before every race.
+        let mut campaign = campaign();
+        campaign.race_welcome = true;
+        campaign.settle(&Outcome {
+            finishes: vec![finish(1, 0, 0); 4],
+            ..Outcome::default()
+        });
+        assert!(!campaign.race_welcome);
+    }
+
     /// The medium race pays 3000, 1500 and 375 for the first three places, nothing to a
     /// wreck, and each money power-up 200 to a racer while the player is ranked 6 to 10; a
     /// win counts; every driver's weapons are gone after; the damage carries over.
@@ -364,5 +381,36 @@ mod tests {
             ..outcome
         });
         assert_eq!((campaign.drug_deal, campaign.hit), (-3, -2));
+    }
+
+    /// A hand-made save may give a driver numbers near the end of the range; the original's
+    /// plain adds wrap there (0x433CD0, 0x433CDC, 0x433CFC, 0x4344F8), and the books must not
+    /// stop the game.
+    #[test]
+    fn a_hand_made_save_s_huge_numbers_wrap_instead_of_stopping_the_game() {
+        let mut campaign = campaign();
+        for driver in [3, PLAYER] {
+            let record = &mut campaign.drivers[driver];
+            record.money = i32::MAX;
+            record.total_income = i32::MAX;
+            record.wins = i32::MAX;
+            record.races = i32::MAX;
+        }
+        campaign.drivers[PLAYER].loan = 0;
+        campaign.drivers[PLAYER].loan_races = i32::MAX;
+        let outcome = Outcome {
+            finishes: vec![
+                finish(1, 0, 0),
+                finish(2, 0, 0),
+                finish(3, 0, 0),
+                finish(4, 0, 0),
+            ],
+            ..Outcome::default()
+        };
+        campaign.settle(&outcome);
+        assert_eq!(campaign.drivers[3].money, i32::MAX.wrapping_add(3000));
+        assert_eq!(campaign.drivers[3].wins, i32::MIN);
+        assert_eq!(campaign.drivers[PLAYER].races, i32::MIN);
+        assert_eq!(campaign.drivers[PLAYER].loan_races, i32::MIN);
     }
 }

@@ -277,6 +277,8 @@ pub(crate) struct Campaign {
     pub(crate) warn_medium: bool,
     pub(crate) underground_popup: bool,
     pub(crate) welcome: bool,
+    /// A new game's first race shows the box with the race's keys after its intro (0x464F44).
+    pub(crate) race_welcome: bool,
     /// The sign-up on screen, and the race the player is in.
     pub(crate) sign_up: Option<SignUp>,
     pub(crate) entered_race: Option<usize>,
@@ -299,6 +301,12 @@ pub(crate) struct Campaign {
     pub(crate) drug_deal: i32,
     pub(crate) hit: i32,
     pub(crate) hit_victim: usize,
+    /// The victim's name as the hit was taken (0x45FBE0), which the shop names after the
+    /// race, when the drivers have been sorted afresh.
+    pub(crate) hit_victim_name: Vec<u8>,
+    /// The player's place in the last race (0x456B50), which the shop's last-place popup
+    /// reads and clears.
+    pub(crate) place: i32,
     /// The offer on screen, waiting for its answer.
     pub(crate) offer: Option<Offer>,
     /// The race's drivers in their places on the grid.
@@ -362,6 +370,7 @@ impl Campaign {
             warn_medium: false,
             underground_popup: false,
             welcome: false,
+            race_welcome: false,
             sign_up: None,
             entered_race: None,
             hitman_chance: 5,
@@ -372,6 +381,8 @@ impl Campaign {
             drug_deal: 0,
             hit: 0,
             hit_victim: 0,
+            hit_victim_name: Vec::new(),
+            place: 0,
             offer: None,
             racers: Vec::new(),
             win_streak: 0,
@@ -427,6 +438,19 @@ impl Campaign {
             .filter(|&(index, _)| index != self.player_index)
             .map(|(_, driver)| driver.points)
             .fold(0, i32::max)
+    }
+
+    /// `initDrivers` (0x428930) for a new game or the end of one: the drivers, what the
+    /// sponsors look at (0x428CE9), the sign-up's border on the first race, and the market
+    /// restocked.
+    pub(crate) fn init_drivers(&mut self, cars: &[CarSpec], names: &[Vec<u8>]) {
+        self.player_index = PLAYER;
+        init_drivers(&mut self.drivers, &mut self.rand, cars, names);
+        self.win_streak = 0;
+        self.clean_race = false;
+        self.all_wrecked = false;
+        self.selected_race = 0;
+        self.restock();
     }
 
     /// The market restocked (0x4236D0, from `initDrivers` on): everything on sale but the
@@ -810,6 +834,25 @@ mod tests {
         assert_eq!(first, [41, 18467, 6334, 26500, 19169]);
         let mut zero = Rand::new(0);
         assert_eq!(zero.next(), 38);
+    }
+
+    #[test]
+    fn a_new_game_counts_the_sponsors_wins_in_a_row_from_nothing() {
+        // Two wins at the end of one game would otherwise make the next game's first win a
+        // streak of three, and the sponsor would pay after one win instead of three.
+        let mut campaign = Campaign::new(1);
+        campaign.win_streak = 2;
+        campaign.clean_race = true;
+        campaign.all_wrecked = true;
+        campaign.init_drivers(&cars(), &names());
+        assert_eq!(
+            (
+                campaign.win_streak,
+                campaign.clean_race,
+                campaign.all_wrecked
+            ),
+            (0, false, false)
+        );
     }
 
     #[test]

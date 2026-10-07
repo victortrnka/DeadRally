@@ -498,15 +498,18 @@ impl Menu {
     }
 
     /// The shop again after the market or a race's results (`postLoadedOrLicense` from
-    /// 0x4389A6): drawn afresh on the menu's background with the continue item selected and
-    /// the bottom panel under it, shown under a black palette; the music's order back when the
-    /// market was left by Escape (0x438B58); then faded in.
+    /// 0x4389A6): drawn afresh on the menu's background with the continue item selected, the
+    /// first popup due over it (`menu::sponsors`) and the bottom panel under it, shown under a
+    /// black palette; the music's order back when the market was left by Escape (0x438B58);
+    /// then faded in.
     pub(super) fn shop_again(&mut self) -> State {
-        self.campaign.welcome = false;
         self.screen.copy_all(&self.graphics.background);
         self.shop.selected = CONTINUE;
         let mut screen = std::mem::take(&mut self.screen);
         self.draw_shop(&mut screen);
+        self.screen = screen;
+        self.first_shop_popup();
+        let mut screen = std::mem::take(&mut self.screen);
         self.graphics.panel_frame(&mut screen, 0, 371, 639, 109);
         self.graphics.panel_text(&mut screen, &self.panel);
         self.screen = screen;
@@ -518,49 +521,46 @@ impl Menu {
         State::ShopFadeIn { step: 0 }
     }
 
-    /// A wait of the shop's fade in after the market: the volume up, the flag turning every
-    /// other wait when the player can race; then the continue item's border.
+    /// A wait of the shop's fade in after the market or the results: the volume up after the
+    /// market's Escape; every other wait the flag turning when no popup is due and the player
+    /// can race (0x438BB2), or the popup's cursor when one is due (0x438CB1); then the popups.
     pub(super) fn shop_fade_in(&mut self, step: u32) -> State {
         if self.shop.market_escaped {
             self.fade_volume(VOLUME_STEP * step);
         }
-        if step % 2 == 1 && self.can_race() {
-            self.turn_flag();
+        if step % 2 == 1 {
+            if self.shop_popup_due().is_some() {
+                self.draw_cursor_at(WELCOME_CURSOR.0, WELCOME_CURSOR.1);
+            } else if self.can_race() {
+                self.turn_flag();
+            }
         }
         self.palette.fade_market(2 * i64::from(step));
         if step + 1 < FADE_IN_STEPS {
             return State::ShopFadeIn { step: step + 1 };
         }
-        let mut screen = std::mem::take(&mut self.screen);
-        self.graphics.panel_frame(&mut screen, 0, 371, 639, 109);
-        self.graphics.panel_text(&mut screen, &self.panel);
-        self.border(
-            &mut screen,
-            BORDER_X[4],
-            BORDER_Y,
-            BORDER_SIZE.0,
-            BORDER_SIZE.1,
-        );
-        self.screen = screen;
-        self.shown = self.screen.clone();
-        self.shop.market_escaped = false;
-        State::Shop { second: false }
+        self.after_shop_fade()
     }
 
-    /// No loan due, 1000 or more with the car's trade-in value, the money for a repair, the
-    /// car not near wrecked (0x438C13).
+    /// No loan due, 1000 or more with the car's trade-in value when the shop was entered, the
+    /// money for a repair, the car not near wrecked (0x438C13).
     fn can_race(&self) -> bool {
         let player = self.campaign.player();
-        let full = self.assets.menu.texts.campaign.cars[player.car as usize].repair_price;
-        let repair = if self.campaign.use_weapons {
+        player.loan_races != LOAN_DUE
+            && i64::from(player.money) + i64::from(self.shop.trade_in) >= RACE_MONEY
+            && player.money >= self.repair_price()
+            && player.damage <= WRECK_DAMAGE
+    }
+
+    /// A repair's price (0x4227C0): the car's, half with weapons.
+    pub(super) fn repair_price(&self) -> i32 {
+        let car = self.campaign.player().car.clamp(0, 5) as usize;
+        let full = self.assets.menu.texts.campaign.cars[car].repair_price;
+        if self.campaign.use_weapons {
             full / 2
         } else {
             full
-        };
-        player.loan_races != LOAN_DUE
-            && i64::from(player.money) + i64::from(self.trade_in()) >= RACE_MONEY
-            && player.money >= repair
-            && player.damage <= WRECK_DAMAGE
+        }
     }
 }
 

@@ -162,6 +162,10 @@ pub struct MenuAssets {
     /// `EVENT_2`.
     pub drug_dealer: Image,
     pub hitman: Image,
+    /// The shop's popups after a race (spec M5): the sponsor `SPONS1B` and the reaper
+    /// `REAPER_X`.
+    pub sponsor: Image,
+    pub reaper: Image,
     /// The race's preview (spec M4 §3): the banner `PREP4`, the grid's frame `PREPW1` and the
     /// circuits' pictures `TSHAPE01`..`TSHAPE19`, by circuit (the last the Adversary's).
     pub preview_banner: Image,
@@ -559,6 +563,8 @@ fn menu_assets(
         market_prices: market_prices(exe).map_err(AssetError::Machine)?,
         drug_dealer: frames(menu, "DRUGDEAL.BPK")?.remove(0),
         hitman: frames(menu, "EVENT_2.BPK")?.remove(0),
+        sponsor: frames(menu, "SPONS1B.BPK")?.remove(0),
+        reaper: frames(menu, "REAPER_X.BPK")?.remove(0),
         preview_banner: frames(menu, "PREP4.BPK")?.remove(0),
         preview_grid: frames(menu, "PREPW1.BPK")?.remove(0),
         track_shapes: TRACK_SHAPES

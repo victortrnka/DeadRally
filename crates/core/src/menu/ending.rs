@@ -137,7 +137,7 @@ impl Menu {
             return State::EndFameOut { step: step + 1 };
         }
         self.menu_sound_back();
-        self.reset_game();
+        self.end_game();
         self.set_up();
         State::FadeIn { step: 0 }
     }

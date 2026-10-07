@@ -19,6 +19,7 @@ mod results;
 mod shop;
 mod sign_up;
 mod slots;
+mod sponsors;
 
 use deadrally_gamedata::assets::Assets;
 use deadrally_gamedata::dr_cfg::DrCfg;
@@ -1067,8 +1068,12 @@ impl Menu {
         campaign.warn_medium = true;
         campaign.underground_popup = true;
         campaign.welcome = true;
+        campaign.race_welcome = true;
         self.init_drivers();
         self.campaign.player_mut().colour = colour;
+        // 0x438879: `postLoadedOrLicense` counts the new car's trade-in on its way to the
+        // sign-up.
+        self.shop.trade_in = self.trade_in();
         self.palette.fade(100);
         let texts = &self.assets.menu.texts.campaign;
         let (shop, racing) = (
@@ -1086,16 +1091,7 @@ impl Menu {
     /// for the player's colour (`sub_4224E0`).
     fn init_drivers(&mut self) {
         let texts = &self.assets.menu.texts.campaign;
-        let campaign = &mut self.campaign;
-        campaign.player_index = crate::campaign::PLAYER;
-        crate::campaign::init_drivers(
-            &mut campaign.drivers,
-            &mut campaign.rand,
-            &texts.cars,
-            &texts.driver_names,
-        );
-        campaign.selected_race = 0;
-        campaign.restock();
+        self.campaign.init_drivers(&texts.cars, &texts.driver_names);
         self.shop.reset();
         self.car_frame = 0;
         self.compose_palette();
@@ -1116,21 +1112,18 @@ impl Menu {
         self.yes_no_open(Question::EndGame, true)
     }
 
-    /// "Yes" ends the game: the menus as at the start, the drivers set up afresh.
+    /// "Yes" ends the game, the palette at full brightness after it.
     fn end_game_answer(&mut self, answer: Option<bool>) -> State {
         if answer == Some(true) {
-            self.reset_game();
-            // 0x439F7D: the highlight back on the first row.
-            self.submenus[Submenu::Start as usize].selected = 0;
+            self.end_game();
             self.palette.fade(100);
         }
         self.start_pass()
     }
 
-    /// A game over, ended or won: the menus' first rows back to a new game, the rows that need
-    /// a game off, the warnings and popups off, the drivers set up afresh (0x439F40,
-    /// 0x4354F9).
-    fn reset_game(&mut self) {
+    /// The game ended (`endGame` 0x4291D0, inlined at 0x439EDA): the menus as at the start,
+    /// the drivers set up afresh.
+    fn end_game(&mut self) {
         let texts = &self.assets.menu.texts.campaign;
         let (new, racing) = (texts.new_game_row.clone(), texts.start_racing_row.clone());
         self.graphics.set_row(START_MENU.text, 0, new);
@@ -1139,11 +1132,14 @@ impl Menu {
         for row in [1, 2, 4] {
             start.active[row] = false;
         }
+        // 0x439F7D: the highlight back on the first row.
+        start.selected = 0;
         let campaign = &mut self.campaign;
         campaign.warn_hard = false;
         campaign.warn_medium = false;
         campaign.underground_popup = false;
         campaign.welcome = false;
+        campaign.race_welcome = false;
         campaign.started = false;
         self.init_drivers();
     }

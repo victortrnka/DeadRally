@@ -145,6 +145,8 @@ impl Menu {
         let campaign = &mut self.campaign;
         campaign.player_index = usize::from(game.driver_id);
         campaign.was_leading = false;
+        // 0x422362, 0x42F536: a loaded game's next race shows no welcome box.
+        campaign.race_welcome = false;
         campaign.use_weapons = game.use_weapons != 0;
         for (driver, record) in campaign
             .drivers

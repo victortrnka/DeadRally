@@ -170,8 +170,7 @@ impl Menu {
     }
 
     /// After a wait of `drawToBlackScreen`: the music at `k` fortieths, then the palette at
-    /// one fortieth less before the next wait; after the last, the race (M4b) or, until it
-    /// exists, the stand-in.
+    /// one fortieth less before the next wait; after the last, the race.
     pub(super) fn fading_out(&mut self, k: i32) -> State {
         self.sound
             .set_mask(((f64::from(k) * VOLUME_STEP) as u32) >> 8);
@@ -295,6 +294,10 @@ impl Menu {
             pause_lines: lines,
             race_over_lines: menu.texts.campaign.race_over.clone(),
             paused_lines: menu.texts.campaign.game_paused.clone(),
+            welcome_lines: self
+                .campaign
+                .race_welcome
+                .then(|| menu.texts.campaign.race_welcome.clone()),
             help: menu.texts.help.clone(),
             pads: std::array::from_fn(|control| self.config.pad(control)),
             still: self.campaign.still_opponents,
@@ -370,8 +373,8 @@ impl Menu {
 
     /// The race over (abandoned, or its data not loading): the menus' music and sounds back as
     /// the original brings them back after a race (0x434617), at the full volume the race's
-    /// fades took away and the results would give back (M5), and the menus' background under
-    /// the stand-in's shop with nothing of the preview or the race left on it.
+    /// fades took away, and the menus' background with nothing of the preview or the race
+    /// left on it.
     fn after_race(&mut self) {
         self.menu_sound_back();
         self.screen.copy_all(&self.graphics.background);

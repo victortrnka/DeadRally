@@ -12,11 +12,11 @@ use crate::campaign::{Offer, SignUp};
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
-/// The three races' columns are 160 pixels apart; their snapshots, prices, popups and border.
 /// The music's volume as the screen fades after signing up for no race: from 0xFFDC down by
 /// 0x51E a step.
 const NO_SIGN_UP_VOLUME: u32 = 0xFFDC;
 const NO_SIGN_UP_VOLUME_STEP: u32 = 0x51E;
+/// The three races' columns are 160 pixels apart; their snapshots, prices, popups and border.
 const COLUMN: usize = 160;
 const SNAPSHOT: (usize, usize) = (32, 128);
 const PRICE_XS: [usize; 3] = [73, 226, 383];
@@ -62,6 +62,8 @@ pub(crate) enum PopupThen {
     Market,
     /// The race after the sabotage's popup.
     Race,
+    /// The shop after a race, after one of its popups.
+    Shop,
 }
 
 /// What happens on the sign-up screen between its waits.
@@ -273,6 +275,7 @@ impl Menu {
             PopupThen::SignUp => self.after_welcome(),
             PopupThen::Market => self.after_market_welcome(),
             PopupThen::Race => self.open_preview(),
+            PopupThen::Shop => self.shop_popup_told(),
         }
     }
 
@@ -653,6 +656,8 @@ impl Menu {
                 Some(Offer::Hit { level, victim }) => {
                     campaign.hit = level;
                     campaign.hit_victim = victim;
+                    // 0x43215D: the name kept for the shop after the race.
+                    campaign.hit_victim_name = campaign.drivers[victim].name().to_vec();
                 }
                 None => {}
             }
@@ -672,9 +677,8 @@ impl Menu {
         self.open_preview()
     }
 
-    /// Until the race's end and results exist (M4c, M5), the races end here: back to the shop
-    /// with nothing changed but the welcome, which the shop shows once after the first race
-    /// (spec M3a §2, M3b §2).
+    /// A race whose data does not load ends here: back to the shop with nothing changed but
+    /// the welcome, which the shop shows once after the first race (spec M3a §2, M3b §2).
     pub(super) fn race_stand_in(&mut self) -> State {
         self.campaign.welcome = false;
         self.campaign.sign_up = None;
