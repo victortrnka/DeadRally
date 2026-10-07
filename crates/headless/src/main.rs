@@ -36,7 +36,7 @@ const USAGE: &str = "usage:
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
   deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--smooth] --out FILE.png
-  deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]...
+  deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--menus]
   deadrally-headless compare A.png B.png
   deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--smooth] [--ticks N] SHOT.png...
   deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--no-ai] [--cfg DR.CFG] [--seconds S] --out FILE.wav
@@ -104,6 +104,7 @@ enum Command {
         saves: Vec<(usize, PathBuf)>,
         clock: Option<u32>,
         still: bool,
+        menus: bool,
     },
     Find {
         data: Option<PathBuf>,
@@ -189,8 +190,15 @@ fn main() -> ExitCode {
             saves,
             clock,
             still,
-        } => trace(data.as_deref(), tick, &keys, (seed, &saves, clock, still))
-            .map(|()| ExitCode::SUCCESS),
+            menus,
+        } => trace(
+            data.as_deref(),
+            tick,
+            &keys,
+            (seed, &saves, clock, still),
+            menus,
+        )
+        .map(|()| ExitCode::SUCCESS),
         Command::Find {
             data,
             keys,
@@ -300,6 +308,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut clock = None;
     let mut still = false;
     let mut smooth = false;
+    let mut menus = false;
     let mut cfg = None;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
@@ -312,6 +321,8 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             still = true;
         } else if matches!(command, "render" | "find") && name == "--smooth" {
             smooth = true;
+        } else if command == "trace" && name == "--menus" {
+            menus = true;
         } else if options.contains(&name) {
             let value = args.next().ok_or(format!("{name} needs a value"))?;
             let number = || {
@@ -393,6 +404,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             saves,
             clock,
             still,
+            menus,
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
             Ok([a, b]) => Ok(Command::Compare { a, b }),
@@ -703,12 +715,28 @@ fn render(
 }
 
 /// The race's state after every tick up to `tick` (`tick race-frame | car | ...`), to compare
-/// with the original's memory as `scripts/reference-watch.py` logs it.
-fn trace(data: Option<&Path>, tick: u64, keys: &[Press], start: Start) -> Result<(), String> {
+/// with the original's memory as `scripts/reference-watch.py` logs it; with `menus`, instead
+/// the menus' count of waits, copper row and pulse (`tick count row pulse`) each time the
+/// count or the pulse moves, as its `.menus` log has them.
+fn trace(
+    data: Option<&Path>,
+    tick: u64,
+    keys: &[Press],
+    start: Start,
+    menus: bool,
+) -> Result<(), String> {
     let located = locate_data(data)?;
     let mut game = started(&located, start, None)?;
+    let mut last = None;
     play(&mut game, tick, keys, |done, game| {
-        if let Some(state) = game.race_trace() {
+        if menus {
+            if let Some((count, row, pulse)) = game.menu_waits()
+                && last != Some((count, pulse))
+            {
+                println!("{done} {count} {row} {pulse}");
+                last = Some((count, pulse));
+            }
+        } else if let Some(state) = game.race_trace() {
             println!("{done} {state}");
         }
     });

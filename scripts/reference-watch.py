@@ -15,6 +15,11 @@ on the game's display as a player would (spec M5): Up, and Left or Right towards
 pixels further along the path. The keys the original then saw are in the log, so a run of
 DeadRally can be given the same.
 
+The menus' count of waits (0x456BA0, which steps the background's copper rows every 70), the
+copper row (0x456754) and the pulse (0x45EAA4) go to OUT_FILE.menus as "ms count row pulse"
+each time the count or the pulse moves, so the original's waits can be set against
+DeadRally's (spec M7).
+
 Only memory is read; nothing in the game is changed.
 """
 import math
@@ -36,6 +41,8 @@ FLAME_PHASE = 0x456AFC
 GLOBALS = (("bt", 0x4A9EA4), ("pw", 0x456AC4))
 # The player's place on the grid, and where a car keeps its angle, speed and place (floats).
 PLAYER = 0x4A9EA8
+# The menus' count of waits and the background's copper row.
+MENU_WAITS, COPPER_ROW, PULSE = 0x456BA0, 0x456754, 0x45EAA4
 ANGLE, SPEED, X, Y = 0xAC, 0xB0, 0xB4, 0xB8
 
 
@@ -189,7 +196,8 @@ def main():
     mem = None
     pid = None
     last = None
-    with open(out, "w") as log:
+    last_waits = None
+    with open(out, "w") as log, open(out + ".menus", "w") as menus:
         while child.poll() is None:
             if mem is None:
                 pid = game_pid(child.pid)
@@ -198,6 +206,17 @@ def main():
                     continue
                 mem = open(f"/proc/{pid}/mem", "rb", buffering=0)
             try:
+                mem.seek(MENU_WAITS)
+                waits = int.from_bytes(mem.read(4), "little")
+                mem.seek(PULSE)
+                pulse = int.from_bytes(mem.read(4), "little")
+                if (waits, pulse) != last_waits:
+                    mem.seek(COPPER_ROW)
+                    row = int.from_bytes(mem.read(4), "little")
+                    ms = int((time.monotonic() - start) * 1000)
+                    menus.write(f"{ms} {waits} {row} {pulse}\n")
+                    menus.flush()
+                    last_waits = (waits, pulse)
                 mem.seek(FRAME)
                 frame = int.from_bytes(mem.read(4), "little")
                 if frame != last:

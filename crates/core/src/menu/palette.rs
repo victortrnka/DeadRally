@@ -192,6 +192,11 @@ impl MenuPalette {
     /// What follows each wait of 0x42A570 (and 0x42A480) in the menu: the pulse writes entries
     /// 16–31 at its level and moves on; every 70th call the background steps a row, its 32
     /// entries shown at full brightness.
+    /// The count of waits, the background's copper row and the pulse.
+    pub(crate) fn waits(&self) -> (u32, usize, i64) {
+        (self.calls, self.row, self.pulse)
+    }
+
     pub(crate) fn after_wait(&mut self) {
         self.calls += 1;
         let level = self.pulse << 16;
