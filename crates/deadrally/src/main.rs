@@ -237,7 +237,13 @@ fn load_or_choose(sdl: &Sdl, data: Option<&Path>) -> Result<Loaded, String> {
     // Kept first and then read back, so that a folder that does not hold the game is reported
     // as the config file's and is asked for again at the next start.
     match config_path().map(|path| save_data_path(&path, &dir)) {
-        Some(Ok(())) => load_game(None),
+        Some(Ok(())) => load_game(None).map_err(|failure| NotLoaded {
+            message: format!(
+                "{}\n\nThe next start asks for the folder again.",
+                failure.message
+            ),
+            ..failure
+        }),
         Some(Err(error)) => {
             tell(
                 MessageBoxFlag::WARNING,

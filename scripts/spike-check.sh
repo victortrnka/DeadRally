@@ -64,15 +64,16 @@ case "$mode" in
     screens)
         launch
         resize 1280 720
-        shot 1280x720-640x480-nearest
+        # The 640-wide screens are always filtered; F12 smooths the 320x200 one (spec M7).
+        shot 1280x720-640x480-filtered
         press Tab
         shot 1280x720-320x200-nearest
         press Tab
-        shot 1280x720-640x360-nearest
+        shot 1280x720-640x360-filtered
         resize 1024 768
-        shot 1024x768-640x360-nearest
-        press Tab F12
-        shot 1024x768-640x480-bilinear
+        shot 1024x768-640x360-filtered
+        press Tab Tab F12
+        shot 1024x768-320x200-smoothed
         press F12
         sleep "$soak"
         ;;

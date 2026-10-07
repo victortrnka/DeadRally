@@ -41,6 +41,9 @@ case "$system" in
         lipo -create -output "$app/Contents/MacOS/deadrally" \
             "$repo/target/aarch64-apple-darwin/release/deadrally" \
             "$repo/target/x86_64-apple-darwin/release/deadrally"
+        # A bundle's version is up to three numbers: v1.0.0-rc1 gives 1.0.0, a dev build 0.0.0.
+        bundle_version=$(echo "${version#v}" | sed -nE 's/^([0-9]+(\.[0-9]+){0,2}).*/\1/p')
+        bundle_version=${bundle_version:-0.0.0}
         cat >"$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -50,8 +53,8 @@ case "$system" in
     <key>CFBundleIdentifier</key><string>io.github.victortrnka.deadrally</string>
     <key>CFBundleName</key><string>DeadRally</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>${version#v}</string>
-    <key>CFBundleVersion</key><string>${version#v}</string>
+    <key>CFBundleShortVersionString</key><string>$bundle_version</string>
+    <key>CFBundleVersion</key><string>$bundle_version</string>
     <key>LSMinimumSystemVersion</key><string>11.0</string>
     <key>NSHighResolutionCapable</key><true/>
 </dict>
