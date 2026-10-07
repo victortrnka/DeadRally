@@ -28,8 +28,6 @@ const ROW_HEIGHT: usize = 24;
 impl Menu {
     /// The race in the Arena won (0x43139D): `ENDANI.HAF` under `TR0-MUS.CMF` with
     /// `ENDANI-E.CMF`'s effects.
-    // The race in the Arena (M6b, another branch) calls it; the allow goes with that merge.
-    #[allow(dead_code)]
     pub(super) fn the_end(&mut self) -> State {
         self.sound.stop();
         self.film = Some(Player::new(&self.assets.letterbox));

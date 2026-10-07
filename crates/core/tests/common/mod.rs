@@ -54,8 +54,10 @@ pub const HITMAN: u8 = SHOP + 31;
 /// The sponsor's and the reaper's pictures in the shop's popups after a race.
 pub const SPONSOR: u8 = SHOP + 32;
 pub const REAPER: u8 = SHOP + 33;
-/// The race's preview: its banner, the grid's frame, the circuit's picture.
+/// The race's preview: its banner, the grid's frame, the circuit's picture (the Arena's one
+/// more); the Adversary's face.
 pub const PREVIEW: u8 = 110;
+pub const ADVERSARY_FACE: u8 = 114;
 /// The results' pictures (spec M5): 120 on.
 pub const RESULTS: u8 = 120;
 /// The Adversary's screen: its title, the Adversary and the Escape box.
@@ -183,6 +185,9 @@ fn texts() -> Texts {
             hitman_offer: vec![b"h".to_vec(); 11],
             laps: b"L".to_vec(),
             prize: b"P".to_vec(),
+            adversary: b"ADV".to_vec(),
+            adversary_preview: b"adv".to_vec(),
+            arena_prize: b"G".to_vec(),
             abort_race: vec![b"A".to_vec(); 9],
             race_over: vec![b"A".to_vec(); 9],
             race_welcome: vec![b"A".to_vec(); 9],
@@ -382,7 +387,11 @@ pub fn menu_assets() -> MenuAssets {
         reaper: solid(104, 128, REAPER),
         preview_banner: solid(640, 54, PREVIEW),
         preview_grid: solid(225, 274, PREVIEW + 1),
-        track_shapes: (0..19).map(|_| solid(360, 274, PREVIEW + 2)).collect(),
+        // The Arena's picture (the last) in a colour of its own.
+        track_shapes: (0..19)
+            .map(|circuit| solid(360, 274, PREVIEW + 2 + u8::from(circuit == 18)))
+            .collect(),
+        adversary_face: solid(64, 64, ADVERSARY_FACE),
     }
 }
 

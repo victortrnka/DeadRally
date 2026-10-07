@@ -171,6 +171,8 @@ pub struct MenuAssets {
     pub preview_banner: Image,
     pub preview_grid: Image,
     pub track_shapes: Vec<Image>,
+    /// The Adversary's face in the Arena's preview (`FACEXX`, loaded at 0x41962D).
+    pub adversary_face: Image,
 }
 
 #[derive(Debug)]
@@ -569,6 +571,7 @@ fn menu_assets(
             .iter()
             .map(|name| Ok(frames(menu, name)?.remove(0)))
             .collect::<Result<_, AssetError>>()?,
+        adversary_face: frames(menu, "FACEXX.BPK")?.remove(0),
     })
 }
 

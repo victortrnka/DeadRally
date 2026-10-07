@@ -1600,6 +1600,46 @@ fn the_race_s_preview_wipes_in_after_the_sign_up() {
 }
 
 #[test]
+fn the_arenas_preview_shows_the_adversary_and_the_player_alone() {
+    // Enter on the Adversary's screen, previewRaceScreen(2) for the Arena (0x4327CE,
+    // 0x432AF9): the Adversary's face and name in the first place, without a rank; the
+    // player's in the second; the two places without a car hatched every other pixel
+    // (0x43235E); the Arena's own picture.
+    let mut game = through_the_market(saved_game_of_a_leader());
+    run(&mut game, 60);
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    assert_eq!(pixel(&game, (60, 140)), common::ADVERSARY_FACE, "its face");
+    assert_eq!(pixel(&game, (25, 202)), common::MEDIUM, "its name");
+    assert_ne!(
+        pixel(&game, (45, 180)),
+        common::MEDIUM,
+        "no rank of its own"
+    );
+    assert_eq!(pixel(&game, (170, 175)), common::FACE, "the player's face");
+    assert_eq!(
+        pixel(&game, (160, 218)),
+        common::MEDIUM,
+        "the player's rank"
+    );
+    assert_eq!(pixel(&game, (400, 200)), common::PREVIEW + 3, "the Arena");
+    for (x, y) in [(19, 222), (131, 261)] {
+        assert_eq!(pixel(&game, (x, y)), 0xC4, "hatched");
+        assert_eq!(
+            pixel(&game, (x + 1, y + 1)),
+            0xC4,
+            "the next row a pixel on"
+        );
+        assert_eq!(
+            pixel(&game, (x + 1, y)),
+            common::PREVIEW + 1,
+            "the grid between"
+        );
+        assert_eq!(pixel(&game, (x + 98, y + 90)), 0xC4, "to its far corner");
+    }
+}
+
+#[test]
 fn the_shop_after_a_race_is_the_menus_own_again() {
     // After a race (here the stand-in for one whose data does not load) the shop opens on the
     // menus' screen with none of the preview left on it.

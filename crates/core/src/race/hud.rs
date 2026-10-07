@@ -37,6 +37,12 @@ const DAMAGE_PICTURES: usize = 8064;
 /// The small boards (64 x 32) by the player's place on the grid, those without weapons four
 /// places on (0x402C9F).
 const SMALL_BOARD: usize = 2048;
+/// The other drivers' boards: 64 across, 32 rows each from the address of their first
+/// (row 104 of the HUD, 0xD020), the last ending 96 rows on.
+const BOARD_WIDTH: usize = 64;
+const BOARD_ROWS: usize = 32;
+const EMPTY_BOARDS: i64 = 0xD020;
+const EMPTY_BOARDS_END: usize = 96;
 
 /// The HUD's pictures (`loadRaceImagesHUD`, `IBFILES.BPA`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -276,6 +282,15 @@ pub(crate) fn draw(
         if board.finished {
             let at = base - 32 + 39972 + 0x4000 * index as i64;
             buffer.draw(&images.flag, 22, 28, at);
+        }
+    }
+    // 0x4143AE: the boards of the places without a car (the Arena's two) hatched black, every
+    // other pixel, a pixel on in every other row.
+    let empty = (boards.len().max(1) - 1) * BOARD_ROWS..EMPTY_BOARDS_END;
+    for row in empty {
+        let at = left + EMPTY_BOARDS + (row * STRIDE) as i64;
+        for column in (row % 2..BOARD_WIDTH).step_by(2) {
+            buffer.put(at + column as i64, 0);
         }
     }
     buffer.draw(digit(laps), 8, 10, left + 46133);
@@ -565,6 +580,40 @@ mod tests {
         };
         let boards = [board(0), board(0), board(0), board(0)];
         draw(&mut Buffer::default(), &images(), 64, &boards, &player, 4);
+    }
+
+    /// In a race of two cars (the Arena) the boards of the two places without a car are
+    /// hatched, every other pixel black (0x4143AE), as the preview hatches their places; a
+    /// race of four hatches none.
+    #[test]
+    fn the_boards_of_places_without_a_car_are_hatched() {
+        let player = Player {
+            speed: 0.0,
+            engine: 1.0,
+            weapons: true,
+            weapons_bar: FULL_BAR,
+            turbo_bar: FULL_BAR,
+            mines: 0,
+            time: 0,
+        };
+        let mut buffer = Buffer::default();
+        draw(
+            &mut buffer,
+            &images(),
+            64,
+            &[board(0), board(0)],
+            &player,
+            9,
+        );
+        assert_eq!(glyph_at(&buffer, 0, 136), 0, "the third place's board");
+        assert_eq!(glyph_at(&buffer, 1, 136), 1, "every other pixel");
+        assert_eq!(glyph_at(&buffer, 1, 137), 0, "a pixel on in the next row");
+        assert_eq!(glyph_at(&buffer, 63, 199), 0, "to the fourth's last");
+        assert_eq!(glyph_at(&buffer, 0, 134), 1, "not the Adversary's board");
+        let mut buffer = Buffer::default();
+        let boards = [board(0), board(0), board(0), board(0)];
+        draw(&mut buffer, &images(), 64, &boards, &player, 9);
+        assert_eq!(glyph_at(&buffer, 0, 136), 1, "four cars, no hatching");
     }
 
     /// A font whose glyph `g` is 36 pixels of colour `g`, so the buffer tells which glyph

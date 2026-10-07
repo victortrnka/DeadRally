@@ -157,8 +157,15 @@ impl PowerUps {
     /// frames were apart: the power-ups age; once the wait is over, the first 12 places are
     /// tried in a random order and an empty one whose own wait is over gets a power-up (by
     /// `rand()`, the weapons' kinds only in a race with `weapons`) while fewer than four lie
-    /// out; then the old ones blink and go.
-    pub(crate) fn step(&mut self, image: &mut Image, between: i32, weapons: bool, rand: &mut Rand) {
+    /// out, unless a car has finished (`over`, 0x410323); then the old ones blink and go.
+    pub(crate) fn step(
+        &mut self,
+        image: &mut Image,
+        between: i32,
+        weapons: bool,
+        rand: &mut Rand,
+        over: bool,
+    ) {
         self.wait = if self.wait > 0 {
             self.wait - between
         } else {
@@ -169,7 +176,7 @@ impl PowerUps {
                 spot.age += between;
             }
         }
-        if self.wait == 0 {
+        if self.wait == 0 && !over {
             let mut out = self.places[..CHANGING]
                 .iter()
                 .filter(|spot| spot.kind > 0)
@@ -254,6 +261,11 @@ pub(crate) struct Taken {
 }
 
 impl PowerUps {
+    /// The ticks before the next power-up may come (0x456AC4), for the race's trace.
+    pub(crate) fn wait(&self) -> i32 {
+        self.wait
+    }
+
     /// `sub_410B90` for one car: every power-up under its sprite (its middle within 16 pixels
     /// and one of the four pixels round the power-up's middle drawn in the car's sprite) is
     /// taken: its pixels put back, its kind's gift given, its note started, the places' waits
@@ -472,15 +484,34 @@ mod tests {
         }
         power_ups.places[12].kind = 0;
         let before = rand.clone();
-        power_ups.step(&mut image, 349, true, &mut rand);
+        power_ups.step(&mut image, 349, true, &mut rand, false);
         assert_eq!(rand, before, "no draws while waiting");
-        power_ups.step(&mut image, 1, true, &mut rand);
+        power_ups.step(&mut image, 1, true, &mut rand, false);
         let out = power_ups.places[..CHANGING]
             .iter()
             .filter(|p| p.kind > 0)
             .count();
         assert_eq!(out, MOST);
         assert!(power_ups.places[..CHANGING].iter().all(|p| p.kind <= 5));
+    }
+
+    /// Once a car has finished (0x410323, 0x456AC8) no power-up comes, and `rand()` is not
+    /// drawn for one: the draws after the race (the box flying in, the next races) follow
+    /// the original's only if these are left out.
+    #[test]
+    fn no_power_up_comes_once_a_car_has_finished() {
+        let spots: Vec<[i32; 2]> = (0..16).map(|i| [10 + 3 * i, 30]).collect();
+        let mut rand = Rand::new(7);
+        let mut image = track();
+        let mut power_ups = PowerUps::new(&mut image, &spots, pictures(), &mut rand);
+        for place in &mut power_ups.places {
+            place.wait = 0;
+            place.kind = 0;
+        }
+        let before = rand.clone();
+        power_ups.step(&mut image, 350, true, &mut rand, true);
+        assert_eq!(rand, before, "no draws");
+        assert!(power_ups.places.iter().all(|p| p.kind == 0));
     }
 
     /// A car over a power-up takes it: the repair power-up mends 20 %, its pixels go back,
@@ -552,12 +583,12 @@ mod tests {
         power_ups.wait = 50;
         assert_eq!(image.pixels[20 * 64 + 20], 2);
         power_ups.places[0].age = 1985;
-        power_ups.step(&mut image, 0, true, &mut rand);
+        power_ups.step(&mut image, 0, true, &mut rand, false);
         assert_eq!(image.pixels[20 * 64 + 20], 99, "hidden while it blinks");
         power_ups.places[0].age = 1995;
-        power_ups.step(&mut image, 0, true, &mut rand);
+        power_ups.step(&mut image, 0, true, &mut rand, false);
         assert_eq!(image.pixels[20 * 64 + 20], 2, "shown while it blinks");
-        power_ups.step(&mut image, 10, true, &mut rand);
+        power_ups.step(&mut image, 10, true, &mut rand, false);
         assert_eq!(power_ups.places[0].kind, 0);
         assert_eq!(image.pixels[20 * 64 + 20], 99);
         assert_eq!(power_ups.wait, AFTER_ONE_WENT);

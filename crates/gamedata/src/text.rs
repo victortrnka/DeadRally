@@ -265,6 +265,11 @@ const RACE_WELCOME: [u32; 9] = [
 ];
 const BOX_LINE: usize = 32;
 const PRIZE: u32 = 0x44_4078;
+/// The race in the Arena: the Adversary's name in the race (copied into the first racer at
+/// 0x433285) and in the preview (0x432B02), and the preview's prize (0x432A78).
+const ADVERSARY: u32 = 0x44_404C;
+const ADVERSARY_PREVIEW: u32 = 0x44_4058;
+const ARENA_PRIZE: u32 = 0x44_4064;
 /// The shop's popups after a race (`postLoadedOrLicense` from 0x4389A6), ten lines of 80
 /// bytes each: the welcome (0x41C230), the player lapped (0x41B400), the sponsors' by the
 /// player's car (800 bytes a car: three wins in a row 0x41B4F0, a clean race 0x41B6A0,
@@ -454,6 +459,12 @@ pub struct CampaignTexts {
     /// the race's price.
     pub laps: Vec<u8>,
     pub prize: Vec<u8>,
+    /// The race in the Arena: the Adversary's name as the race has it (0x433285), as the
+    /// preview draws it upper-cased (0x432B02), and the race's prize after the prize's words
+    /// (0x432A78).
+    pub adversary: Vec<u8>,
+    pub adversary_preview: Vec<u8>,
+    pub arena_prize: Vec<u8>,
     /// The race's pause box (0x417641): its nine lines, blank but for the fourth, asking
     /// whether to abort the race, and the sixth, how to answer.
     pub abort_race: Vec<Vec<u8>>,
@@ -754,6 +765,9 @@ impl Texts {
                     .collect::<Result<_, _>>()?,
                 laps: text(LAPS, MAX_LINE)?,
                 prize: text(PRIZE, MAX_LINE)?,
+                adversary: shown(ADVERSARY, DRIVER_NAME_MAX)?,
+                adversary_preview: shown(ADVERSARY_PREVIEW, DRIVER_NAME_MAX)?,
+                arena_prize: shown(ARENA_PRIZE, MAX_LINE)?,
                 abort_race: [
                     BOX_BLANK, BOX_BLANK, BOX_BLANK, ABORT_RACE, BOX_BLANK, YES_NO,
                 ]
@@ -1171,6 +1185,9 @@ mod tests {
             put(address, format!("{:x}", address & 0xFF).as_bytes());
         }
         put(LABEL_SEPARATOR, b": ");
+        put(ADVERSARY, b"ADV");
+        put(ADVERSARY_PREVIEW, b"adv");
+        put(ARENA_PRIZE, b"glory");
         for k in 0..HEADLINE_COUNT {
             for line in 0..4 {
                 put(
@@ -1269,6 +1286,18 @@ mod tests {
             [b"38".to_vec(), b"18".to_vec(), b"20".to_vec()]
         );
         assert_eq!(texts.campaign.results_titles[2], b"5c");
+    }
+
+    #[test]
+    fn the_arena_has_the_adversarys_names_and_its_own_prize() {
+        // The Arena's preview names the Adversary from one string (upper-cased as it is
+        // drawn), the race from another, and shows a prize of its own in place of a price;
+        // a wrong address names the Adversary with another string.
+        let texts = Texts::read(&Exe::parse(known_layout()).unwrap()).unwrap();
+        let campaign = &texts.campaign;
+        assert_eq!(campaign.adversary, b"ADV");
+        assert_eq!(campaign.adversary_preview, b"adv");
+        assert_eq!(campaign.arena_prize, b"glory");
     }
 
     #[test]
