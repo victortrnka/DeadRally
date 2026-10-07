@@ -435,8 +435,8 @@ impl Menu {
     }
 
     /// A tick of an animation; when it ends, the menus' music back. After the Adversary's
-    /// (0x42BC45), the palette composed with the title's entries 96 to 127 lit, then the way
-    /// out of the results goes on.
+    /// (0x42BC45), the screen shown cleared, the palette composed with the title's entries 96
+    /// to 127 lit, then the way out of the results goes on.
     pub(super) fn film_tick(&mut self, film: Film, fade: bool) -> State {
         let animation = match film {
             Film::Adversary => &self.assets.adversary_animation,
@@ -453,6 +453,10 @@ impl Menu {
             return self.after_the_end();
         }
         self.menu_sound_back();
+        // 0x42BC87, 0x42B657: `sub_43BE60` clears the screen shown as it sets the menus' mode
+        // back. The shop draws over it at once; the Underground Market's fade on the way out
+        // that keeps the screen shows it black.
+        self.shown.pixels_mut().fill(0);
         self.newly_leading = false;
         if !fade {
             // 0x42B66C: the way out that keeps the screen forgets what the sponsors would have

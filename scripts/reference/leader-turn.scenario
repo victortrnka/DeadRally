@@ -7,7 +7,10 @@
 # end box (which looks at the keys held), then on each results page; the last one's way out
 # fades every colour, ENDANI0.HAF plays, then the shop, and Return on its way on. A few shots of
 # the race, one every 500 ms on the results, then every 200 ms from the way out; run with
-# --no-ai --drive captures/path4.txt:185:3594 --rand 50:3129847534.
+# --no-ai --drive captures/path4.txt:185:3594 --rand 50:3129847534. Run again with weapons
+# (--save 0:captures/leader-turn-armed.sg, `leader_turn_armed_save`: the test game whose player
+# has 99 points against the leader's 100) for the way out that keeps the screen: then the
+# Underground Market's fade after the animation, and the market after the shop's way on.
 at 2000 key space
 at 24000 shot idle
 at 24500 key Return
