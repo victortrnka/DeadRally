@@ -342,10 +342,10 @@ impl Menu {
         if !second {
             return State::Shop { second: true };
         }
-        let next = self.shop_pass();
         if self.shop.game_over {
             return self.shop_game_over();
         }
+        let next = self.shop_pass();
         if next == (State::Shop { second: false })
             && let Some(quick) = self.quick_keys()
         {
