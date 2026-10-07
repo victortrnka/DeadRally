@@ -51,6 +51,9 @@ pub const SHOP: u8 = 53;
 /// The drug dealer's and the hitman's pictures in their offers.
 pub const DRUG_DEALER: u8 = SHOP + 30;
 pub const HITMAN: u8 = SHOP + 31;
+/// The sponsor's and the reaper's pictures in the shop's popups after a race.
+pub const SPONSOR: u8 = SHOP + 32;
+pub const REAPER: u8 = SHOP + 33;
 /// The race's preview: its banner, the grid's frame, the circuit's picture.
 pub const PREVIEW: u8 = 110;
 /// The results' pictures (spec M5): 120 on.
@@ -200,6 +203,31 @@ fn texts() -> Texts {
             key_names: vec![b"N".to_vec(); 256],
             pad_names: vec![b"D".to_vec(); 9],
         },
+        shop_popups: shop_popup_texts(),
+    }
+}
+
+/// Every popup of the shop after a race ten lines of one letter, the pieces around the deals'
+/// pay and the hit's victim one letter each.
+pub fn shop_popup_texts() -> deadrally_gamedata::text::ShopPopupTexts {
+    let lines = |c: u8| vec![vec![c]; 10];
+    deadrally_gamedata::text::ShopPopupTexts {
+        welcome: lines(b'w'),
+        lapped: lines(b'l'),
+        win_streak: vec![lines(b's'); 6],
+        clean_race: vec![lines(b'c'); 6],
+        all_wrecked: vec![lines(b'a'); 6],
+        drug_run: lines(b'd'),
+        drug_run_end: b".".to_vec(),
+        drug_run_failed: lines(b'f'),
+        hit: lines(b'h'),
+        hit_victim_end: b"-".to_vec(),
+        hit_end: b".".to_vec(),
+        hit_failed: lines(b'm'),
+        loan_repaid: lines(b'r'),
+        loan_unpaid: lines(b'u'),
+        end_of_road: lines(b'e'),
+        too_slow: lines(b't'),
     }
 }
 
@@ -343,6 +371,8 @@ pub fn menu_assets() -> MenuAssets {
         car_colours: Palette::BLACK,
         drug_dealer: solid(104, 128, DRUG_DEALER),
         hitman: solid(104, 128, HITMAN),
+        sponsor: solid(104, 128, SPONSOR),
+        reaper: solid(104, 128, REAPER),
         preview_banner: solid(640, 54, PREVIEW),
         preview_grid: solid(225, 274, PREVIEW + 1),
         track_shapes: (0..19).map(|_| solid(360, 274, PREVIEW + 2)).collect(),

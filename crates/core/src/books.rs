@@ -63,6 +63,8 @@ impl Campaign {
             .unwrap_or(0);
         let mine = finish(me);
         let race = self.entered_race.unwrap_or(0);
+        // 0x433512: the place, for the results and for the shop after them.
+        self.place = mine.place;
         let mut books = Books {
             place: mine.place,
             ..Books::default()

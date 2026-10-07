@@ -62,6 +62,8 @@ pub(crate) enum PopupThen {
     Market,
     /// The race after the sabotage's popup.
     Race,
+    /// The shop after a race, after one of its popups.
+    Shop,
 }
 
 /// What happens on the sign-up screen between its waits.
@@ -273,6 +275,7 @@ impl Menu {
             PopupThen::SignUp => self.after_welcome(),
             PopupThen::Market => self.after_market_welcome(),
             PopupThen::Race => self.open_preview(),
+            PopupThen::Shop => self.shop_popup_told(),
         }
     }
 
@@ -653,6 +656,8 @@ impl Menu {
                 Some(Offer::Hit { level, victim }) => {
                     campaign.hit = level;
                     campaign.hit_victim = victim;
+                    // 0x43215D: the name kept for the shop after the race.
+                    campaign.hit_victim_name = campaign.drivers[victim].name().to_vec();
                 }
                 None => {}
             }
