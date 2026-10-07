@@ -273,10 +273,10 @@ const ARENA_PRIZE: u32 = 0x44_4064;
 /// The shop's popups after a race (`postLoadedOrLicense` from 0x4389A6), ten lines of 80
 /// bytes each: the welcome (0x41C230), the player lapped (0x41B400), the sponsors' by the
 /// player's car (800 bytes a car: three wins in a row 0x41B4F0, a clean race 0x41B6A0,
-/// everyone else wrecked 0x41B850), the drug run's outcome (0x41BA00: its seventh line before
-/// the pay and the words after it) and its failure, the hit's (0x41BDE0: the sixth line
-/// before the victim's name and the words after it, the seventh before the pay and the
-/// words after it) and its failure, the loan paid back or not (0x41C4C0), the end of the
+/// everyone else wrecked 0x41B850), the drug run's outcome (0x41BA00: its eighth line before
+/// the pay and the words after it) and its failure, the hit's (0x41BDE0: the seventh line
+/// before the victim's name and the words after it, the eighth before the pay and the words
+/// after it) and its failure, the loan paid back or not (0x41C4C0), the end of the
 /// road (0x41C300) and the last place (0x42E6F0).
 const POPUP_LINES: u32 = 10;
 const SHOP_WELCOME: u32 = 0x44_B848;
