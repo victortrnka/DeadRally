@@ -73,6 +73,17 @@ impl Game {
         }
     }
 
+    /// Keeps the key that ends a race for what follows it, as the original Windows version
+    /// does: the Enter that closes the race-over box then skips the easy race's results page
+    /// (or ends the end animation at once). DeadRally drops that key, a bug of the Windows
+    /// version the owner wants fixed; runs checked against the original keep it. For a game
+    /// that has not reached its menu yet.
+    pub fn keep_the_race_s_last_key(&mut self) {
+        if let Scene::Startup(startup) = &mut self.scene {
+            startup.carry_race_key = true;
+        }
+    }
+
     /// A game the player saved since the last call: its slot and the file to write, which
     /// the host keeps out of the game folder.
     pub fn take_saved_game(&mut self) -> Option<(usize, Vec<u8>)> {

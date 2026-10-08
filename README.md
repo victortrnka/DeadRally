@@ -61,6 +61,10 @@ These are the original's keys:
   - Esc asks whether to abandon the race; Y does.
 - **In the shop:** F2 saves the game to the quicksave slot and F3 loads it.
 
+### Where DeadRally differs on purpose
+
+The 2009 Windows version keeps the key that ends a race for what follows it. The Enter that closes the race-over box therefore skips the easy race's results page before it can be read, and ends the end animation at once. Its DOS version did not do this, and DeadRally does not either: each results page waits for a key of its own.
+
 ## Building from source
 
 ```

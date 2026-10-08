@@ -9,7 +9,8 @@ The first release, with the whole single-player game. Each milestone was checked
   - options kept in `config.toml`;
   - a folder dialog at the first start;
   - packages for Linux, Windows and macOS;
-  - the players' README.
+  - the players' README;
+  - the race's last key no longer skips the easy race's results page or the end animation, a bug of the Windows version.
 - **M6, the full game:**
   - the Adversary's screen;
   - the race in the Arena;

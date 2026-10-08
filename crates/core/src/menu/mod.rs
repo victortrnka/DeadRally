@@ -421,6 +421,11 @@ pub(crate) struct Menu {
     race: Option<crate::race::Race>,
 }
 
+/// How a game starts: the seed of its random numbers, the saved games' files, the
+/// sabotage's clock when fixed, and whether the opponents stay still and a race's last key is
+/// kept (the reference runs' settings, see [`crate::Game`]).
+pub(crate) type Setup = (u32, Vec<Option<Vec<u8>>>, Option<u32>, (bool, bool));
+
 impl Menu {
     /// Takes over from the startup when the title has faded in: the title is shown at its
     /// last fade step, `title_shown`, and the menu stands at `transitionToBlack`'s first wait.
@@ -431,12 +436,7 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        (seed, slot_files, sabotage_clock, still_opponents): (
-            u32,
-            Vec<Option<Vec<u8>>>,
-            Option<u32>,
-            bool,
-        ),
+        (seed, slot_files, sabotage_clock, (still_opponents, carry_race_key)): Setup,
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -486,6 +486,7 @@ impl Menu {
             campaign: Campaign {
                 fixed_clock: sabotage_clock,
                 still_opponents,
+                carry_race_key,
                 ..Campaign::new(seed)
             },
             nickname: licence::Nickname::default(),
