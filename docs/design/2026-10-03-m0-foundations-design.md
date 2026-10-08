@@ -64,7 +64,7 @@ scripts/
 docs/
   PROJECT_BRIEF.md
   adr/0001-platform-layer.md
-  superpowers/specs/…
+  design/…
 ```
 
 After the spike, the winning frontend moves to `crates/deadrally/`: package `deadrally`, binary `deadrally`.
