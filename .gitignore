@@ -41,3 +41,7 @@ desktop.ini
 
 # The reference runner's Wine cache in a worktree (XDG_CACHE_HOME=$PWD/.refcache).
 .refcache/
+
+# Instructions for AI tools, kept locally only
+/CLAUDE.md
+/.claude/

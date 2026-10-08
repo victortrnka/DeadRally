@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-04
 - **Status:** accepted by the owner on 2026-10-04; must-item 3 (gamepad) still to be verified
-- **Spec:** `docs/superpowers/specs/2026-10-03-m0-foundations-design.md`, section 7
+- **Spec:** `docs/design/2026-10-03-m0-foundations-design.md`, section 7
 
 ## Context
 

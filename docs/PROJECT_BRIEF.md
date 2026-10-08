@@ -189,7 +189,7 @@ Exact addresses for all of these are in the DreeRally source and docs.
 1. Get the game: install *Death Rally (Classic)* from Steam, or Remedy's 2009 freeware. Play a few races of the original.
 2. Clone **DreeRally** to read it; there is nothing to build. Read `FINDINGS.md` and `KNOWN-ISSUES.md`.
 3. Clone **dRally**. Skim `drally_structs_fixed.h` and its asset loaders.
-4. Set up the DeadRally skeleton for M0: a Cargo workspace, the platform spike (ADR 0001), CI matrix (windows-latest, macos-latest, ubuntu-latest), rustfmt and clippy, overflow checks, an asset-path setting, and a `CLAUDE.md` / `CONTRIBUTING.md` with the rules from section 2. Done; see `docs/superpowers/specs/2026-10-03-m0-foundations-design.md`.
+4. Set up the DeadRally skeleton for M0: a Cargo workspace, the platform spike (ADR 0001), CI matrix (windows-latest, macos-latest, ubuntu-latest), rustfmt and clippy, overflow checks, an asset-path setting, and a `CLAUDE.md` / `CONTRIBUTING.md` with the rules from section 2. Done; see `docs/design/2026-10-03-m0-foundations-design.md`.
 5. Write the BPA reader and an asset dump tool (M1). Check the output against the original through the reference runner's screenshots, using DreeRally's loaders (`asset/bpaUtil.c`, `decryptTexture`) as documentation.
 6. Open a GitHub issue per milestone, then split each into module issues.
 
