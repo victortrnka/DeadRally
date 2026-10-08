@@ -5161,6 +5161,95 @@ fn the_leader_turn_market_run_matches_the_committed_manifest() {
     );
 }
 
+/// The ticks after which our frame equalled each screenshot of
+/// `scripts/reference/tunnel-guns.scenario`'s run of `docs/verification/m7.md`: the race's
+/// start, then the car under the pipe across Holocaust's road with the gun firing, a shot
+/// every 100 ms.
+const TUNNEL_GUNS_SHOTS: [(u64, &str); 42] = [
+    (3320, "race"),
+    (4144, "t000"),
+    (4152, "t001"),
+    (4159, "t002"),
+    (4167, "t003"),
+    (4173, "t004"),
+    (4180, "t005"),
+    (4187, "t006"),
+    (4195, "t007"),
+    (4202, "t008"),
+    (4209, "t009"),
+    (4216, "t010"),
+    (4223, "t011"),
+    (4230, "t012"),
+    (4237, "t013"),
+    (4244, "t014"),
+    (4252, "t015"),
+    (4259, "t016"),
+    (4266, "t017"),
+    (4273, "t018"),
+    (4280, "t019"),
+    (4287, "t020"),
+    (4294, "t021"),
+    (4302, "t022"),
+    (4309, "t023"),
+    (4316, "t024"),
+    (4323, "t025"),
+    (4330, "t026"),
+    (4337, "t027"),
+    (4344, "t028"),
+    (4352, "t029"),
+    (4359, "t030"),
+    (4366, "t031"),
+    (4373, "t032"),
+    (4380, "t033"),
+    (4387, "t034"),
+    (4394, "t035"),
+    (4402, "t036"),
+    (4409, "t037"),
+    (4416, "t038"),
+    (4423, "t039"),
+    (4430, "t040"),
+];
+
+/// The tunnel run's player keys (`tunnel-guns.keys`: tick, key, ticks held), from the
+/// original's memory (`scripts/compare-watch.py --keys`, tick = race frame + 3187).
+fn tunnel_guns_held() -> Vec<Held> {
+    include_str!("tunnel-guns.keys")
+        .lines()
+        .map(|line| {
+            let fields: Vec<&str> = line.split(' ').collect();
+            let key = match fields[1] {
+                "up" => Key::Up,
+                "left" => Key::Left,
+                "right" => Key::Right,
+                "ctrl" => Key::LeftCtrl,
+                other => panic!("tunnel-guns.keys: unknown key {other}"),
+            };
+            (fields[0].parse().unwrap(), key, fields[2].parse().unwrap())
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_tunnel_guns_run_matches_the_committed_manifest() {
+    // Written after all 42 screenshots of the run equalled our frames and all 1213 frames of
+    // the race's state equalled the original's memory (docs/verification/m7.md): under the
+    // pipe across Holocaust's road the car and its muzzle flash are hidden, the hits' sparks
+    // show over the pipe, as the original draws them (0x417191, 0x4171D4, 0x4171E7). The
+    // scene drawn in another order shows here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let lines = manifest_seeded(
+        (SEED, None),
+        (&RACE_START_KEYS, &tunnel_guns_held()),
+        &TUNNEL_GUNS_SHOTS,
+        4_500,
+        slots,
+    );
+    check_manifest("tunnel-guns-run.sha256", &lines, "the tunnel guns run");
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_adversary_run_matches_the_committed_manifest() {
