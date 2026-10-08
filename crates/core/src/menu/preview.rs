@@ -346,6 +346,13 @@ impl Menu {
         let palette = race.shown().clone();
         self.palette.show(&palette, 100);
         if outcome != crate::race::Outcome::Racing {
+            if !self.campaign.carry_race_key {
+                // The Windows version keeps the key that closed the race-over box (or
+                // abandoned the race) for what follows: the results' first wait takes it and
+                // the easy race's page goes by unseen, or the end animation ends at once. Its
+                // DOS version did not; DeadRally lets that key go.
+                self.keys.take();
+            }
             self.campaign.race_session = race.session();
             self.outcome = race.outcome();
             self.race = None;

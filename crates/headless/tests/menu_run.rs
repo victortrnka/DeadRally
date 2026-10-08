@@ -4185,6 +4185,8 @@ fn manifest_run(
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, seed);
+    // Checked against the original, which keeps the race's last key.
+    game.keep_the_race_s_last_key();
     game.set_saved_games(slots);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
@@ -4532,6 +4534,8 @@ fn a_later_race_starts_its_rocket_flames_where_the_last_race_left_them() {
     slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 0, 1]));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
+    // Checked against the original, which keeps the race's last key.
+    game.keep_the_race_s_last_key();
     game.set_saved_games(slots);
     game.keep_opponents_still();
     // Each race's flame pictures, tick by tick.
@@ -4628,6 +4632,8 @@ const QUIET_WRECK_HELD: [Held; 3] = [
 fn run_sound(save: Vec<u8>, held: &[Held], ticks: u64, config: DrCfg) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut game = Game::with_seed(assets, config, SEED);
+    // Checked against the original, which keeps the race's last key.
+    game.keep_the_race_s_last_key();
     let mut slots = vec![None; 8];
     slots[0] = Some(save);
     game.set_saved_games(slots);
@@ -4845,6 +4851,72 @@ fn the_lap_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("lap-run.sha256", &lines, "the lap run");
+}
+
+/// The results run's right panel (the races' pages, above the blinking line) after each tick
+/// up to `ticks`, as palette indices, the race's last key kept for the results as the
+/// Windows version keeps it when `carry`.
+fn results_pages(carry: bool, ticks: u64) -> Vec<Vec<u8>> {
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let save = armed_save(&assets.menu.texts, 99, [1, 0, 0]);
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::with_seed(assets, config, SEED);
+    let mut slots = vec![None; 8];
+    slots[0] = Some(save);
+    game.set_saved_games(slots);
+    if carry {
+        game.keep_the_race_s_last_key();
+    }
+    let mut pages = Vec::new();
+    for done in 0..ticks {
+        for &(_, key) in RESULTS_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, held) in &RESULTS_HELD {
+            if at == done || at + held == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        let frame = game.frame();
+        // The race's screens are 320x200 and hold no page.
+        pages.push(if frame.width == 640 {
+            (84..360)
+                .flat_map(|y| frame.pixels[y * 640 + 354..y * 640 + 640].to_vec())
+                .collect()
+        } else {
+            Vec::new()
+        });
+    }
+    pages
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_s_last_key_does_not_skip_the_easy_race_s_page() {
+    // The Windows version keeps the Enter that closes the race-over box for the results'
+    // first wait, so the easy race's page goes by before the player can read it, a bug its
+    // DOS version did not have and the owner wants gone: the page waits for a key of its own.
+    // Up to the tick before the results' first key, the Windows version has moved on to the
+    // medium race's page; DeadRally still shows the easy race's, which the Windows version
+    // showed as the results faded in.
+    let last = 4_469;
+    let windows = results_pages(true, last + 1);
+    let ours = results_pages(false, last + 1);
+    let shown = &ours[last as usize];
+    assert_ne!(
+        shown, &windows[last as usize],
+        "the easy race's page went by"
+    );
+    assert!(
+        windows[4_184..last as usize].contains(shown),
+        "the page shown is not the easy race's"
+    );
 }
 
 #[test]
@@ -5085,6 +5157,8 @@ fn after_the_leader_s_animation_the_market_s_way_out_fades_a_black_screen() {
     slots[0] = Some(leader_turn_armed_save(&assets.menu.texts));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
+    // Checked against the original, which keeps the race's last key.
+    game.keep_the_race_s_last_key();
     game.set_saved_games(slots);
     game.keep_opponents_still();
     let held = leader_turn_held(
@@ -5420,6 +5494,8 @@ fn p_held_while_the_race_loads_pauses_the_game_before_the_intro() {
     slots[0] = Some(test_save(&assets.menu.texts));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
+    // Checked against the original, which keeps the race's last key.
+    game.keep_the_race_s_last_key();
     game.set_saved_games(slots);
     game.keep_opponents_still();
     let held: [Held; 2] = [(2990, Key::P, 40), (3400, Key::Enter, 7)];
