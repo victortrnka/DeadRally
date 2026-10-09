@@ -690,8 +690,8 @@ fn started(
         None => assets.menu.default_config.clone(),
     };
     let mut game = Game::with_seed(assets, config, seed);
-    // Our runs are checked against the original, which keeps the race's last key.
-    game.keep_the_race_s_last_key();
+    // Our runs are checked against the original Windows version.
+    game.as_the_windows_version();
     game.set_saved_games(read_saves(saves)?);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);

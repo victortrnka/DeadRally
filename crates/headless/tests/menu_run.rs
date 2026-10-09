@@ -4185,8 +4185,8 @@ fn manifest_run(
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, seed);
-    // Checked against the original, which keeps the race's last key.
-    game.keep_the_race_s_last_key();
+    // Checked against the original Windows version.
+    game.as_the_windows_version();
     game.set_saved_games(slots);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
@@ -4534,8 +4534,8 @@ fn a_later_race_starts_its_rocket_flames_where_the_last_race_left_them() {
     slots[0] = Some(armed_save(&assets.menu.texts, 37, [0, 0, 1]));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
-    // Checked against the original, which keeps the race's last key.
-    game.keep_the_race_s_last_key();
+    // Checked against the original Windows version.
+    game.as_the_windows_version();
     game.set_saved_games(slots);
     game.keep_opponents_still();
     // Each race's flame pictures, tick by tick.
@@ -4632,8 +4632,8 @@ const QUIET_WRECK_HELD: [Held; 3] = [
 fn run_sound(save: Vec<u8>, held: &[Held], ticks: u64, config: DrCfg) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut game = Game::with_seed(assets, config, SEED);
-    // Checked against the original, which keeps the race's last key.
-    game.keep_the_race_s_last_key();
+    // Checked against the original Windows version.
+    game.as_the_windows_version();
     let mut slots = vec![None; 8];
     slots[0] = Some(save);
     game.set_saved_games(slots);
@@ -4865,7 +4865,7 @@ fn results_pages(carry: bool, ticks: u64) -> Vec<Vec<u8>> {
     slots[0] = Some(save);
     game.set_saved_games(slots);
     if carry {
-        game.keep_the_race_s_last_key();
+        game.as_the_windows_version();
     }
     let mut pages = Vec::new();
     for done in 0..ticks {
@@ -5157,8 +5157,8 @@ fn after_the_leader_s_animation_the_market_s_way_out_fades_a_black_screen() {
     slots[0] = Some(leader_turn_armed_save(&assets.menu.texts));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
-    // Checked against the original, which keeps the race's last key.
-    game.keep_the_race_s_last_key();
+    // Checked against the original Windows version.
+    game.as_the_windows_version();
     game.set_saved_games(slots);
     game.keep_opponents_still();
     let held = leader_turn_held(
@@ -5494,8 +5494,8 @@ fn p_held_while_the_race_loads_pauses_the_game_before_the_intro() {
     slots[0] = Some(test_save(&assets.menu.texts));
     let config = assets.menu.default_config.clone();
     let mut game = Game::with_seed(assets, config, SEED);
-    // Checked against the original, which keeps the race's last key.
-    game.keep_the_race_s_last_key();
+    // Checked against the original Windows version.
+    game.as_the_windows_version();
     game.set_saved_games(slots);
     game.keep_opponents_still();
     let held: [Held; 2] = [(2990, Key::P, 40), (3400, Key::Enter, 7)];

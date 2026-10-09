@@ -357,16 +357,29 @@ const HEADLINE_FIRST: usize = 17;
 /// The lines the panel moves up for a headline.
 const HEADLINE_SCROLL: usize = 6;
 
+/// The welcome line with its version, after its last " - ", one for every system (the
+/// owner's choice for DeadRally); a space less before it keeps the longer line in the middle.
+fn universal_version(line: &[u8]) -> Vec<u8> {
+    let Some(at) = line.windows(3).rposition(|w| w == b" - ") else {
+        return line.to_vec();
+    };
+    let start = usize::from(line.first() == Some(&b' '));
+    [&line[start..at + 3], b"Universal Version 1.0"].concat()
+}
+
 impl Panel {
     /// The panel as `mainMenu` fills it at start-up: the four start-up lines in small B, an
-    /// empty line before the last.
-    pub(crate) fn startup(texts: &Texts) -> Panel {
+    /// empty line before the last; the first naming the Windows version only `windows`.
+    pub(crate) fn startup(texts: &Texts, windows: bool) -> Panel {
         let mut panel = Panel {
             lines: vec![PanelLine::default(); 22],
             told: [false; HEADLINES],
             told_count: 0,
         };
-        let [first, second, third, last] = [0, 1, 2, 3].map(|i| texts.panel[i].clone());
+        let [mut first, second, third, last] = [0, 1, 2, 3].map(|i| texts.panel[i].clone());
+        if !windows {
+            first = universal_version(&first);
+        }
         for text in [first, second, third, Vec::new(), last] {
             panel.push(text, 1);
         }
@@ -733,8 +746,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_welcome_line_names_one_version_for_every_system() {
+        // DeadRally runs on every system, so its welcome line does not name the Windows port
+        // (the owner's choice); a line without the separator is left as it is.
+        assert_eq!(
+            universal_version(b"     Hello there - Some Version 9"),
+            b"    Hello there - Universal Version 1.0".to_vec()
+        );
+        assert_eq!(universal_version(b"plain"), b"plain".to_vec());
+    }
+
+    #[test]
     fn the_panel_shows_its_last_six_lines_with_the_startup_text_in_small_b() {
-        let panel = Panel::startup(&texts());
+        let panel = Panel::startup(&texts(), true);
         let mut screen = Canvas::default();
         graphics().panel_text(&mut screen, &panel);
         let p = screen.pixels();

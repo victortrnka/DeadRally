@@ -84,8 +84,8 @@ pub(crate) struct Startup {
     pub(crate) sabotage_clock: Option<u32>,
     /// Whether the races keep the opponents still (see [`crate::Game::keep_opponents_still`]).
     pub(crate) still_opponents: bool,
-    /// Whether a race's last key is kept (see [`crate::Game::keep_the_race_s_last_key`]).
-    pub(crate) carry_race_key: bool,
+    /// Whether it plays as the Windows version (see [`crate::Game::as_the_windows_version`]).
+    pub(crate) windows_version: bool,
 }
 
 impl Startup {
@@ -113,7 +113,7 @@ impl Startup {
             slot_files: vec![None; deadrally_gamedata::save_game::SLOTS],
             sabotage_clock: None,
             still_opponents: false,
-            carry_race_key: false,
+            windows_version: false,
         };
         if startup.assets.intro.is_empty() {
             // `openAnimation` plays nothing when the file has no frames.
@@ -151,7 +151,7 @@ impl Startup {
                 self.seed,
                 self.slot_files,
                 self.sabotage_clock,
-                (self.still_opponents, self.carry_race_key),
+                (self.still_opponents, self.windows_version),
             ),
         )
     }

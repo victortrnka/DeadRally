@@ -73,14 +73,14 @@ impl Game {
         }
     }
 
-    /// Keeps the key that ends a race for what follows it, as the original Windows version
-    /// does: the Enter that closes the race-over box then skips the easy race's results page
-    /// (or ends the end animation at once). DeadRally drops that key, a bug of the Windows
-    /// version the owner wants fixed; runs checked against the original keep it. For a game
-    /// that has not reached its menu yet.
-    pub fn keep_the_race_s_last_key(&mut self) {
+    /// Plays as the original Windows version, for runs checked against it, where DeadRally
+    /// differs on purpose (the owner's choices): the key that ends a race is kept for what
+    /// follows it, so the Enter that closes the race-over box skips the easy race's results
+    /// page (or ends the end animation at once), and the menu's welcome line names the Windows
+    /// version. For a game that has not reached its menu yet.
+    pub fn as_the_windows_version(&mut self) {
         if let Scene::Startup(startup) = &mut self.scene {
-            startup.carry_race_key = true;
+            startup.windows_version = true;
         }
     }
 
