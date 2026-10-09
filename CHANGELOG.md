@@ -11,7 +11,7 @@ The first release, with the whole single-player game. Each milestone was checked
   - packages for Linux, Windows and macOS;
   - the players' README;
   - the race's last key no longer skips the easy race's results page or the end animation, a bug of the Windows version;
-  - the menu's welcome line names one universal version for every system;
+  - the menu's welcome line names one universal version for every system, and the next line credits DeadRally's port;
   - the game asks for fullscreen again once its window exists, for macOS.
 - **M6, the full game:**
   - the Adversary's screen;
