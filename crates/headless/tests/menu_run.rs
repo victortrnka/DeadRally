@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 use common::{check_manifest, hash, hex, located};
 use deadrally_core::{Game, InputEvent, Key};
 use deadrally_gamedata::assets::Assets;
-use deadrally_gamedata::dr_cfg::DrCfg;
+use deadrally_gamedata::dr_cfg::{self, DrCfg};
 use sha2::{Digest, Sha256};
 
 /// The keys of `scripts/reference/menu-keys.scenario`, at the ticks where the original read
@@ -4182,10 +4182,20 @@ fn manifest_run(
     slots: Vec<Option<Vec<u8>>>,
     still: bool,
 ) -> String {
-    manifest_configured(DrCfg::clone, start, keys, shots, ticks, slots, still)
+    manifest_configured(
+        DrCfg::clone,
+        start,
+        keys,
+        shots,
+        ticks,
+        slots,
+        (still, true),
+    )
 }
 
-/// [`manifest_run`] starting from the `dr.cfg` that `config` makes of the defaults.
+/// [`manifest_run`] starting from the `dr.cfg` that `config` makes of the defaults, played as
+/// the Windows version when `windows` (the runs checked against the original) and else as
+/// DeadRally.
 fn manifest_configured(
     config: fn(&DrCfg) -> DrCfg,
     (seed, clock): (u32, Option<u32>),
@@ -4193,13 +4203,14 @@ fn manifest_configured(
     shots: &[(u64, &str)],
     ticks: u64,
     slots: Vec<Option<Vec<u8>>>,
-    still: bool,
+    (still, windows): (bool, bool),
 ) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let config = config(&assets.menu.default_config);
     let mut game = Game::with_seed(assets, config, seed);
-    // Checked against the original Windows version.
-    game.as_the_windows_version();
+    if windows {
+        game.as_the_windows_version();
+    }
     game.set_saved_games(slots);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
@@ -4399,9 +4410,58 @@ fn the_records_run_shows_every_circuit_s_records_as_the_original() {
         &RECORDS_ALL_SHOTS,
         8_300,
         Vec::new(),
-        true,
+        (true, true),
     );
     check_manifest("records-all-run.sha256", &lines, "the records run");
+}
+
+/// [`records_all_config`] with records of the Arena's own: every car's but one, a name in
+/// lower case, over a minute.
+fn records_with_arena_config(defaults: &DrCfg) -> DrCfg {
+    let mut config = records_all_config(defaults);
+    for (car, name, time) in [
+        (0, &b"ARENA C0"[..], [0, 8, 10]),
+        (2, b"ARENA C2", [0, 7, 55]),
+        (3, b"Lower arena", [0, 7, 1]),
+        (4, b"ARENA C4", [0, 6, 40]),
+        (5, b"ARENA C5", [1, 5, 0]),
+    ] {
+        config.set_record(dr_cfg::ARENA, car, name, time);
+    }
+    config
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_records_end_with_the_arena_s_own_page() {
+    // Written after the Arena's page was checked by eye in the game. As DeadRally, the
+    // records' eighteen circuits are followed by the Arena's page, its name, snapshot and
+    // every car's record, where a player finds the laps they set there; Right goes on to the
+    // first circuit again.
+    // The records run's keys and one Right more, from the Arena's page back to the first.
+    let keys: Vec<(u64, Key)> = RECORDS_ALL_KEYS
+        .iter()
+        .copied()
+        .chain([(8_312, Key::Right)])
+        .collect();
+    let lines = manifest_configured(
+        records_with_arena_config,
+        (SEED, None),
+        (&keys, &[]),
+        &[
+            (8_189, "last-circuit"),
+            (8_260, "arena"),
+            (8_390, "first-again"),
+        ],
+        8_400,
+        Vec::new(),
+        (true, false),
+    );
+    check_manifest(
+        "arena-records-run.sha256",
+        &lines,
+        "the Arena's records run",
+    );
 }
 
 #[test]
@@ -5291,9 +5351,103 @@ fn a_lap_record_beaten_in_a_race_shows_as_the_best_lap_ever() {
         &SLOW_RECORDS_SHOTS,
         13_900,
         slots,
-        true,
+        (true, true),
     );
     check_manifest("slow-records-run.sha256", &lines, "the slow records run");
+}
+
+/// A run as DeadRally plays it, not as the Windows version, from the `dr.cfg` that `config`
+/// makes of the defaults, the opponents kept still: the configuration at the start and every
+/// `dr.cfg` the game hands the frontend to write, with the tick it did.
+fn configs_written(
+    config: fn(&DrCfg) -> DrCfg,
+    slots: Vec<Option<Vec<u8>>>,
+    (keys, held): (&[(u64, Key)], &[Held]),
+    ticks: u64,
+) -> (DrCfg, Vec<(u64, DrCfg)>) {
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let config = config(&assets.menu.default_config);
+    let mut game = Game::with_seed(assets, config.clone(), SEED);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    let mut written = Vec::new();
+    for done in 0..ticks {
+        for &(_, key) in keys.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        if let Some(bytes) = game.take_config() {
+            written.push((done + 1, DrCfg::parse(&bytes).expect("a whole dr.cfg")));
+        }
+    }
+    (config, written)
+}
+
+/// The circuits' records (circuit, car) that differ between `before` and `after`.
+fn records_changed(before: &DrCfg, after: &DrCfg) -> Vec<(usize, usize)> {
+    (0..18)
+        .flat_map(|circuit| (0..6).map(move |car| (circuit, car)))
+        .filter(|&(circuit, car)| before.record(circuit, car) != after.record(circuit, car))
+        .collect()
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_lap_record_is_written_to_dr_cfg_as_the_race_ends() {
+    // The original writes dr.cfg only at the main menu's Quit, in Configure and for the best
+    // ten, so a window closed after a race lost the records it set. DeadRally hands dr.cfg
+    // over to be written as the race ends: the leader turn's best lap on Holocaust (every
+    // record slow) is in it, as the record of the player's car on that circuit only.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_save(&assets.menu.texts));
+    let keys: Vec<(u64, Key)> = RACE_START_KEYS.to_vec();
+    let held = leader_turn_held("leader-turn.keys", include_str!("leader-turn.keys"), 12_823);
+    let (before, written) = configs_written(slow_records_config, slots, (&keys, &held), 13_150);
+    let after_race: Vec<&(u64, DrCfg)> = written.iter().filter(|(t, _)| *t > 12_823).collect();
+    assert_eq!(after_race.len(), 1, "dr.cfg written once as the race ends");
+    let after = &after_race[0].1;
+    let changed = records_changed(&before, after);
+    assert_eq!(changed.len(), 1, "one record changed: {changed:?}");
+    let (circuit, car) = changed[0];
+    assert_eq!(circuit, 7, "Holocaust's record");
+    assert_eq!(after.record(circuit, car), (&b"TESTER"[..], [0, 31, 7]));
+    assert_eq!(after.record(dr_cfg::ARENA, car), (&b""[..], [0, 0, 0]));
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_lap_in_the_arena_is_the_arena_s_record_and_written_as_it_ends() {
+    // The original wrote the Arena's laps into Suburbia's records, and a won Arena, which
+    // ends the game without the statistics, never kept its lap at all. In DeadRally the won
+    // Arena's best lap becomes the Arena's own record of the player's car, every circuit's
+    // record stays as it was, and dr.cfg is handed over to be written as the race ends.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_save(&assets.menu.texts));
+    let held = arena_won_held();
+    let (before, written) = configs_written(DrCfg::clone, slots, (&ARENA_KEYS[..9], &held), 15_300);
+    let after_race: Vec<&(u64, DrCfg)> = written.iter().filter(|(t, _)| *t > 15_181).collect();
+    assert_eq!(after_race.len(), 1, "dr.cfg written once as the race ends");
+    let after = &after_race[0].1;
+    assert_eq!(records_changed(&before, after), []);
+    let arena: Vec<usize> = (0..6)
+        .filter(|&car| after.record(dr_cfg::ARENA, car).1 != [0, 0, 0])
+        .collect();
+    assert_eq!(arena.len(), 1, "one car's Arena record: {arena:?}");
+    let (name, [minutes, seconds, hundredths]) = after.record(dr_cfg::ARENA, arena[0]);
+    assert!(!name.is_empty());
+    assert!(minutes == 0 && seconds > 0 && hundredths < 100);
 }
 
 /// The keys of the leader turn's run with weapons (`leader-turn.scenario` with

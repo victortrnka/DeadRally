@@ -69,6 +69,11 @@ const TIMES_PLAYED: usize = 0xB72;
 /// minutes, seconds, hundredths), record `circuit + 18 * car`.
 const RECORDS: usize = 0x4E;
 const RECORD_BYTES: usize = 24;
+/// The Arena's lap records, DeadRally's own (the original reads and writes circuit 0's): a
+/// record for each car as the circuits' have, after the original's bytes. A file without them
+/// is the original's, and they start empty.
+pub const ARENA: usize = 18;
+const ARENA_BYTES: usize = RECORD_BYTES * 6;
 /// The best ten: 20 bytes each (a name of up to 12 bytes, races, difficulty).
 const HALL_OF_FAME: usize = 0xA6E;
 const ENTRY_BYTES: usize = 20;
@@ -120,6 +125,7 @@ const PAYLOAD_SOURCES: [(usize, u32, usize); 29] = [
 pub struct DrCfg {
     header: [u8; HEADER_BYTES],
     payload: Vec<u8>,
+    arena: Option<Vec<u8>>,
 }
 
 impl DrCfg {
@@ -141,12 +147,16 @@ impl DrCfg {
         for (offset, address, length) in PAYLOAD_SOURCES {
             payload[offset..offset + length].copy_from_slice(&machine.bytes(address, length)?);
         }
-        Ok(DrCfg { header, payload })
+        Ok(DrCfg {
+            header,
+            payload,
+            arena: None,
+        })
     }
 
     /// A `dr.cfg` as `loadConfig` takes it: `None` when it is 7 bytes or shorter (the
     /// original then uses its defaults); else its header and payload, bytes it lacks 0 and
-    /// extra bytes left out.
+    /// extra bytes left out but for the Arena's records after them.
     pub fn parse(bytes: &[u8]) -> Option<DrCfg> {
         if bytes.len() <= SHORTEST {
             return None;
@@ -156,12 +166,23 @@ impl DrCfg {
         header[..in_header].copy_from_slice(&bytes[..in_header]);
         let mut payload = bytes.get(HEADER_BYTES..).unwrap_or_default().to_vec();
         payload.resize(PAYLOAD_BYTES, 0);
-        Some(DrCfg { header, payload })
+        let arena = HEADER_BYTES + PAYLOAD_BYTES;
+        let arena = bytes.get(arena..arena + ARENA_BYTES).map(<[u8]>::to_vec);
+        Some(DrCfg {
+            header,
+            payload,
+            arena,
+        })
     }
 
-    /// The file as `saveConfiguration` writes it.
+    /// The file as `saveConfiguration` writes it, then the Arena's records once it has any.
     pub fn to_bytes(&self) -> Vec<u8> {
-        [&self.header[..], &self.payload].concat()
+        [
+            &self.header[..],
+            &self.payload,
+            self.arena.as_deref().unwrap_or_default(),
+        ]
+        .concat()
     }
 
     fn get(&self, offset: usize) -> u32 {
@@ -239,24 +260,46 @@ impl DrCfg {
         &field[..field.iter().position(|&b| b == 0).unwrap_or(room)]
     }
 
-    /// Record `car` (0–5) of circuit `circuit` (0–17): the driver's name and the time
-    /// (minutes, seconds, hundredths).
+    /// Record `car` (0–5) of circuit `circuit` (0–17, or [`ARENA`]): the driver's name and
+    /// the time (minutes, seconds, hundredths); an Arena's record never set is empty.
     pub fn record(&self, circuit: usize, car: usize) -> (&[u8], [u32; 3]) {
-        let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
-        let time = [0, 1, 2].map(|i| self.get(at + NAME_BYTES + 4 * i));
-        (self.name(at, NAME_BYTES), time)
+        let record = if circuit == ARENA {
+            match &self.arena {
+                Some(arena) => &arena[RECORD_BYTES * car..RECORD_BYTES * (car + 1)],
+                None => return (&[], [0; 3]),
+            }
+        } else {
+            let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
+            &self.payload[at..at + RECORD_BYTES]
+        };
+        let time = [0, 1, 2].map(|i| {
+            let at = NAME_BYTES + 4 * i;
+            u32::from_le_bytes([record[at], record[at + 1], record[at + 2], record[at + 3]])
+        });
+        let name = &record[..NAME_BYTES];
+        (
+            &name[..name.iter().position(|&b| b == 0).unwrap_or(NAME_BYTES)],
+            time,
+        )
     }
 
-    /// A new record `car` of circuit `circuit`: `name` upper-cased (`strcpy` then `_strupr`, so
-    /// the rest of the field keeps what it held after the NUL) and the time.
+    /// A new record `car` of circuit `circuit` (or [`ARENA`]): `name` upper-cased (`strcpy`
+    /// then `_strupr`, so the rest of the field keeps what it held after the NUL) and the
+    /// time.
     pub fn set_record(&mut self, circuit: usize, car: usize, name: &[u8], time: [u32; 3]) {
-        let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
+        let record = if circuit == ARENA {
+            let arena = self.arena.get_or_insert_with(|| vec![0; ARENA_BYTES]);
+            &mut arena[RECORD_BYTES * car..RECORD_BYTES * (car + 1)]
+        } else {
+            let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
+            &mut self.payload[at..at + RECORD_BYTES]
+        };
         let length = name.len().min(NAME_BYTES - 1);
-        let field = &mut self.payload[at..at + NAME_BYTES];
-        field[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
-        field[length] = 0;
+        record[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
+        record[length] = 0;
         for (i, part) in time.into_iter().enumerate() {
-            self.put(at + NAME_BYTES + 4 * i, part);
+            let at = NAME_BYTES + 4 * i;
+            record[at..at + 4].copy_from_slice(&part.to_le_bytes());
         }
     }
 
@@ -337,6 +380,7 @@ mod tests {
         DrCfg {
             header: [9; HEADER_BYTES],
             payload: vec![9; PAYLOAD_BYTES],
+            arena: None,
         }
     }
 
@@ -465,5 +509,34 @@ mod tests {
         cfg.upper_case_hall_of_fame();
         assert_eq!(cfg.hall_of_fame(0).0, b"BOB TWELVE!!");
         assert_eq!(cfg.record(17, 5).0, b"Ann", "records keep their case");
+    }
+
+    #[test]
+    fn the_arena_keeps_lap_records_of_its_own_after_the_original_s_bytes() {
+        // A lap in the Arena is no lap of Suburbia: its record goes to the Arena's own table,
+        // leaves every circuit's as it was, and survives the file being written and read.
+        let mut cfg = DrCfg::parse(&file()).unwrap();
+        assert_eq!(
+            cfg.record(ARENA, 2),
+            (&b""[..], [0, 0, 0]),
+            "empty at first"
+        );
+        let suburbia = cfg.record(0, 2).0.to_vec();
+        cfg.set_record(ARENA, 2, b"Ann", [0, 9, 12]);
+        assert_eq!(cfg.record(ARENA, 2), (&b"ANN"[..], [0, 9, 12]));
+        assert_eq!(cfg.record(ARENA, 1), (&b""[..], [0, 0, 0]));
+        assert_eq!(cfg.record(0, 2).0, suburbia);
+        let bytes = cfg.to_bytes();
+        assert_eq!(&bytes[..HEADER_BYTES + PAYLOAD_BYTES], file());
+        assert_eq!(bytes.len(), HEADER_BYTES + PAYLOAD_BYTES + RECORD_BYTES * 6);
+        assert_eq!(DrCfg::parse(&bytes).unwrap(), cfg);
+    }
+
+    #[test]
+    fn a_file_without_arena_records_stays_in_the_original_s_format() {
+        // Until a lap is driven in the Arena, DeadRally's dr.cfg is the original's, byte for
+        // byte, so the original can still read it.
+        let cfg = DrCfg::parse(&file()).unwrap();
+        assert_eq!(cfg.to_bytes(), file());
     }
 }

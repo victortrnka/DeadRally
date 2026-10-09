@@ -2,6 +2,7 @@
 //! circuit (`drawRecordByCircuit`, 0x41E490) and the wipes between them and the main menu
 //! (`sub_42C560`, `sub_42C4A0`).
 
+use deadrally_gamedata::dr_cfg::ARENA;
 use deadrally_gamedata::image::Image;
 
 use super::draw::Focus;
@@ -169,11 +170,10 @@ impl Menu {
     /// Enter, keypad Enter and Escape leave.
     pub(super) fn records_tick(&mut self, index: usize) -> State {
         self.palette.after_wait();
-        let order = self.assets.menu.texts.hall_of_fame.circuit_order.clone();
-        let circuits = order.len();
+        let pages = self.records_pages();
         let (index, right) = match self.keys.take() {
-            keys::LEFT | keys::PAD_LEFT => ((index + circuits - 1) % circuits, false),
-            keys::RIGHT | keys::PAD_RIGHT => ((index + 1) % circuits, true),
+            keys::LEFT | keys::PAD_LEFT => ((index + pages - 1) % pages, false),
+            keys::RIGHT | keys::PAD_RIGHT => ((index + 1) % pages, true),
             keys::ENTER | keys::ESCAPE | 0x9C => return self.leave_hall_of_fame(),
             // F1 opens the chat in a network game; nothing else does anything here.
             _ => return State::Records { index },
@@ -182,7 +182,7 @@ impl Menu {
         let (frame, x) = if right { (3, 168) } else { (2, 24) };
         let mut screen = std::mem::take(&mut self.screen);
         screen.draw(&self.assets.menu.arrows[frame], at(x, 228), false);
-        let circuit = usize::from(order[index]);
+        let circuit = self.records_page(index);
         screen.draw(&self.snapshot(circuit), at(40, 214), false);
         self.draw_records(&mut screen, circuit);
         self.screen = screen;
@@ -224,6 +224,21 @@ impl Menu {
         }
     }
 
+    /// The records' pages: the circuits in the Hall of Fame's order, then in DeadRally the
+    /// Arena's own records, which the Windows version has none of.
+    fn records_pages(&self) -> usize {
+        let circuits = self.assets.menu.texts.hall_of_fame.circuit_order.len();
+        circuits + usize::from(!self.campaign.windows_version)
+    }
+
+    /// Page `index`'s circuit, or [`ARENA`].
+    fn records_page(&self, index: usize) -> usize {
+        let order = &self.assets.menu.texts.hall_of_fame.circuit_order;
+        order
+            .get(index)
+            .map_or(ARENA, |&circuit| usize::from(circuit))
+    }
+
     /// Circuit `circuit`'s records (0x41E490): two areas restored, the bar, the circuit's name
     /// centred, and car 5 down to car 0 with their record's driver and time.
     fn draw_records(&self, canvas: &mut Canvas, circuit: usize) {
@@ -233,7 +248,10 @@ impl Menu {
         let menu = &self.assets.menu;
         canvas.draw(&menu.records_bar, at(0, 132), true);
         let hall = &menu.texts.hall_of_fame;
-        let name = &hall.circuits[circuit];
+        let name = match hall.circuits.get(circuit) {
+            Some(name) => name,
+            None => arena_name(&menu.texts.campaign.race_kinds[crate::campaign::ARENA]),
+        };
         let width = self.graphics.big_a.width(name);
         self.graphics
             .big_a
@@ -250,8 +268,18 @@ impl Menu {
         }
     }
 
-    /// Circuit `circuit`'s snapshot, 98 rows of its frame.
+    /// Circuit `circuit`'s snapshot, 98 rows of its frame; the Arena, which has none, its
+    /// picture on the race's preview shrunk to a snapshot's size.
     fn snapshot(&self, circuit: usize) -> Image {
+        let menu = &self.assets.menu;
+        if circuit == ARENA {
+            let width = menu.snapshots.first().map_or(0, |frame| frame.width);
+            let shape = menu.track_shapes.get(super::preview::ARENA_SHAPE);
+            return shape.map_or_else(
+                || Image::new(0, 0, Vec::new()),
+                |shape| shrink(shape, width, SNAPSHOT_ROWS),
+            );
+        }
         let frame = &self.assets.menu.snapshots[circuit];
         let rows = (frame.width * SNAPSHOT_ROWS) as usize;
         Image::new(frame.width, SNAPSHOT_ROWS, frame.pixels[..rows].to_vec())
@@ -353,4 +381,23 @@ impl Menu {
         canvas.fill(at(x + 2, y + CORNER), 1, down, LINE);
         canvas.fill(at(x + width - 3, y + CORNER), 1, down, LINE);
     }
+}
+
+/// The Arena's name as the statistics' heading for its race has it, without the colon.
+fn arena_name(heading: &[u8]) -> &[u8] {
+    let heading = heading.trim_ascii();
+    heading.strip_suffix(b":").unwrap_or(heading)
+}
+
+/// `image` shrunk to `width` x `height`, each pixel the nearest of the image's.
+fn shrink(image: &Image, width: u32, height: u32) -> Image {
+    let pixels = (0..height)
+        .flat_map(|y| {
+            (0..width).map(move |x| {
+                let (from_x, from_y) = (x * image.width / width, y * image.height / height);
+                image.pixels[(from_y * image.width + from_x) as usize]
+            })
+        })
+        .collect();
+    Image::new(width, height, pixels)
 }

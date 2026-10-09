@@ -5,7 +5,7 @@
 //! shop loads, a key, and the way back.
 
 use crate::books::WRECKED;
-use crate::campaign::{ARENA, quicksort};
+use crate::campaign::quicksort;
 use crate::canvas::{Canvas, at};
 use crate::keys;
 
@@ -639,10 +639,33 @@ impl Menu {
         }
     }
 
+    /// The player's best lap of the race just over becomes the record of their car on its
+    /// circuit when better, or the first (0x425241, 0x425318). The original only writes
+    /// `dr.cfg` at the main menu's Quit, in Configure and for the best ten, and a window closed
+    /// before loses the records; DeadRally writes it at once.
+    pub(super) fn keep_lap_record(&mut self) {
+        let race = self.campaign.entered_race.unwrap_or(0);
+        let circuit = self.records_circuit(race);
+        let player = *self.campaign.player();
+        let car = player.car.clamp(0, 5) as usize;
+        let best = self.outcome.best_lap;
+        let (_, record) = self.config.record(circuit, car);
+        if beats_record(best, record) {
+            self.config
+                .set_record(circuit, car, player.name(), best.map(|part| part as u32));
+            if !self.campaign.windows_version {
+                self.save = true;
+            }
+        }
+    }
+
     /// `drawStadistics` (0x4245D0): the player's statistics in small A beside the standings,
-    /// and after a race (the player's place known) the race's; a best lap better than the
-    /// circuit's record for the player's car, or the first, becomes the record in `dr.cfg`.
+    /// and after a race (the player's place known) the race's with the record of the player's
+    /// car on its circuit, which the Windows version keeps here.
     fn draw_statistics(&mut self, canvas: &mut Canvas) {
+        if self.books.place > 0 && self.campaign.windows_version {
+            self.keep_lap_record();
+        }
         self.draw_results_frame(canvas);
         let texts = &self.assets.menu.texts.campaign;
         let font = &self.graphics.small[0];
@@ -665,18 +688,11 @@ impl Menu {
         let place = self.books.place;
         if place > 0 {
             let race = self.campaign.entered_race.unwrap_or(0);
-            // The Arena's records are the never-set circuit after the three races' (0x4251DF).
-            let circuit = match self.campaign.sign_up.as_ref() {
-                Some(sign_up) if race < ARENA => sign_up.circuits[race],
-                _ => super::preview::ARENA_RECORDS,
-            };
+            // The Windows version's Arena reads the never-set circuit after the three races'
+            // (0x4251DF).
+            let circuit = self.records_circuit(race);
             let car = player.car.clamp(0, 5) as usize;
             let best = self.outcome.best_lap;
-            let (_, record) = self.config.record(circuit, car);
-            if beats_record(best, record) {
-                self.config
-                    .set_record(circuit, car, player.name(), best.map(|part| part as u32));
-            }
             let record = self.config.record(circuit, car).1.map(|part| part as i32);
             let books = self.books;
             rows.extend([

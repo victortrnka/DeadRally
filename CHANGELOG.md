@@ -12,7 +12,9 @@ The first release, with the whole single-player game. Each milestone was checked
   - the players' README;
   - the race's last key no longer skips the easy race's results page or the end animation, a bug of the Windows version;
   - the menu's welcome line names one universal version for every system, and the next line credits DeadRally's port;
-  - the game asks for fullscreen again once its window exists, for macOS.
+  - the game asks for fullscreen again once its window exists, for macOS;
+  - lap records saved as each race ends, so a closed window no longer loses them;
+  - the Arena's own lap records, with their page in the Hall of Fame.
 - **M6, the full game:**
   - the Adversary's screen;
   - the race in the Arena;

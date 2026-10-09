@@ -31,11 +31,12 @@ const PRIZE_RIGHT: (usize, usize) = (619, 358);
 const LAPS: [i32; 3] = [4, 5, 6];
 /// The Arena (0x4327CE): its picture, the last of the circuits' (`TSHAPE19`), its track
 /// (`TR0`, never turned round), its laps; and the circuit whose lap records it reads and
-/// writes, the byte after the three races' circuits (0x46126F), which nothing ever sets.
-const ARENA_SHAPE: usize = 18;
+/// writes in the Windows version, the byte after the three races' circuits (0x46126F), which
+/// nothing ever sets, so circuit 0's. DeadRally gives the Arena records of its own.
+pub(super) const ARENA_SHAPE: usize = 18;
 const ARENA_TRACK: usize = 0;
 const ARENA_LAPS: i32 = 9;
-pub(super) const ARENA_RECORDS: usize = 0;
+const ARENA_RECORDS: usize = 0;
 /// The Arena's two cars (`previewRaceScreen(2)` from 0x4354E4).
 const ARENA_CARS: usize = 2;
 /// The Adversary's car, and the colour of the ramps of the places it leaves empty or takes
@@ -218,8 +219,8 @@ impl Menu {
         let race = self.campaign.entered_race.expect("the player is in a race");
         // The track (0x45EA50) and its turning round (0x4A7AA8): the second half's circuits
         // run their tracks the other way round (0x432532).
-        let (track, reversed, records, laps) = if race == ARENA {
-            (ARENA_TRACK, false, ARENA_RECORDS, ARENA_LAPS)
+        let (track, reversed, laps) = if race == ARENA {
+            (ARENA_TRACK, false, ARENA_LAPS)
         } else {
             let circuit = self
                 .campaign
@@ -227,8 +228,9 @@ impl Menu {
                 .as_ref()
                 .expect("a sign-up is on")
                 .circuits[race];
-            (circuit % 9 + 1, circuit > 8, circuit, LAPS[race])
+            (circuit % 9 + 1, circuit > 8, LAPS[race])
         };
+        let records = self.records_circuit(race);
         let player = self.campaign.player_racer();
         let me = self.campaign.player_index;
         let menu = &self.assets.menu;
@@ -357,6 +359,11 @@ impl Menu {
             self.outcome = race.outcome();
             self.race = None;
             self.books = self.campaign.settle(&self.outcome);
+            if !self.campaign.windows_version {
+                // The original keeps the record on the statistics, which a won Arena never
+                // shows; DeadRally keeps it as the race ends.
+                self.keep_lap_record();
+            }
             let headlines = &self.assets.menu.texts.campaign.headlines;
             self.panel.tell_headline(&mut self.campaign.rand, headlines);
             let leading = self.campaign.player_leads();
@@ -376,6 +383,16 @@ impl Menu {
             return self.open_results();
         }
         State::Race { ticks: ticks + 1 }
+    }
+
+    /// The circuit whose lap records race `race` reads and writes: its circuit's, the
+    /// Arena's own, or in the Windows version's runs circuit 0's for the Arena.
+    pub(super) fn records_circuit(&self, race: usize) -> usize {
+        match self.campaign.sign_up.as_ref() {
+            Some(sign_up) if race < ARENA => sign_up.circuits[race],
+            _ if self.campaign.windows_version => ARENA_RECORDS,
+            _ => deadrally_gamedata::dr_cfg::ARENA,
+        }
     }
 
     /// The race over (abandoned, or its data not loading): the menus' music and sounds back as

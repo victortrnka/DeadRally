@@ -65,6 +65,8 @@ These are the original's keys:
 
 The 2009 Windows version keeps the key that ends a race for what follows it. The Enter that closes the race-over box therefore skips the easy race's results page before it can be read, and ends the end animation at once. Its DOS version did not do this, and DeadRally does not either: each results page waits for a key of its own.
 
+The original saves its lap records only when the player leaves through the main menu's Quit, so closing the window loses them, and it counts the Arena's laps as Suburbia's records. DeadRally saves each record as the race that set it ends, and the Arena has lap records of its own, with a page in the Hall of Fame.
+
 DeadRally runs on every system, so the menu's welcome line names one "Universal Version 1.0" instead of the Windows version, and the line under it credits DeadRally's port instead of the Windows one.
 
 ## Building from source
