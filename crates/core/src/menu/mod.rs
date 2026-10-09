@@ -422,8 +422,8 @@ pub(crate) struct Menu {
 }
 
 /// How a game starts: the seed of its random numbers, the saved games' files, the
-/// sabotage's clock when fixed, and whether the opponents stay still and a race's last key is
-/// kept (the reference runs' settings, see [`crate::Game`]).
+/// sabotage's clock when fixed, and whether the opponents stay still and it plays as the
+/// Windows version (the reference runs' settings, see [`crate::Game`]).
 pub(crate) type Setup = (u32, Vec<Option<Vec<u8>>>, Option<u32>, (bool, bool));
 
 impl Menu {
@@ -436,7 +436,7 @@ impl Menu {
         audio: Vec<i16>,
         title_shown: &deadrally_gamedata::image::Palette,
         (config, save): (DrCfg, bool),
-        (seed, slot_files, sabotage_clock, (still_opponents, carry_race_key)): Setup,
+        (seed, slot_files, sabotage_clock, (still_opponents, windows_version)): Setup,
     ) -> Menu {
         let menu_assets = &assets.menu;
         let colour = menu_assets.copper.0[PLAYER_COLOUR];
@@ -449,7 +449,7 @@ impl Menu {
             configure::SWITCH_ROW,
             configure::switch_text(&menu_assets.texts.configure, &config),
         );
-        let panel = Panel::startup(&menu_assets.texts);
+        let panel = Panel::startup(&menu_assets.texts, windows_version);
         let mut shown = Canvas::default();
         shown.copy_all(&assets.title.image);
         Menu {
@@ -486,7 +486,7 @@ impl Menu {
             campaign: Campaign {
                 fixed_clock: sabotage_clock,
                 still_opponents,
-                carry_race_key,
+                windows_version,
                 ..Campaign::new(seed)
             },
             nickname: licence::Nickname::default(),

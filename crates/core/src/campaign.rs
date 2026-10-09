@@ -296,9 +296,9 @@ pub(crate) struct Campaign {
     /// The opponents kept still in the races, as the reference runner's `--no-ai` keeps the
     /// original's.
     pub(crate) still_opponents: bool,
-    /// The key that ends a race kept for what follows (see
-    /// [`crate::Game::keep_the_race_s_last_key`]).
-    pub(crate) carry_race_key: bool,
+    /// Playing as the Windows version, the key that ends a race kept for what follows (see
+    /// [`crate::Game::as_the_windows_version`]).
+    pub(crate) windows_version: bool,
     /// The deals taken after a sign-up: the drug run's level (0x456BB4), and the hitman's
     /// (0x456BB8) with his victim (0x456BBC); 0 for none. Races settle them (M5).
     pub(crate) drug_deal: i32,
@@ -381,7 +381,7 @@ impl Campaign {
             clock: seed,
             fixed_clock: None,
             still_opponents: false,
-            carry_race_key: false,
+            windows_version: false,
             drug_deal: 0,
             hit: 0,
             hit_victim: 0,

@@ -338,6 +338,14 @@ fn run() -> Result<(), Box<dyn Error>> {
         window.fullscreen();
     }
     let mut canvas = window.build()?.into_canvas();
+    if !options.windowed {
+        // On macOS the game was seen starting in a window although created fullscreen; asking
+        // again once the window exists is meant for that (not yet checked on a Mac), and
+        // changes nothing elsewhere.
+        let window = canvas.window_mut();
+        window.set_fullscreen(true)?;
+        window.sync();
+    }
     let texture_creator = canvas.texture_creator();
 
     let spec = AudioSpec {

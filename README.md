@@ -65,6 +65,8 @@ These are the original's keys:
 
 The 2009 Windows version keeps the key that ends a race for what follows it. The Enter that closes the race-over box therefore skips the easy race's results page before it can be read, and ends the end animation at once. Its DOS version did not do this, and DeadRally does not either: each results page waits for a key of its own.
 
+DeadRally runs on every system, so the menu's welcome line names one "Universal Version 1.0" instead of the Windows version.
+
 ## Building from source
 
 ```
