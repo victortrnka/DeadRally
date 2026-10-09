@@ -35,10 +35,10 @@ const USAGE: &str = "usage:
   deadrally-headless run --ticks N
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
-  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--smooth] --out FILE.png
-  deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--menus]
+  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--smooth] [--cfg DR.CFG] --out FILE.png
+  deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--menus] [--cfg DR.CFG]
   deadrally-headless compare A.png B.png
-  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--smooth] [--ticks N] SHOT.png...
+  deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--smooth] [--cfg DR.CFG] [--ticks N] SHOT.png...
   deadrally-headless render-audio [--data PATH] --startup [--key-at T[:KEY[+N]]]... [--save SLOT:FILE]... [--no-ai] [--cfg DR.CFG] [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --music NAME [--seconds S] --out FILE.wav
   deadrally-headless render-audio [--data PATH] --effect BANK --number K --out FILE.wav
@@ -90,6 +90,7 @@ enum Command {
         clock: Option<u32>,
         still: bool,
         smooth: bool,
+        cfg: Option<PathBuf>,
         out: PathBuf,
     },
     Compare {
@@ -105,6 +106,7 @@ enum Command {
         clock: Option<u32>,
         still: bool,
         menus: bool,
+        cfg: Option<PathBuf>,
     },
     Find {
         data: Option<PathBuf>,
@@ -114,6 +116,7 @@ enum Command {
         clock: Option<u32>,
         still: bool,
         smooth: bool,
+        cfg: Option<PathBuf>,
         ticks: u64,
         shots: Vec<PathBuf>,
     },
@@ -171,13 +174,14 @@ fn main() -> ExitCode {
             clock,
             still,
             smooth,
+            cfg,
             out,
         } => render(
             data.as_deref(),
             tick,
             &keys,
             (seed, &saves, clock, still),
-            smooth,
+            (smooth, cfg.as_deref()),
             &out,
         )
         .map(|()| ExitCode::SUCCESS),
@@ -191,12 +195,13 @@ fn main() -> ExitCode {
             clock,
             still,
             menus,
+            cfg,
         } => trace(
             data.as_deref(),
             tick,
             &keys,
             (seed, &saves, clock, still),
-            menus,
+            (menus, cfg.as_deref()),
         )
         .map(|()| ExitCode::SUCCESS),
         Command::Find {
@@ -207,13 +212,14 @@ fn main() -> ExitCode {
             clock,
             still,
             smooth,
+            cfg,
             ticks,
             shots,
         } => find(
             data.as_deref(),
             &keys,
             (seed, &saves, clock, still),
-            smooth,
+            (smooth, cfg.as_deref()),
             ticks,
             &shots,
         ),
@@ -265,6 +271,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             "--save",
             "--sabotage-clock",
             "--out",
+            "--cfg",
         ],
         "compare" => &[],
         "trace" => &[
@@ -274,6 +281,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             "--seed",
             "--save",
             "--sabotage-clock",
+            "--cfg",
         ],
         "find" => &[
             "--data",
@@ -282,6 +290,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             "--save",
             "--sabotage-clock",
             "--ticks",
+            "--cfg",
         ],
         "render-audio" => &[
             "--data",
@@ -394,6 +403,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             clock,
             still,
             smooth,
+            cfg: cfg.clone(),
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "trace" => Ok(Command::Trace {
@@ -405,6 +415,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             clock,
             still,
             menus,
+            cfg: cfg.clone(),
         }),
         "compare" => match <[PathBuf; 2]>::try_from(files) {
             Ok([a, b]) => Ok(Command::Compare { a, b }),
@@ -465,6 +476,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
                 clock,
                 still,
                 smooth,
+                cfg,
                 ticks: ticks.unwrap_or(FIND_TICKS),
                 shots: files,
             })
@@ -707,11 +719,11 @@ fn render(
     tick: u64,
     keys: &[Press],
     start: Start,
-    smooth: bool,
+    (smooth, cfg): (bool, Option<&Path>),
     out: &Path,
 ) -> Result<(), String> {
     let located = locate_data(data)?;
-    let mut game = started(&located, start, None)?;
+    let mut game = started(&located, start, cfg)?;
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame(), smooth)?.write_png(out)
 }
@@ -725,10 +737,10 @@ fn trace(
     tick: u64,
     keys: &[Press],
     start: Start,
-    menus: bool,
+    (menus, cfg): (bool, Option<&Path>),
 ) -> Result<(), String> {
     let located = locate_data(data)?;
-    let mut game = started(&located, start, None)?;
+    let mut game = started(&located, start, cfg)?;
     let mut last = None;
     play(&mut game, tick, keys, |done, game| {
         if menus {
@@ -772,7 +784,7 @@ fn find(
     data: Option<&Path>,
     keys: &[Press],
     start: Start,
-    smooth: bool,
+    (smooth, cfg): (bool, Option<&Path>),
     ticks: u64,
     shots: &[PathBuf],
 ) -> Result<ExitCode, String> {
@@ -800,7 +812,7 @@ fn find(
         &located,
         keys,
         start,
-        smooth,
+        (smooth, cfg),
         ticks,
         |tick, window, changed| {
             for (index, picture) in pictures.iter().enumerate() {
@@ -823,7 +835,7 @@ fn find(
             &located,
             keys,
             start,
-            smooth,
+            (smooth, cfg),
             ticks,
             |tick, window, changed| {
                 if !changed {
@@ -863,11 +875,11 @@ fn timeline(
     located: &Located,
     keys: &[Press],
     start: Start,
-    smooth: bool,
+    (smooth, cfg): (bool, Option<&Path>),
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
-    let mut game = started(located, start, None)?;
+    let mut game = started(located, start, cfg)?;
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -1166,6 +1178,7 @@ mod tests {
                 clock: None,
                 still: false,
                 smooth: false,
+                cfg: None,
                 out: PathBuf::from("a.png")
             })
         );
@@ -1186,6 +1199,7 @@ mod tests {
                 clock: None,
                 still: false,
                 smooth: false,
+                cfg: None,
                 ticks: FIND_TICKS,
                 shots: vec![PathBuf::from("a.png"), PathBuf::from("b.png")]
             })

@@ -357,6 +357,10 @@ const HEADLINE_FIRST: usize = 17;
 /// The lines the panel moves up for a headline.
 const HEADLINE_SCROLL: usize = 6;
 
+/// The start-up panel's second line in DeadRally: who made this port and where it lives (the
+/// owner's choice), in the Windows version's place.
+const PORT_LINE: &[u8] = b"   Port by Victor Trnka - github.com/victortrnka/DeadRally";
+
 /// The welcome line with its version, after its last " - ", one for every system (the
 /// owner's choice for DeadRally); a space less before it keeps the longer line in the middle.
 fn universal_version(line: &[u8]) -> Vec<u8> {
@@ -369,16 +373,18 @@ fn universal_version(line: &[u8]) -> Vec<u8> {
 
 impl Panel {
     /// The panel as `mainMenu` fills it at start-up: the four start-up lines in small B, an
-    /// empty line before the last; the first naming the Windows version only `windows`.
+    /// empty line before the last; the first two naming the Windows version and its port only
+    /// `windows`.
     pub(crate) fn startup(texts: &Texts, windows: bool) -> Panel {
         let mut panel = Panel {
             lines: vec![PanelLine::default(); 22],
             told: [false; HEADLINES],
             told_count: 0,
         };
-        let [mut first, second, third, last] = [0, 1, 2, 3].map(|i| texts.panel[i].clone());
+        let [mut first, mut second, third, last] = [0, 1, 2, 3].map(|i| texts.panel[i].clone());
         if !windows {
             first = universal_version(&first);
+            second = PORT_LINE.to_vec();
         }
         for text in [first, second, third, Vec::new(), last] {
             panel.push(text, 1);
@@ -754,6 +760,17 @@ pub(crate) mod tests {
             b"    Hello there - Universal Version 1.0".to_vec()
         );
         assert_eq!(universal_version(b"plain"), b"plain".to_vec());
+    }
+
+    #[test]
+    fn the_start_up_panel_credits_deadrally_s_port() {
+        // DeadRally is the owner's port, not the 2009 Windows port, so its start-up panel
+        // names its author; the Windows version's runs keep the original's line.
+        let ours = Panel::startup(&texts(), false);
+        let windows = Panel::startup(&texts(), true);
+        assert!(ours.lines.iter().any(|line| line.text == PORT_LINE));
+        assert!(windows.lines.iter().all(|line| line.text != PORT_LINE));
+        assert!(windows.lines.iter().any(|line| line.text == b"b"));
     }
 
     #[test]
