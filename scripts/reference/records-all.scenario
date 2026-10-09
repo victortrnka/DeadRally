@@ -1,0 +1,49 @@
+# Every circuit's lap records in the Hall of Fame (spec M2c section 5) from a dr.cfg whose
+# records all differ: an empty one, names in lower and mixed case, eleven letters, a time of
+# over 99 minutes, a time with out-of-range parts. Into the Hall of Fame, on to the records and
+# Right through all eighteen circuits back to the first, a shot of each. Run with --cfg FILE,
+# the dr.cfg that `records_all_config` in crates/headless/tests/menu_run.rs writes to the file
+# DEADRALLY_RECORDS_CFG names.
+at 89500 shot idle
+at 90000 key Down
+at 90500 key Down
+at 91000 key Return
+at 94000 shot fame
+at 95000 key space
+at 97500 shot rec-00
+at 98000 key Right
+at 98700 shot rec-01
+at 99000 key Right
+at 99700 shot rec-02
+at 100000 key Right
+at 100700 shot rec-03
+at 101000 key Right
+at 101700 shot rec-04
+at 102000 key Right
+at 102700 shot rec-05
+at 103000 key Right
+at 103700 shot rec-06
+at 104000 key Right
+at 104700 shot rec-07
+at 105000 key Right
+at 105700 shot rec-08
+at 106000 key Right
+at 106700 shot rec-09
+at 107000 key Right
+at 107700 shot rec-10
+at 108000 key Right
+at 108700 shot rec-11
+at 109000 key Right
+at 109700 shot rec-12
+at 110000 key Right
+at 110700 shot rec-13
+at 111000 key Right
+at 111700 shot rec-14
+at 112000 key Right
+at 112700 shot rec-15
+at 113000 key Right
+at 113700 shot rec-16
+at 114000 key Right
+at 114700 shot rec-17
+at 115000 key Right
+at 115700 shot rec-18

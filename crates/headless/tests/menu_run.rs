@@ -4175,6 +4175,19 @@ fn manifest_seeded(
 
 /// [`manifest_seeded`] with the opponents driving unless `still`.
 fn manifest_run(
+    start: (u32, Option<u32>),
+    keys: (&[(u64, Key)], &[Held]),
+    shots: &[(u64, &str)],
+    ticks: u64,
+    slots: Vec<Option<Vec<u8>>>,
+    still: bool,
+) -> String {
+    manifest_configured(DrCfg::clone, start, keys, shots, ticks, slots, still)
+}
+
+/// [`manifest_run`] starting from the `dr.cfg` that `config` makes of the defaults.
+fn manifest_configured(
+    config: fn(&DrCfg) -> DrCfg,
     (seed, clock): (u32, Option<u32>),
     (keys, held): (&[(u64, Key)], &[Held]),
     shots: &[(u64, &str)],
@@ -4183,7 +4196,7 @@ fn manifest_run(
     still: bool,
 ) -> String {
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
-    let config = assets.menu.default_config.clone();
+    let config = config(&assets.menu.default_config);
     let mut game = Game::with_seed(assets, config, seed);
     // Checked against the original Windows version.
     game.as_the_windows_version();
@@ -4282,6 +4295,113 @@ fn the_hall_of_fame_run_matches_the_committed_manifest() {
     // recording of the run compared as M1b's (docs/verification/m2c.md).
     let lines = manifest(&HALL_OF_FAME_KEYS, &HALL_OF_FAME_SHOTS, 7_600);
     check_manifest("hall-of-fame-run.sha256", &lines, "the hall of fame run");
+}
+
+/// The keys of `scripts/reference/records-all.scenario`: into the Hall of Fame, on to the
+/// records, then Right once a second through the eighteen circuits back to the first.
+const RECORDS_ALL_KEYS: [(u64, Key); 22] = [
+    (6455, Key::Down),
+    (6491, Key::Down),
+    (6527, Key::Enter),
+    (6814, Key::Space),
+    (7027, Key::Right),
+    (7098, Key::Right),
+    (7170, Key::Right),
+    (7241, Key::Right),
+    (7313, Key::Right),
+    (7384, Key::Right),
+    (7456, Key::Right),
+    (7527, Key::Right),
+    (7598, Key::Right),
+    (7670, Key::Right),
+    (7741, Key::Right),
+    (7813, Key::Right),
+    (7884, Key::Right),
+    (7956, Key::Right),
+    (8027, Key::Right),
+    (8098, Key::Right),
+    (8170, Key::Right),
+    (8241, Key::Right),
+];
+
+/// The ticks after which our frame equalled each screenshot of that run.
+const RECORDS_ALL_SHOTS: [(u64, &str); 21] = [
+    (6389, "idle"),
+    (6646, "fame"),
+    (6926, "rec-00"),
+    (7042, "rec-01"),
+    (7107, "rec-02"),
+    (7189, "rec-03"),
+    (7260, "rec-04"),
+    (7332, "rec-05"),
+    (7399, "rec-06"),
+    (7475, "rec-07"),
+    (7546, "rec-08"),
+    (7617, "rec-09"),
+    (7689, "rec-10"),
+    (7756, "rec-11"),
+    (7832, "rec-12"),
+    (7903, "rec-13"),
+    (7975, "rec-14"),
+    (8046, "rec-15"),
+    (8118, "rec-16"),
+    (8189, "rec-17"),
+    (8260, "rec-18"),
+];
+
+/// The `dr.cfg` of `scripts/reference/records-all.scenario`: the defaults with every lap
+/// record its own (`RnnCk`, k seconds-and-more apart), and on the first circuit and the first
+/// reversed one the odd ones: an empty record, names in lower and mixed case, eleven letters,
+/// over 99 minutes, seconds and hundredths out of their range. Written to the file
+/// DEADRALLY_RECORDS_CFG names, for the original's run.
+fn records_all_config(defaults: &DrCfg) -> DrCfg {
+    let mut bytes = defaults.to_bytes();
+    // Record `circuit + 18 * car` (spec M2b section 3.1): after the 8 bytes of header, from
+    // 0x4E, 24 bytes each: a name of 12 bytes, minutes, seconds, hundredths.
+    let mut put = |circuit: usize, car: usize, name: &[u8], time: [u32; 3]| {
+        let at = 8 + 0x4E + 24 * (circuit + 18 * car);
+        bytes[at..at + 12].fill(0);
+        bytes[at..at + name.len()].copy_from_slice(name);
+        for (i, part) in time.into_iter().enumerate() {
+            bytes[at + 12 + 4 * i..at + 16 + 4 * i].copy_from_slice(&part.to_le_bytes());
+        }
+    };
+    for circuit in 0..18 {
+        for car in 0..6 {
+            let name = format!("R{circuit:02}C{car}");
+            let time = [car, circuit * 3 % 60, (circuit * 7 + car) % 100].map(|part| part as u32);
+            put(circuit, car, name.as_bytes(), time);
+        }
+    }
+    put(0, 0, b"", [0, 0, 0]);
+    put(0, 1, b"lower case", [1, 2, 3]);
+    put(0, 2, b"ELEVENCHARS", [0, 9, 99]);
+    put(0, 3, b"BIG MINUTES", [123, 45, 67]);
+    put(0, 4, b"ODD PARTS", [4, 75, 150]);
+    put(9, 5, b"Mixed Case", [10, 0, 1]);
+    if let Some(path) = std::env::var_os("DEADRALLY_RECORDS_CFG") {
+        std::fs::write(path, &bytes).unwrap();
+    }
+    DrCfg::parse(&bytes).expect("a whole dr.cfg")
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_records_run_shows_every_circuit_s_records_as_the_original() {
+    // Written after every screenshot of the run equalled our frame at its tick. The records
+    // screen is where a player sees the lap records they set: each circuit's name, each
+    // car's driver in capitals and time, and what a hand-made dr.cfg leaves on the screen,
+    // as the original draws them.
+    let lines = manifest_configured(
+        records_all_config,
+        (SEED, None),
+        (&RECORDS_ALL_KEYS, &[]),
+        &RECORDS_ALL_SHOTS,
+        8_300,
+        Vec::new(),
+        true,
+    );
+    check_manifest("records-all-run.sha256", &lines, "the records run");
 }
 
 #[test]
@@ -5120,6 +5240,60 @@ fn the_leader_turn_run_matches_the_committed_manifest() {
         slots,
     );
     check_manifest("leader-turn-run.sha256", &lines, "the leader turn run");
+}
+
+/// The statistics' shots of the leader turn's run with every lap record slow (`--cfg
+/// captures/slow-records.cfg`, docs/verification/m7.md), at the ticks our frames equalled them.
+const SLOW_RECORDS_SHOTS: [(u64, &str); 9] = [
+    (13_568, "r031"),
+    (13_604, "r032"),
+    (13_674, "r033"),
+    (13_676, "r034"),
+    (13_709, "r035"),
+    (13_741, "r036"),
+    (13_773, "r037"),
+    (13_805, "r038"),
+    (13_854, "r039"),
+];
+
+/// The defaults with every lap record a slow one, which any lap beats.
+fn slow_records_config(defaults: &DrCfg) -> DrCfg {
+    let mut config = defaults.clone();
+    for circuit in 0..18 {
+        for car in 0..6 {
+            config.set_record(circuit, car, b"SLOW", [9, 59, 99]);
+        }
+    }
+    config
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_lap_record_beaten_in_a_race_shows_as_the_best_lap_ever() {
+    // Written after these shots of the original's leader turn run with every record slow
+    // equalled our frames: the won race's best lap (00:31.07) becomes the record of the
+    // player's car on its circuit, and the statistics' last row, the best lap ever, shows it.
+    // A record kept although beaten, or set on another circuit or car, shows the slow time
+    // here.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_save(&assets.menu.texts));
+    let keys: Vec<(u64, Key)> = RACE_START_KEYS
+        .iter()
+        .chain(&LEADER_TURN_KEYS)
+        .copied()
+        .collect();
+    let held = leader_turn_held("leader-turn.keys", include_str!("leader-turn.keys"), 12_823);
+    let lines = manifest_configured(
+        slow_records_config,
+        (SEED, None),
+        (&keys, &held),
+        &SLOW_RECORDS_SHOTS,
+        13_900,
+        slots,
+        true,
+    );
+    check_manifest("slow-records-run.sha256", &lines, "the slow records run");
 }
 
 /// The keys of the leader turn's run with weapons (`leader-turn.scenario` with
