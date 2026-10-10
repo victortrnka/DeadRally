@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Race records: the best time of each whole race, by circuit, car and number of laps, on the Hall of Fame's records with Up and Down.
+- The Hall of Fame keeps every winner; Up and Down scroll past the tenth.
+- The last lap of a player who finishes after the winner counts for the best lap and the lap record.
+- `deadrally-headless render --deadrally` renders the game as DeadRally plays it, not as the Windows version.
+
 ## 1.0.0 (2026-10-10)
 
 The first release, with the whole single-player game. Each milestone was checked against the original; [docs/verification](docs/verification) has the runs and what still differs.

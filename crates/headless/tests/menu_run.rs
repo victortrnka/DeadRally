@@ -4464,6 +4464,75 @@ fn the_records_end_with_the_arena_s_own_page() {
     );
 }
 
+/// [`records_with_arena_config`] with DeadRally's race records (on Suburbia over 4, 5 and
+/// 6 laps for every car but one, and the Arena's over 9 laps for one) and three entries past
+/// the best ten.
+fn race_records_config(defaults: &DrCfg) -> DrCfg {
+    let mut config = records_with_arena_config(defaults);
+    for car in [0, 2, 3, 4, 5] {
+        for laps in dr_cfg::RACE_LAPS {
+            let name = format!("RACE{car}L{laps}");
+            let time = [
+                laps as u32 / 2,
+                10 * car as u32 + laps as u32 - 4,
+                7 * car as u32,
+            ];
+            config.set_race_record(0, laps, car, name.as_bytes(), time);
+        }
+    }
+    config.set_race_record(
+        dr_cfg::ARENA,
+        dr_cfg::ARENA_LAPS,
+        5,
+        b"ARENA RACE",
+        [1, 30, 25],
+    );
+    for (name, races) in [
+        (&b"ELEVENTH"[..], 300),
+        (b"TWELFTH", 310),
+        (b"THIRTEENTH", 1234),
+    ] {
+        config.add_to_hall_of_fame(name, races, 2);
+    }
+    config
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_records_and_a_grown_hall_of_fame_show_as_deadrally() {
+    // Written after these screens were checked by eye (`render --deadrally`): the best ten of
+    // thirteen entries, scrolled down by Down to ranks 4 to 13; the records, Down to
+    // Suburbia's over 4 laps with the race's time in the heading, Left to the Arena's over 9.
+    let keys = [
+        (6455, Key::Down),
+        (6491, Key::Down),
+        (6527, Key::Enter),
+        (6700, Key::Down),
+        (6720, Key::Down),
+        (6740, Key::Down),
+        (6760, Key::Down),
+        (6814, Key::Space),
+        (6960, Key::Down),
+        (7027, Key::Left),
+    ];
+    let lines = manifest_configured(
+        race_records_config,
+        (SEED, None),
+        (&keys, &[]),
+        &[
+            (6690, "fame"),
+            (6780, "fame-scrolled"),
+            (6950, "records-lap"),
+            (7000, "race-4-laps"),
+            (7100, "arena-9-laps"),
+        ],
+        7_110,
+        Vec::new(),
+        (true, false),
+    );
+    check_manifest("race-records-run.sha256", &lines, "the race records run");
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn the_new_game_run_matches_the_committed_manifest() {
@@ -5393,6 +5462,16 @@ fn configs_written(
     (config, written)
 }
 
+/// The race records (circuit, laps, car) `config` holds.
+fn race_records_set(config: &DrCfg) -> Vec<(usize, i32, usize)> {
+    let circuits = (0..18).flat_map(|circuit| dr_cfg::RACE_LAPS.map(|laps| (circuit, laps)));
+    circuits
+        .chain([(dr_cfg::ARENA, dr_cfg::ARENA_LAPS)])
+        .flat_map(|(circuit, laps)| (0..6).map(move |car| (circuit, laps, car)))
+        .filter(|&(circuit, laps, car)| config.race_record(circuit, laps, car).1 != [0, 0, 0])
+        .collect()
+}
+
 /// The circuits' records (circuit, car) that differ between `before` and `after`.
 fn records_changed(before: &DrCfg, after: &DrCfg) -> Vec<(usize, usize)> {
     (0..18)
@@ -5403,11 +5482,12 @@ fn records_changed(before: &DrCfg, after: &DrCfg) -> Vec<(usize, usize)> {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
-fn a_lap_record_is_written_to_dr_cfg_as_the_race_ends() {
+fn a_race_s_records_are_written_to_dr_cfg_as_it_ends() {
     // The original writes dr.cfg only at the main menu's Quit, in Configure and for the best
     // ten, so a window closed after a race lost the records it set. DeadRally hands dr.cfg
     // over to be written as the race ends: the leader turn's best lap on Holocaust (every
-    // record slow) is in it, as the record of the player's car on that circuit only.
+    // record slow) is in it, as the record of the player's car on that circuit only, and the
+    // race's time (the statistics' 02:05.58) as its race record over the easy race's 4 laps.
     let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
     let mut slots = vec![None; 8];
     slots[0] = Some(leader_turn_save(&assets.menu.texts));
@@ -5423,6 +5503,24 @@ fn a_lap_record_is_written_to_dr_cfg_as_the_race_ends() {
     assert_eq!(circuit, 7, "Holocaust's record");
     assert_eq!(after.record(circuit, car), (&b"TESTER"[..], [0, 31, 7]));
     assert_eq!(after.record(dr_cfg::ARENA, car), (&b""[..], [0, 0, 0]));
+    assert_eq!(race_records_set(after), [(7, 4, car)]);
+    assert_eq!(after.race_record(7, 4, car), (&b"TESTER"[..], [2, 5, 58]));
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn an_abandoned_race_sets_no_race_record() {
+    // A race left before its end has a time of its own, but it is no race's time: the abort
+    // run's few seconds before Escape and Y must not become a race record, nor a lap record
+    // without a lap, so no dr.cfg is handed over after the race.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(test_save(&assets.menu.texts));
+    let (_, written) = configs_written(DrCfg::clone, slots, (&RACE_START_KEYS, &ABORT_HELD), 3_800);
+    for (tick, config) in &written {
+        assert_eq!(race_records_set(config), [], "dr.cfg at tick {tick}");
+    }
+    assert!(written.iter().all(|(tick, _)| *tick < 3_397));
 }
 
 #[test]
@@ -5448,6 +5546,60 @@ fn a_lap_in_the_arena_is_the_arena_s_record_and_written_as_it_ends() {
     let (name, [minutes, seconds, hundredths]) = after.record(dr_cfg::ARENA, arena[0]);
     assert!(!name.is_empty());
     assert!(minutes == 0 && seconds > 0 && hundredths < 100);
+    // Its whole race is the Arena's record over 9 laps, longer than 9 of its best laps.
+    let car = arena[0];
+    assert_eq!(race_records_set(after), [(dr_cfg::ARENA, 9, car)]);
+    let (racer, [minutes, seconds, _]) = after.race_record(dr_cfg::ARENA, 9, car);
+    assert_eq!(racer, name);
+    assert!(60 * minutes + seconds >= 9 * seconds_of_lap(after.record(dr_cfg::ARENA, car).1));
+}
+
+/// A lap's time in whole seconds.
+fn seconds_of_lap([minutes, seconds, _]: [u32; 3]) -> u32 {
+    60 * minutes + seconds
+}
+
+/// The defaults with every entry of the best ten at one race, so that any winner comes after
+/// the tenth.
+fn fame_of_one_race(defaults: &DrCfg) -> DrCfg {
+    let mut bytes = defaults.to_bytes();
+    // The best ten (spec M2b section 3.1): from 0xA6E after the 8 bytes of header, 20 bytes
+    // each, the races after a name of 12 bytes.
+    for rank in 0..10 {
+        let at = 8 + 0xA6E + 20 * rank + 12;
+        bytes[at..at + 4].copy_from_slice(&1u32.to_le_bytes());
+    }
+    DrCfg::parse(&bytes).expect("a whole dr.cfg")
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_winner_after_the_tenth_still_enters_the_hall_of_fame() {
+    // Written after the entry screen was checked by eye (`render --deadrally`). The original
+    // drops the tenth entry for a winner, and a winner with more races than all ten never
+    // enters. DeadRally keeps every entry: the won Arena's winner, with no fewer races than
+    // the ten, enters as the eleventh, the screen showing ranks 2 to 11 with the border round
+    // the winner's row, and dr.cfg keeps all eleven.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_save(&assets.menu.texts));
+    let mut held = arena_won_held();
+    // No Enter on the best ten, so that the entry screen stays.
+    held.retain(|&(tick, _, _)| tick != 19_253);
+    let lines = manifest_configured(
+        fame_of_one_race,
+        (SEED, None),
+        (&ARENA_KEYS[..9], &held),
+        &[(20_500, "entry")],
+        20_600,
+        slots,
+        (true, false),
+    );
+    check_manifest(
+        "fame-grows-run.sha256",
+        &lines,
+        "the growing Hall of Fame run",
+    );
 }
 
 /// The keys of the leader turn's run with weapons (`leader-turn.scenario` with

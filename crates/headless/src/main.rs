@@ -35,7 +35,7 @@ const USAGE: &str = "usage:
   deadrally-headless run --ticks N
   deadrally-headless check-data [--data PATH]
   deadrally-headless dump-assets [--data PATH] [--out DIR]
-  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--smooth] [--cfg DR.CFG] --out FILE.png
+  deadrally-headless render [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--smooth] [--cfg DR.CFG] [--deadrally] --out FILE.png
   deadrally-headless trace [--data PATH] --tick T [--key-at T[:KEY[+N]]]... [--menus] [--cfg DR.CFG]
   deadrally-headless compare A.png B.png
   deadrally-headless find [--data PATH] [--key-at T[:KEY[+N]]]... [--sabotage-clock MS] [--no-ai] [--smooth] [--cfg DR.CFG] [--ticks N] SHOT.png...
@@ -91,6 +91,7 @@ enum Command {
         still: bool,
         smooth: bool,
         cfg: Option<PathBuf>,
+        deadrally: bool,
         out: PathBuf,
     },
     Compare {
@@ -175,13 +176,14 @@ fn main() -> ExitCode {
             still,
             smooth,
             cfg,
+            deadrally,
             out,
         } => render(
             data.as_deref(),
             tick,
             &keys,
             (seed, &saves, clock, still),
-            (smooth, cfg.as_deref()),
+            (smooth, cfg.as_deref(), deadrally),
             &out,
         )
         .map(|()| ExitCode::SUCCESS),
@@ -319,6 +321,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut smooth = false;
     let mut menus = false;
     let mut cfg = None;
+    let mut deadrally = false;
     let mut files = Vec::new();
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default();
@@ -332,6 +335,8 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             smooth = true;
         } else if command == "trace" && name == "--menus" {
             menus = true;
+        } else if command == "render" && name == "--deadrally" {
+            deadrally = true;
         } else if options.contains(&name) {
             let value = args.next().ok_or(format!("{name} needs a value"))?;
             let number = || {
@@ -404,6 +409,7 @@ fn parse(args: &[OsString]) -> Result<Command, String> {
             still,
             smooth,
             cfg: cfg.clone(),
+            deadrally,
             out: out.ok_or("render needs --out FILE.png")?,
         }),
         "trace" => Ok(Command::Trace {
@@ -691,6 +697,7 @@ fn started(
     located: &Located,
     (seed, saves, clock, still): Start,
     cfg: Option<&Path>,
+    windows: bool,
 ) -> Result<Game, String> {
     let assets = Assets::load(&located.validation).map_err(|error| error.to_string())?;
     let config = match cfg {
@@ -702,8 +709,11 @@ fn started(
         None => assets.menu.default_config.clone(),
     };
     let mut game = Game::with_seed(assets, config, seed);
-    // Our runs are checked against the original Windows version.
-    game.as_the_windows_version();
+    // Our runs are checked against the original Windows version; `--deadrally` renders the
+    // game as DeadRally plays it.
+    if windows {
+        game.as_the_windows_version();
+    }
     game.set_saved_games(read_saves(saves)?);
     if let Some(ms) = clock {
         game.fix_sabotage_clock(ms);
@@ -719,11 +729,11 @@ fn render(
     tick: u64,
     keys: &[Press],
     start: Start,
-    (smooth, cfg): (bool, Option<&Path>),
+    (smooth, cfg, deadrally): (bool, Option<&Path>, bool),
     out: &Path,
 ) -> Result<(), String> {
     let located = locate_data(data)?;
-    let mut game = started(&located, start, cfg)?;
+    let mut game = started(&located, start, cfg, !deadrally)?;
     play(&mut game, tick, keys, |_, _| {});
     window::present(&game.frame(), smooth)?.write_png(out)
 }
@@ -740,7 +750,7 @@ fn trace(
     (menus, cfg): (bool, Option<&Path>),
 ) -> Result<(), String> {
     let located = locate_data(data)?;
-    let mut game = started(&located, start, cfg)?;
+    let mut game = started(&located, start, cfg, true)?;
     let mut last = None;
     play(&mut game, tick, keys, |done, game| {
         if menus {
@@ -879,7 +889,7 @@ fn timeline(
     ticks: u64,
     mut each: impl FnMut(u64, &Rgb, bool),
 ) -> Result<(), String> {
-    let mut game = started(located, start, cfg)?;
+    let mut game = started(located, start, cfg, true)?;
     let mut previous: Option<(Vec<u8>, Vec<[u8; 3]>, Rgb)> = None;
     let mut failure = None;
     let mut visit = |tick: u64, game: &Game| {
@@ -952,7 +962,7 @@ fn render_audio(
                     intro_ticks.sum::<u64>() + STARTUP_AFTER_INTRO_TICKS
                 }
             };
-            let mut game = started(&located, start, cfg)?;
+            let mut game = started(&located, start, cfg, true)?;
             let mut audio = Vec::new();
             for done in 0..ticks {
                 press_due(&mut game, keys, done);
@@ -1179,9 +1189,27 @@ mod tests {
                 still: false,
                 smooth: false,
                 cfg: None,
+                deadrally: false,
                 out: PathBuf::from("a.png")
             })
         );
+        // DeadRally's own screens, which the Windows version's runs never show, are checked
+        // by eye with --deadrally; the commands compared with the original refuse it.
+        assert!(matches!(
+            parse(&args(&[
+                "render",
+                "--tick",
+                "5",
+                "--deadrally",
+                "--out",
+                "a.png"
+            ])),
+            Ok(Command::Render {
+                deadrally: true,
+                ..
+            })
+        ));
+        assert!(parse(&args(&["find", "--deadrally", "a.png"])).is_err());
         assert_eq!(
             parse(&args(&["compare", "a.png", "b.png"])),
             Ok(Command::Compare {

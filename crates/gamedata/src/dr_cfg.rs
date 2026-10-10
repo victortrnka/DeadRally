@@ -74,6 +74,12 @@ const RECORD_BYTES: usize = 24;
 /// is the original's, and they start empty.
 pub const ARENA: usize = 18;
 const ARENA_BYTES: usize = RECORD_BYTES * 6;
+/// DeadRally's race records, after the Arena's lap records: for each count of laps of
+/// [`RACE_LAPS`], for each car, for each of the 18 circuits, a record as a lap record has it;
+/// then the Arena's races of [`ARENA_LAPS`] laps, one for each car.
+pub const RACE_LAPS: [i32; 3] = [4, 5, 6];
+pub const ARENA_LAPS: i32 = 9;
+const RACE_RECORDS_BYTES: usize = RECORD_BYTES * (18 * 6 * RACE_LAPS.len() + 6);
 /// The best ten: 20 bytes each (a name of up to 12 bytes, races, difficulty).
 const HALL_OF_FAME: usize = 0xA6E;
 const ENTRY_BYTES: usize = 20;
@@ -125,7 +131,11 @@ const PAYLOAD_SOURCES: [(usize, u32, usize); 29] = [
 pub struct DrCfg {
     header: [u8; HEADER_BYTES],
     payload: Vec<u8>,
-    arena: Option<Vec<u8>>,
+    /// DeadRally's own, after the original's bytes: the Arena's lap records, the race
+    /// records, and the best ten's entries past the tenth (20 bytes each).
+    arena: Vec<u8>,
+    races: Vec<u8>,
+    fame: Vec<u8>,
 }
 
 impl DrCfg {
@@ -150,13 +160,17 @@ impl DrCfg {
         Ok(DrCfg {
             header,
             payload,
-            arena: None,
+            arena: vec![0; ARENA_BYTES],
+            races: vec![0; RACE_RECORDS_BYTES],
+            fame: Vec::new(),
         })
     }
 
     /// A `dr.cfg` as `loadConfig` takes it: `None` when it is 7 bytes or shorter (the
     /// original then uses its defaults); else its header and payload, bytes it lacks 0 and
-    /// extra bytes left out but for the Arena's records after them.
+    /// extra bytes left out but for DeadRally's own after them: the Arena's lap records, the
+    /// race records, and a count of the best ten's entries past the tenth with as many of
+    /// them as the file holds.
     pub fn parse(bytes: &[u8]) -> Option<DrCfg> {
         if bytes.len() <= SHORTEST {
             return None;
@@ -166,23 +180,47 @@ impl DrCfg {
         header[..in_header].copy_from_slice(&bytes[..in_header]);
         let mut payload = bytes.get(HEADER_BYTES..).unwrap_or_default().to_vec();
         payload.resize(PAYLOAD_BYTES, 0);
-        let arena = HEADER_BYTES + PAYLOAD_BYTES;
-        let arena = bytes.get(arena..arena + ARENA_BYTES).map(<[u8]>::to_vec);
+        let ours = bytes
+            .get(HEADER_BYTES + PAYLOAD_BYTES..)
+            .unwrap_or_default();
+        let block = |from: usize, length: usize| {
+            ours.get(from..from + length)
+                .map_or_else(|| vec![0; length], <[u8]>::to_vec)
+        };
+        let fame_at = ARENA_BYTES + RACE_RECORDS_BYTES;
+        let count = ours
+            .get(fame_at..fame_at + 4)
+            .map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize);
+        let entries = ours.get(fame_at + 4..).unwrap_or_default();
+        let count = count.min(entries.len() / ENTRY_BYTES);
         Some(DrCfg {
             header,
             payload,
-            arena,
+            arena: block(0, ARENA_BYTES),
+            races: block(ARENA_BYTES, RACE_RECORDS_BYTES),
+            fame: entries[..count * ENTRY_BYTES].to_vec(),
         })
     }
 
-    /// The file as `saveConfiguration` writes it, then the Arena's records once it has any.
+    /// The file as `saveConfiguration` writes it, then DeadRally's own blocks up to the last
+    /// with anything in it, the ones before it written empty: a file without any is the
+    /// original's.
     pub fn to_bytes(&self) -> Vec<u8> {
-        [
-            &self.header[..],
-            &self.payload,
-            self.arena.as_deref().unwrap_or_default(),
-        ]
-        .concat()
+        let mut bytes = [&self.header[..], &self.payload].concat();
+        let fame = !self.fame.is_empty();
+        let races = fame || self.races.iter().any(|&b| b != 0);
+        if races || self.arena.iter().any(|&b| b != 0) {
+            bytes.extend_from_slice(&self.arena);
+        }
+        if races {
+            bytes.extend_from_slice(&self.races);
+        }
+        if fame {
+            let count = (self.fame.len() / ENTRY_BYTES) as u32;
+            bytes.extend_from_slice(&count.to_le_bytes());
+            bytes.extend_from_slice(&self.fame);
+        }
+        bytes
     }
 
     fn get(&self, offset: usize) -> u32 {
@@ -263,55 +301,90 @@ impl DrCfg {
     /// Record `car` (0–5) of circuit `circuit` (0–17, or [`ARENA`]): the driver's name and
     /// the time (minutes, seconds, hundredths); an Arena's record never set is empty.
     pub fn record(&self, circuit: usize, car: usize) -> (&[u8], [u32; 3]) {
+        let at = self.lap_record_at(circuit, car);
         let record = if circuit == ARENA {
-            match &self.arena {
-                Some(arena) => &arena[RECORD_BYTES * car..RECORD_BYTES * (car + 1)],
-                None => return (&[], [0; 3]),
-            }
+            &self.arena[at..at + RECORD_BYTES]
         } else {
-            let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
             &self.payload[at..at + RECORD_BYTES]
         };
-        let time = [0, 1, 2].map(|i| {
-            let at = NAME_BYTES + 4 * i;
-            u32::from_le_bytes([record[at], record[at + 1], record[at + 2], record[at + 3]])
-        });
-        let name = &record[..NAME_BYTES];
-        (
-            &name[..name.iter().position(|&b| b == 0).unwrap_or(NAME_BYTES)],
-            time,
-        )
+        read_record(record)
     }
 
     /// A new record `car` of circuit `circuit` (or [`ARENA`]): `name` upper-cased (`strcpy`
     /// then `_strupr`, so the rest of the field keeps what it held after the NUL) and the
     /// time.
     pub fn set_record(&mut self, circuit: usize, car: usize, name: &[u8], time: [u32; 3]) {
+        let at = self.lap_record_at(circuit, car);
         let record = if circuit == ARENA {
-            let arena = self.arena.get_or_insert_with(|| vec![0; ARENA_BYTES]);
-            &mut arena[RECORD_BYTES * car..RECORD_BYTES * (car + 1)]
+            &mut self.arena[at..at + RECORD_BYTES]
         } else {
-            let at = RECORDS + RECORD_BYTES * (circuit + 18 * car);
             &mut self.payload[at..at + RECORD_BYTES]
         };
-        let length = name.len().min(NAME_BYTES - 1);
-        record[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
-        record[length] = 0;
-        for (i, part) in time.into_iter().enumerate() {
-            let at = NAME_BYTES + 4 * i;
-            record[at..at + 4].copy_from_slice(&part.to_le_bytes());
+        write_record(record, name, time);
+    }
+
+    /// Where lap record `car` of `circuit` starts: in the payload, or in the Arena's block.
+    fn lap_record_at(&self, circuit: usize, car: usize) -> usize {
+        assert!(
+            circuit <= ARENA && car < 6,
+            "no lap record {circuit}, {car}"
+        );
+        if circuit == ARENA {
+            RECORD_BYTES * car
+        } else {
+            RECORDS + RECORD_BYTES * (circuit + 18 * car)
         }
     }
 
-    /// Entry `rank` (0–9) of the best ten: the name, races and difficulty.
+    /// The race record of car `car` (0–5) over `laps` laps of circuit `circuit` (0–17, with
+    /// laps of [`RACE_LAPS`]), or of the Arena ([`ARENA`], [`ARENA_LAPS`]): the driver's name
+    /// and the race's time; empty when never set.
+    pub fn race_record(&self, circuit: usize, laps: i32, car: usize) -> (&[u8], [u32; 3]) {
+        let at = race_record_at(circuit, laps, car);
+        read_record(&self.races[at..at + RECORD_BYTES])
+    }
+
+    /// A new race record, as [`DrCfg::set_record`] sets a lap record.
+    pub fn set_race_record(
+        &mut self,
+        circuit: usize,
+        laps: i32,
+        car: usize,
+        name: &[u8],
+        time: [u32; 3],
+    ) {
+        let at = race_record_at(circuit, laps, car);
+        write_record(&mut self.races[at..at + RECORD_BYTES], name, time);
+    }
+
+    /// Entry `rank` of the Hall of Fame (0–9 the original's best ten, then DeadRally's
+    /// entries past them): the name, races and difficulty.
     pub fn hall_of_fame(&self, rank: usize) -> (&[u8], i32, u32) {
-        let at = HALL_OF_FAME + ENTRY_BYTES * rank;
-        let races = self.get(at + NAME_BYTES) as i32;
+        let entry = self.entry(rank);
+        let name = &entry[..NAME_BYTES];
+        let word = |at: usize| {
+            u32::from_le_bytes([entry[at], entry[at + 1], entry[at + 2], entry[at + 3]])
+        };
         (
-            self.name(at, NAME_BYTES),
-            races,
-            self.get(at + NAME_BYTES + 4),
+            &name[..name.iter().position(|&b| b == 0).unwrap_or(NAME_BYTES)],
+            word(NAME_BYTES) as i32,
+            word(NAME_BYTES + 4),
         )
+    }
+
+    /// The Hall of Fame's entries: the best ten and DeadRally's past them.
+    pub fn hall_of_fame_len(&self) -> usize {
+        HALL_OF_FAME_ENTRIES + self.fame.len() / ENTRY_BYTES
+    }
+
+    fn entry(&self, rank: usize) -> &[u8] {
+        if rank < HALL_OF_FAME_ENTRIES {
+            let at = HALL_OF_FAME + ENTRY_BYTES * rank;
+            &self.payload[at..at + ENTRY_BYTES]
+        } else {
+            let at = ENTRY_BYTES * (rank - HALL_OF_FAME_ENTRIES);
+            &self.fame[at..at + ENTRY_BYTES]
+        }
     }
 
     /// A game won into the best ten (`showHallOfFameEndGame_430FA0`): before the first entry
@@ -331,13 +404,37 @@ impl DrCfg {
                 .copy_within(from..from + ENTRY_BYTES, from + ENTRY_BYTES);
         }
         let at = HALL_OF_FAME + ENTRY_BYTES * rank;
-        let length = name.len().min(NAME_BYTES - 1);
-        let field = &mut self.payload[at..at + NAME_BYTES];
-        field[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
-        field[length] = 0;
-        self.put(at + NAME_BYTES, races as u32);
-        self.put(at + NAME_BYTES + 4, difficulty);
+        write_entry(
+            &mut self.payload[at..at + ENTRY_BYTES],
+            name,
+            races,
+            difficulty,
+        );
         Some(rank)
+    }
+
+    /// A game won into DeadRally's Hall of Fame, which grows: put as the original puts it
+    /// (before the first entry with more races, the name over the old one), but nobody drops
+    /// out; past the last when no entry has more races. The first ten stay in the original's
+    /// slots. Its rank.
+    pub fn add_to_hall_of_fame(&mut self, name: &[u8], races: i32, difficulty: u32) -> usize {
+        let len = self.hall_of_fame_len();
+        let rank = (0..len)
+            .find(|&rank| races < self.hall_of_fame(rank).1)
+            .unwrap_or(len);
+        let mut entries: Vec<Vec<u8>> = (0..len).map(|rank| self.entry(rank).to_vec()).collect();
+        let mut entry = entries
+            .get(rank)
+            .cloned()
+            .unwrap_or_else(|| vec![0; ENTRY_BYTES]);
+        write_entry(&mut entry, name, races, difficulty);
+        entries.insert(rank, entry);
+        let (best_ten, past) = entries.split_at(HALL_OF_FAME_ENTRIES);
+        let at = HALL_OF_FAME;
+        self.payload[at..at + ENTRY_BYTES * HALL_OF_FAME_ENTRIES]
+            .copy_from_slice(&best_ten.concat());
+        self.fame = past.concat();
+        rank
     }
 
     /// Upper-cases the best ten's names in place, as `seeHallOfFame` (0x431510) does with
@@ -359,6 +456,58 @@ impl DrCfg {
     }
 }
 
+/// Where the race record of `car` over `laps` laps of `circuit` starts in the race records.
+fn race_record_at(circuit: usize, laps: i32, car: usize) -> usize {
+    assert!(car < 6, "no car {car}");
+    let index = if circuit == ARENA {
+        assert_eq!(
+            laps, ARENA_LAPS,
+            "the Arena's races are of {ARENA_LAPS} laps"
+        );
+        18 * 6 * RACE_LAPS.len() + car
+    } else {
+        assert!(circuit < 18, "no circuit {circuit}");
+        let kind = RACE_LAPS
+            .iter()
+            .position(|&count| count == laps)
+            .unwrap_or_else(|| panic!("no race of {laps} laps"));
+        circuit + 18 * (car + 6 * kind)
+    };
+    RECORD_BYTES * index
+}
+
+/// A record's name up to its NUL and its time.
+fn read_record(record: &[u8]) -> (&[u8], [u32; 3]) {
+    let time = [0, 1, 2].map(|i| {
+        let at = NAME_BYTES + 4 * i;
+        u32::from_le_bytes([record[at], record[at + 1], record[at + 2], record[at + 3]])
+    });
+    let name = &record[..NAME_BYTES];
+    (
+        &name[..name.iter().position(|&b| b == 0).unwrap_or(NAME_BYTES)],
+        time,
+    )
+}
+
+/// `name` upper-cased over the record's old one up to the NUL, and the time.
+fn write_record(record: &mut [u8], name: &[u8], time: [u32; 3]) {
+    let length = name.len().min(NAME_BYTES - 1);
+    record[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
+    record[length] = 0;
+    for (i, part) in time.into_iter().enumerate() {
+        let at = NAME_BYTES + 4 * i;
+        record[at..at + 4].copy_from_slice(&part.to_le_bytes());
+    }
+}
+
+/// `name` upper-cased over the entry's old one up to the NUL, the races and the difficulty.
+fn write_entry(entry: &mut [u8], name: &[u8], races: i32, difficulty: u32) {
+    let length = name.len().min(NAME_BYTES - 1);
+    entry[..length].copy_from_slice(&name[..length].to_ascii_uppercase());
+    entry[length] = 0;
+    entry[NAME_BYTES..NAME_BYTES + 4].copy_from_slice(&(races as u32).to_le_bytes());
+    entry[NAME_BYTES + 4..NAME_BYTES + 8].copy_from_slice(&difficulty.to_le_bytes());
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,7 +529,9 @@ mod tests {
         DrCfg {
             header: [9; HEADER_BYTES],
             payload: vec![9; PAYLOAD_BYTES],
-            arena: None,
+            arena: vec![0; ARENA_BYTES],
+            races: vec![0; RACE_RECORDS_BYTES],
+            fame: Vec::new(),
         }
     }
 
@@ -530,6 +681,96 @@ mod tests {
         assert_eq!(&bytes[..HEADER_BYTES + PAYLOAD_BYTES], file());
         assert_eq!(bytes.len(), HEADER_BYTES + PAYLOAD_BYTES + RECORD_BYTES * 6);
         assert_eq!(DrCfg::parse(&bytes).unwrap(), cfg);
+    }
+
+    #[test]
+    fn race_records_are_kept_by_circuit_laps_and_car_and_survive_the_file() {
+        // A 6-lap time is no 4-lap record, and a race record is no lap record: each lands in
+        // its own place, the rest stay empty, and the file keeps them.
+        let mut cfg = DrCfg::parse(&file()).unwrap();
+        cfg.set_race_record(3, 5, 2, b"Ann", [1, 2, 3]);
+        cfg.set_race_record(ARENA, 9, 4, b"Bob", [2, 0, 50]);
+        assert_eq!(cfg.race_record(3, 5, 2), (&b"ANN"[..], [1, 2, 3]));
+        assert_eq!(cfg.race_record(ARENA, 9, 4), (&b"BOB"[..], [2, 0, 50]));
+        for (circuit, laps, car) in [(3, 4, 2), (3, 6, 2), (3, 5, 1), (4, 5, 2), (ARENA, 9, 3)] {
+            assert_eq!(cfg.race_record(circuit, laps, car), (&b""[..], [0, 0, 0]));
+        }
+        assert_eq!(
+            cfg.record(3, 2),
+            DrCfg::parse(&file()).unwrap().record(3, 2)
+        );
+        assert_eq!(cfg.record(ARENA, 4), (&b""[..], [0, 0, 0]));
+        let bytes = cfg.to_bytes();
+        assert_eq!(&bytes[..file().len()], file());
+        assert_eq!(bytes.len(), file().len() + ARENA_BYTES + RACE_RECORDS_BYTES);
+        assert_eq!(DrCfg::parse(&bytes).unwrap(), cfg);
+    }
+
+    /// A best ten whose entry `rank` is named "a" + rank, with 10 * (rank + 1) races.
+    fn best_ten() -> DrCfg {
+        let mut cfg = DrCfg::parse(&file()).unwrap();
+        for rank in 0..HALL_OF_FAME_ENTRIES {
+            let at = HALL_OF_FAME + ENTRY_BYTES * rank;
+            cfg.payload[at..at + NAME_BYTES].fill(0);
+            cfg.payload[at] = b'a' + rank as u8;
+            cfg.put(at + NAME_BYTES, 10 * (rank as u32 + 1));
+            cfg.put(at + NAME_BYTES + 4, 0);
+        }
+        cfg
+    }
+
+    #[test]
+    fn a_won_game_grows_the_hall_of_fame_and_nobody_drops_out() {
+        // The original drops its tenth entry for a winner, and a winner with more races than
+        // the tenth never enters. Here every winner enters, sorted by races, fewest first.
+        let mut cfg = best_ten();
+        assert_eq!(cfg.hall_of_fame_len(), 10);
+        assert_eq!(cfg.add_to_hall_of_fame(b"slow", 150, 2), 10);
+        assert_eq!(cfg.add_to_hall_of_fame(b"Tom", 30, 1), 3);
+        assert_eq!(cfg.hall_of_fame_len(), 12);
+        assert_eq!(cfg.hall_of_fame(2), (&b"c"[..], 30, 0));
+        assert_eq!(cfg.hall_of_fame(3), (&b"TOM"[..], 30, 1));
+        assert_eq!(cfg.hall_of_fame(4), (&b"d"[..], 40, 0));
+        assert_eq!(
+            cfg.hall_of_fame(10),
+            (&b"j"[..], 100, 0),
+            "the old tenth kept"
+        );
+        assert_eq!(cfg.hall_of_fame(11), (&b"SLOW"[..], 150, 2));
+        let bytes = cfg.to_bytes();
+        assert_eq!(DrCfg::parse(&bytes).unwrap(), cfg);
+        // The first ten stay in the original's slots, where the original reads them.
+        let original = DrCfg::parse(&bytes[..file().len()]).unwrap();
+        assert_eq!(original.hall_of_fame(3), (&b"TOM"[..], 30, 1));
+        assert_eq!(original.hall_of_fame(9), (&b"i"[..], 90, 0));
+    }
+
+    #[test]
+    fn entries_past_the_tenth_write_the_records_before_them_empty() {
+        // The blocks after the original's bytes come in a fixed order; a file with only the
+        // best ten's extra entries still reads its records as empty, not as names and times.
+        let mut cfg = best_ten();
+        cfg.add_to_hall_of_fame(b"late", 200, 0);
+        let bytes = cfg.to_bytes();
+        assert_eq!(
+            bytes.len(),
+            file().len() + ARENA_BYTES + RACE_RECORDS_BYTES + 4 + ENTRY_BYTES
+        );
+        let read = DrCfg::parse(&bytes).unwrap();
+        assert_eq!(read.record(ARENA, 0), (&b""[..], [0, 0, 0]));
+        assert_eq!(read.race_record(0, 4, 0), (&b""[..], [0, 0, 0]));
+        assert_eq!(read.hall_of_fame(10), (&b"LATE"[..], 200, 0));
+    }
+
+    #[test]
+    fn a_file_of_1_0_0_reads_and_writes_back_as_it_was() {
+        // 1.0.0 wrote the Arena's lap records after the original's bytes and nothing more.
+        let mut old = file();
+        old.extend((0..ARENA_BYTES).map(|i| (i % 7) as u8 + b'A'));
+        let cfg = DrCfg::parse(&old).unwrap();
+        assert_eq!(cfg.hall_of_fame_len(), 10);
+        assert_eq!(cfg.race_record(5, 6, 1), (&b""[..], [0, 0, 0]));
+        assert_eq!(cfg.to_bytes(), old);
     }
 
     #[test]

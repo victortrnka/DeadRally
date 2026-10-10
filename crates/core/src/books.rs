@@ -17,7 +17,8 @@ pub(crate) struct Finish {
 /// How the race ended: each car's finish, whether the player was lapped (0x456BC0) and took
 /// the bonus power-up (0x4A7AAC); the race's laps (0x463CA0), the player's race time
 /// (0x45EEC0, 0x45EEBC, 0x462D74) and best lap (0x463CAC, 0x45EB48, 0x461FEC) in minutes,
-/// seconds and hundredths.
+/// seconds and hundredths; and whether the player drove the whole race, their car crossing
+/// the finish line on its last lap (DeadRally's race records count only those).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Outcome {
     pub(crate) finishes: Vec<Finish>,
@@ -26,6 +27,7 @@ pub(crate) struct Outcome {
     pub(crate) laps: i32,
     pub(crate) race_time: [i32; 3],
     pub(crate) best_lap: [i32; 3],
+    pub(crate) whole: bool,
 }
 
 /// What the results show of the player's race: the place (0x456B50), the money picked up

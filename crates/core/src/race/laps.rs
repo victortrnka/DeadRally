@@ -107,13 +107,15 @@ pub(super) struct Call(pub(super) u8);
 
 /// The race's facts the check needs: the player's place on the grid, the race's laps,
 /// whether the track is the intro's (no record call there), whether the player's car is the
-/// Adversary's (no lapped call), and which car belongs to the tough driver.
+/// Adversary's (no lapped call), and which car belongs to the tough driver; and whether the
+/// player's lap after another car has finished is timed (DeadRally's; the original's is not).
 pub(super) struct Race {
     pub(super) player: usize,
     pub(super) laps: i32,
     pub(super) intro_track: bool,
     pub(super) special: bool,
     pub(super) tough: Option<usize>,
+    pub(super) last_lap_timed: bool,
 }
 
 /// `checkVaiZones` for every car; the calls it makes, in order.
@@ -154,6 +156,9 @@ pub(super) fn check(cars: &mut [Car], zones: &Zones, laps: &mut Laps, race: &Rac
         if laps.over {
             car.finished = true;
             car.handling.engine = 0.0;
+            if slot == race.player && race.last_lap_timed {
+                lap_times(laps, race, &mut calls);
+            }
         } else {
             car.lap = (car.lap + 1) & 0xFF;
             if slot == race.player {
@@ -215,6 +220,13 @@ fn lap_times(laps: &mut Laps, race: &Race, calls: &mut Vec<Call>) {
     laps.last_lap = laps.lap_clock;
     laps.shown = CALL_WAIT;
     laps.lap_clock = 0;
+}
+
+/// Whether `car` drove the whole race of `laps` laps: it crossed the finish line on its last
+/// lap, first or after the winner. A car a lap short when the race ended, wrecked or still
+/// running did not.
+pub(super) fn whole_race(car: &Car, laps: i32) -> bool {
+    car.finished && car.lap == laps
 }
 
 /// `sub_413380`: a wreck gives its place to any running car behind it, and the wrecks, in
@@ -331,6 +343,7 @@ mod tests {
             intro_track: false,
             special: false,
             tough: None,
+            last_lap_timed: false,
         }
     }
 
@@ -380,6 +393,61 @@ mod tests {
         check(&mut cars, &zones(), &mut laps, &race(1));
         assert!(cars[0].finished);
         assert_eq!(cars[0].lap, 1, "no lap counted once the race is over");
+    }
+
+    /// The original ends the player's race at the line once another car has finished,
+    /// without timing the lap just driven, so a best lap or a record set on the last lap of
+    /// a race the player did not win was lost. DeadRally times it as any other lap.
+    #[test]
+    fn the_player_s_last_lap_after_the_winner_is_timed_in_deadrally() {
+        for timed in [false, true] {
+            let mut cars = vec![car(0), car(1)];
+            let mut laps = Laps {
+                over: true,
+                lap_clock: 70 * 20,
+                best: [0, 30, 0],
+                record: [0, 25, 0],
+                ..Laps::default()
+            };
+            cars[1].finished = true;
+            cars[0].zone = 3;
+            put(&mut cars[0], 28.0);
+            let race = Race {
+                last_lap_timed: timed,
+                ..race(1)
+            };
+            let calls = check(&mut cars, &zones(), &mut laps, &race);
+            assert!(cars[0].finished);
+            if timed {
+                assert_eq!(laps.best, [0, 20, 0], "the last lap the best");
+                assert_eq!(calls, [Call(RECORD)], "and a record");
+            } else {
+                assert_eq!(laps.best, [0, 30, 0], "as the Windows version");
+                assert!(calls.is_empty());
+            }
+        }
+    }
+
+    /// Only a race driven to its end is a race record: the winner's, and a car finishing
+    /// after it on its own last lap, but not a car a lap short or still running.
+    #[test]
+    fn a_whole_race_is_one_finished_on_its_last_lap() {
+        let mut cars = vec![car(0), car(1), car(2)];
+        let mut laps = Laps::default();
+        cars[1].lap = 2;
+        cars[1].zone = 3;
+        put(&mut cars[1], 28.0);
+        check(&mut cars, &zones(), &mut laps, &race(2));
+        assert!(whole_race(&cars[1], 2), "the winner");
+        cars[0].lap = 2;
+        cars[0].zone = 3;
+        put(&mut cars[0], 28.0);
+        cars[2].zone = 3;
+        put(&mut cars[2], 28.0);
+        check(&mut cars, &zones(), &mut laps, &race(2));
+        assert!(whole_race(&cars[0], 2), "after the winner, on its last lap");
+        assert!(cars[2].finished && !whole_race(&cars[2], 2), "a lap short");
+        assert!(!whole_race(&car(3), 2), "still running");
     }
 
     /// A car further round on the same lap takes the place of one behind it.
