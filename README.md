@@ -2,7 +2,7 @@
 
 Original Death Rally reincarnation for modern systems: a clean, native, 64-bit reimplementation of *Death Rally for Windows* (Remedy, 2009) for Windows, macOS and Linux, written in Rust.
 
-**Status:** the whole single-player game, from the intro to the race against the Adversary and the end, played as the original plays it. Every part was checked against the original, screen by screen and often frame by frame ([docs/verification](https://github.com/victortrnka/DeadRally/blob/master/docs/verification)). Version 1.0 is being prepared (milestone M7). [The project brief](https://github.com/victortrnka/DeadRally/blob/master/docs/PROJECT_BRIEF.md) covers the goal, the approach and the roadmap.
+**Status:** the whole single-player game, from the intro to the race against the Adversary and the end, played as the original plays it. Every part was checked against the original, screen by screen and often frame by frame ([docs/verification](https://github.com/victortrnka/DeadRally/blob/master/docs/verification)). Version 1.0.0 is the first release. [The project brief](https://github.com/victortrnka/DeadRally/blob/master/docs/PROJECT_BRIEF.md) covers the goal, the approach and the roadmap.
 
 DeadRally contains no game data. You need your own copy of the game: *Death Rally (Classic)* on Steam (free) or Remedy's 2009 freeware release for Windows. DeadRally reads its files and never changes them.
 

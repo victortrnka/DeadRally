@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "deadrally"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "deadrally-core",
  "deadrally-gamedata",
@@ -93,14 +93,14 @@ dependencies = [
 
 [[package]]
 name = "deadrally-core"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "deadrally-gamedata",
 ]
 
 [[package]]
 name = "deadrally-gamedata"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "directories",
  "sha2",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "deadrally-headless"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "deadrally-core",
  "deadrally-gamedata",
