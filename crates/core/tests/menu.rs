@@ -6,7 +6,7 @@ mod common;
 
 use common::{
     ARROW, BACKGROUND, BIG_A, BIG_B, BIG_D, CREDITS, CURSOR, END, FAME_TITLE, KNOB, MEDIUM,
-    PREVIEW, RECORDS_TITLE, SLIDER, SMALL, SNAPSHOT,
+    PREVIEW, RECORDS_BAR, RECORDS_TITLE, SLIDER, SMALL, SNAPSHOT,
 };
 use deadrally_core::{Game, InputEvent, Key, PadAxis, PadButton};
 use deadrally_gamedata::assets::{Assets, Picture};
@@ -842,6 +842,62 @@ fn the_records_step_through_the_circuits_in_the_originals_order() {
     press(&mut game, Key::Left);
     run(&mut game, 12);
     assert_eq!(snapshot(&game), SNAPSHOT + 15, "then the last circuit, 15");
+}
+
+#[test]
+fn up_and_down_show_deadrally_s_race_records_of_each_count_of_laps() {
+    // The lap's records first, as the original's; Down steps to the races of 4, 5 and 6
+    // laps, whose third heading is their laps, and on round to the lap's again; Up the other
+    // way.
+    let mut game = in_hall_of_fame(assets());
+    press(&mut game, Key::Space);
+    run(&mut game, 2 + WIPE);
+    let heading = |game: &Game| pixel(game, (549, 185));
+    assert_eq!(heading(&game), RECORDS_BAR, "the lap's page");
+    press(&mut game, Key::Down);
+    run(&mut game, 2);
+    assert_eq!(heading(&game), MEDIUM, "4 laps");
+    for _ in 0..3 {
+        press(&mut game, Key::Down);
+        run(&mut game, 2);
+    }
+    assert_eq!(heading(&game), RECORDS_BAR, "round to the lap's");
+    press(&mut game, Key::Up);
+    run(&mut game, 2);
+    assert_eq!(heading(&game), MEDIUM, "6 laps");
+}
+
+#[test]
+fn up_and_down_scroll_a_hall_of_fame_grown_past_ten() {
+    // An eleventh winner is kept below the ten rows; Down shows it, Up the first ten again.
+    // With ten or fewer, Up and Down leave the best ten as any key does.
+    let mut config = common::config();
+    assert_eq!(config.add_to_hall_of_fame(b"NEW", 5, 0), 10);
+    let mut game = in_menu_with(assets(), config);
+    step(&mut game, Key::Down);
+    step(&mut game, Key::Down);
+    press(&mut game, Key::Enter);
+    run(&mut game, 2 + WIPE);
+    let last_row_name = |game: &Game| pixel(game, (140, 144 + 22 * 9 + 2));
+    assert_ne!(last_row_name(&game), MEDIUM, "the tenth's empty name");
+    press(&mut game, Key::Down);
+    run(&mut game, 2);
+    assert_eq!(last_row_name(&game), MEDIUM, "the eleventh's");
+    press(&mut game, Key::Down);
+    run(&mut game, 2);
+    assert_eq!(
+        pixel(&game, (5, 95)),
+        FAME_TITLE,
+        "no further, and still the best ten"
+    );
+    press(&mut game, Key::Up);
+    run(&mut game, 2);
+    assert_ne!(last_row_name(&game), MEDIUM, "the first ten again");
+
+    let mut game = in_hall_of_fame(assets());
+    press(&mut game, Key::Down);
+    run(&mut game, 2 + WIPE);
+    assert_eq!(pixel(&game, (5, 95)), RECORDS_TITLE, "on to the records");
 }
 
 #[test]

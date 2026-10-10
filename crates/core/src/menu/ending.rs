@@ -6,6 +6,7 @@ use crate::animation::Player;
 use crate::audio::FULL_VOLUME;
 use crate::canvas::at;
 
+use super::hall_of_fame::FAME_ROWS;
 use super::results::Film;
 use super::{Menu, State};
 
@@ -91,16 +92,26 @@ impl Menu {
         );
         let player = *self.campaign.player();
         let difficulty = self.config.difficulty();
-        if let Some(rank) = self
-            .config
-            .insert_hall_of_fame(player.name(), player.races, difficulty)
-        {
+        // DeadRally's Hall of Fame grows: every winner enters, shown as the last of the ten
+        // rows when below the tenth.
+        let (entered, top) = if self.campaign.windows_version {
+            let rank = self
+                .config
+                .insert_hall_of_fame(player.name(), player.races, difficulty);
+            (rank, 0)
+        } else {
+            let rank = self
+                .config
+                .add_to_hall_of_fame(player.name(), player.races, difficulty);
+            (Some(rank), (rank + 1).saturating_sub(FAME_ROWS))
+        };
+        if let Some(rank) = entered {
             let (x, y, w) = ROW_BORDER;
-            self.thin_border(&mut screen, x, y + ROW_STEP * rank, w, ROW_HEIGHT);
+            self.thin_border(&mut screen, x, y + ROW_STEP * (rank - top), w, ROW_HEIGHT);
             // `saveConfiguration` (0x4310CD) draws `dr.cfg`'s random byte.
             self.save_config();
         }
-        self.draw_best_ten(&mut screen);
+        self.draw_best_ten(&mut screen, top);
         self.screen = screen;
         self.shown = self.screen.clone();
         self.compose_palette();

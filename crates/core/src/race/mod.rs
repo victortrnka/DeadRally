@@ -207,6 +207,8 @@ pub(crate) struct Race {
     help_asked: bool,
     /// The opponents kept still.
     still: bool,
+    /// Whether the player's lap after another car has finished is timed (DeadRally's).
+    last_lap_timed: bool,
     /// The scancodes of the eight controls in `dr.cfg`.
     controls: [u32; 8],
     /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
@@ -356,6 +358,9 @@ pub(crate) struct Setup {
     pub(crate) still: bool,
     pub(crate) pickup_money: i32,
     pub(crate) lap_record: [i32; 3],
+    /// Whether the player's lap after another car has finished is timed: DeadRally's, as
+    /// the original loses it.
+    pub(crate) last_lap_timed: bool,
     /// What the last race left in the original's globals.
     pub(crate) session: Session,
 }
@@ -576,6 +581,7 @@ impl Race {
             still,
             pickup_money,
             lap_record,
+            last_lap_timed,
             session,
         } = setup;
         let mut track = Track::load(&archives.tracks[number], number)?;
@@ -711,6 +717,7 @@ impl Race {
             help_texts: help,
             pads,
             still,
+            last_lap_timed,
             help_asked: false,
             controls,
             samples: [0; 16],
@@ -1092,6 +1099,7 @@ impl Race {
             // 0x413274 reads the first driver's car: the Adversary's in the last race.
             special: self.drivers[0].car == 6,
             tough: self.tough,
+            last_lap_timed: self.last_lap_timed,
         };
         for laps::Call(effect) in laps::check(&mut self.cars, &zones, &mut self.laps_state, &race) {
             sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
@@ -1571,6 +1579,7 @@ impl Race {
             laps: self.laps,
             race_time: laps::time(self.laps_state.race_clock),
             best_lap: self.laps_state.best,
+            whole: laps::whole_race(&self.cars[self.player], self.laps),
         }
     }
 

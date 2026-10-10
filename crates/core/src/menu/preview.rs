@@ -310,6 +310,7 @@ impl Menu {
                 .record(records, record.car.clamp(0, 5) as usize)
                 .1
                 .map(|part| part as i32),
+            last_lap_timed: !self.campaign.windows_version,
             session: self.campaign.race_session,
         };
         let race =
@@ -360,9 +361,7 @@ impl Menu {
             self.race = None;
             self.books = self.campaign.settle(&self.outcome);
             if !self.campaign.windows_version {
-                // The original keeps the record on the statistics, which a won Arena never
-                // shows; DeadRally keeps it as the race ends.
-                self.keep_lap_record();
+                self.keep_records();
             }
             let headlines = &self.assets.menu.texts.campaign.headlines;
             self.panel.tell_headline(&mut self.campaign.rand, headlines);

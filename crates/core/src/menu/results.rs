@@ -640,22 +640,58 @@ impl Menu {
     }
 
     /// The player's best lap of the race just over becomes the record of their car on its
-    /// circuit when better, or the first (0x425241, 0x425318). The original only writes
-    /// `dr.cfg` at the main menu's Quit, in Configure and for the best ten, and a window closed
-    /// before loses the records; DeadRally writes it at once.
-    pub(super) fn keep_lap_record(&mut self) {
+    /// circuit when better, or the first (0x425241, 0x425318). Whether it did.
+    fn keep_lap_record(&mut self) -> bool {
         let race = self.campaign.entered_race.unwrap_or(0);
         let circuit = self.records_circuit(race);
         let player = *self.campaign.player();
         let car = player.car.clamp(0, 5) as usize;
         let best = self.outcome.best_lap;
         let (_, record) = self.config.record(circuit, car);
-        if beats_record(best, record) {
+        let kept = beats_record(best, record);
+        if kept {
             self.config
                 .set_record(circuit, car, player.name(), best.map(|part| part as u32));
-            if !self.campaign.windows_version {
-                self.save = true;
-            }
+        }
+        kept
+    }
+
+    /// DeadRally's race record: the time of a race the player drove to its end becomes the
+    /// record of their car over the race's laps of its circuit when better, or the first.
+    /// Whether it did.
+    fn keep_race_record(&mut self) -> bool {
+        if !self.outcome.whole {
+            return false;
+        }
+        let race = self.campaign.entered_race.unwrap_or(0);
+        let circuit = self.records_circuit(race);
+        let laps = self.outcome.laps;
+        let player = *self.campaign.player();
+        let car = player.car.clamp(0, 5) as usize;
+        let time = self.outcome.race_time;
+        let (_, record) = self.config.race_record(circuit, laps, car);
+        let kept = beats_record(time, record);
+        if kept {
+            self.config.set_race_record(
+                circuit,
+                laps,
+                car,
+                player.name(),
+                time.map(|part| part as u32),
+            );
+        }
+        kept
+    }
+
+    /// DeadRally's records as the race ends: the lap record and the race record. The
+    /// original keeps the lap record on the statistics, which a won Arena never shows, and
+    /// writes `dr.cfg` only at the main menu's Quit, in Configure and for the best ten, so a
+    /// window closed before lost the records; DeadRally hands `dr.cfg` over at once.
+    pub(super) fn keep_records(&mut self) {
+        let lap = self.keep_lap_record();
+        let race = self.keep_race_record();
+        if lap || race {
+            self.save = true;
         }
     }
 

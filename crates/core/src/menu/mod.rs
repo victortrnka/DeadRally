@@ -110,14 +110,19 @@ enum State {
         wipe: hall_of_fame::Wipe,
         step: u32,
     },
-    /// The best ten, waiting for a key.
-    FameWait,
-    /// The records, circuit `index` of the circuit order; an arrow lit for 8 waits.
+    /// The best ten, waiting for a key; `top` the first row shown.
+    FameWait {
+        top: usize,
+    },
+    /// The records, page `index` (the circuit order's, then DeadRally's Arena) and kind
+    /// `kind` (the lap's, then DeadRally's races); an arrow lit for 8 waits.
     Records {
         index: usize,
+        kind: usize,
     },
     RecordsArrow {
         index: usize,
+        kind: usize,
         right: bool,
         waits: u32,
     },
@@ -603,13 +608,14 @@ impl Menu {
             State::PadWait { control, polls } => self.pad_wait(control, polls),
             State::NotDetected => self.not_detected(),
             State::Wipe { wipe, step } => self.wipe_tick(wipe, step),
-            State::FameWait => self.fame_wait(),
-            State::Records { index } => self.records_tick(index),
+            State::FameWait { top } => self.fame_wait(top),
+            State::Records { index, kind } => self.records_tick(index, kind),
             State::RecordsArrow {
                 index,
+                kind,
                 right,
                 waits,
-            } => self.records_arrow(index, right, waits),
+            } => self.records_arrow(index, kind, right, waits),
             State::YesNo {
                 question,
                 second: false,

@@ -30,11 +30,7 @@ A player sees their best whole-race times as well as their best laps, and winnin
    - the best ten's entries past the tenth: a 32-bit count, then 20 bytes each, as the original's entries.
 
    A block is written only when it or a later one has something in it. Blocks before it are written empty (zeros), which reads as no record. The first ten entries of the Hall of Fame stay in the original's ten slots, so the original can still read the file. A 1.0.0 file reads as before. *Cost if wrong:* a converter for files written in between.
-4. **The records screen's headings:**
-   - the title is the circuit's name and, on a race page, its laps (as "Suburbia - 4 laps");
-   - the third column's heading reads "RACE TIME:" on a race page, drawn over the bar's own heading.
-
-   Both are checked by eye in the game. *Cost if wrong:* a different heading.
+4. **The records screen's headings:** the title stays the circuit's name. On a race page the third column's heading reads its laps ("4 LAPS:"), drawn over the bar's own "LAP TIME:". A title with the laps ("Hell Mountain - 6 laps") did not fit its box. Checked by eye in the game. *Cost if wrong:* a different heading.
 5. **The Hall of Fame's screens:**
    - The best ten from the main menu starts at the top. Up and Down move it a row while there are rows beyond the screen; any other key goes on as now.
    - The entry after a won game shows the ten rows ending with the new one when it is below the tenth, with the border round it; a key ends it as now.

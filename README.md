@@ -60,12 +60,15 @@ These are the original's keys:
   - TAB hides the status bar; F2 and F3 switch the music and the effects; F4 and F5 the scene's pictures and the shadows.
   - Esc asks whether to abandon the race; Y does.
 - **In the shop:** F2 saves the game to the quicksave slot and F3 loads it.
+- **In the Hall of Fame** (DeadRally's): Up and Down scroll the winners past the tenth. On the records, Left and Right change the circuit, and Up and Down step from the lap records to the race records of 4, 5 and 6 laps (the Arena's: 9).
 
 ### Where DeadRally differs on purpose
 
 The 2009 Windows version keeps the key that ends a race for what follows it. The Enter that closes the race-over box therefore skips the easy race's results page before it can be read, and ends the end animation at once. Its DOS version did not do this, and DeadRally does not either: each results page waits for a key of its own.
 
-The original saves its lap records only when the player leaves through the main menu's Quit, so closing the window loses them, and it counts the Arena's laps as Suburbia's records. DeadRally saves each record as the race that set it ends, and the Arena has lap records of its own, with a page in the Hall of Fame.
+The original saves its lap records only when the player leaves through the main menu's Quit, so closing the window loses them, and it counts the Arena's laps as Suburbia's records. DeadRally saves each record as the race that set it ends, and the Arena has lap records of its own, with a page in the Hall of Fame. The original also forgets the last lap of a player who finishes after the winner; DeadRally times it as any other.
+
+Beyond the original, DeadRally keeps the best time of each whole race, by circuit, car and number of laps, and its Hall of Fame keeps every winner: a new winner is put in by races as in the original, but nobody drops out.
 
 DeadRally runs on every system, so the menu's welcome line names one "Universal Version 1.0" instead of the Windows version, and the line under it credits DeadRally's port instead of the Windows one.
 
