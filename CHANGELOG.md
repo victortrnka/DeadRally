@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: 1.0
+## 1.0.0 (2026-10-10)
 
 The first release, with the whole single-player game. Each milestone was checked against the original; [docs/verification](docs/verification) has the runs and what still differs.
 
