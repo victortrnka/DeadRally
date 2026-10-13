@@ -43,6 +43,15 @@ A player sees their best whole-race times as well as their best laps, and winnin
    - there are no race records, no Up and Down on the records, and no Arena page;
    - the last lap after the winner is not timed.
 
+## 3a. Added on 2026-10-13 (the owner's requests)
+
+1. **Remedy's records.** A race record or an Arena lap record never set is Remedy's, as the circuits' lap records are in the original:
+   - a race over N laps: Remedy's lap record there × N × (1.015 to 1.035), plus 1 s for the standing start. The spread is fixed for each record by its circuit, laps and car, so that the records do not look made by one rule.
+   - the Arena's laps: a Dervish lap of the Arena measured at 17.25 s in DeadRally's tests, at the pace Remedy's Holocaust record for the Dervish keeps over the same driving (26.96 s against 31.07 s), and the other cars at the pace of their records against the Dervish's over the eighteen circuits: 15.76, 14.97, 14.25, 13.62, 12.71 and 11.57 s.
+
+   They are not written into `dr.cfg`; an empty record reads as Remedy's.
+2. **The race record call.** A whole race faster than its record calls "It's a new race record" at the finish line, after the lap's own call so that it is the one heard. The owner chose these words over "It's a race record". DeadRally makes the call when it loads the race's sounds: "It's a new" and "record" from the lap record's call ("It's a new lap record", effect 4), and "race" from "Race over" (effect 5), brought down two semitones to the lap record call's rate. A speech recogniser and the owner heard the result. Nothing derived from the game's sounds is in the repository.
+
 ## 4. Tests
 
 - **`dr.cfg`:**

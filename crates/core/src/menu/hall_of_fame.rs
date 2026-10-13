@@ -347,10 +347,10 @@ impl Menu {
             let medium = &self.graphics.medium;
             medium.draw(canvas, &upper(&hall.cars[car]), at(228, y));
             let (driver, [minutes, seconds, hundredths]) = match laps {
-                Some(laps) => self.config.race_record(circuit, laps, car),
-                None => self.config.record(circuit, car),
+                Some(laps) => self.race_record(circuit, laps, car),
+                None => self.lap_record(circuit, car),
             };
-            medium.draw(canvas, &upper(driver), at(360, y));
+            medium.draw(canvas, &upper(&driver), at(360, y));
             let time = format!("{minutes:02}:{seconds:02}.{hundredths:02}");
             medium.draw(canvas, time.as_bytes(), at(514, y));
         }

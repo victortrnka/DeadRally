@@ -5396,6 +5396,22 @@ fn slow_records_config(defaults: &DrCfg) -> DrCfg {
     config
 }
 
+/// [`slow_records_config`] with every race record and the Arena's lap records slow too, so
+/// that a test's driving beats Remedy's records there as well.
+fn all_records_slow(defaults: &DrCfg) -> DrCfg {
+    let mut config = slow_records_config(defaults);
+    for car in 0..6 {
+        for circuit in 0..18 {
+            for laps in dr_cfg::RACE_LAPS {
+                config.set_race_record(circuit, laps, car, b"SLOW", [9, 59, 99]);
+            }
+        }
+        config.set_race_record(dr_cfg::ARENA, dr_cfg::ARENA_LAPS, car, b"SLOW", [9, 59, 99]);
+        config.set_record(dr_cfg::ARENA, car, b"SLOW", [9, 59, 99]);
+    }
+    config
+}
+
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
 fn a_lap_record_beaten_in_a_race_shows_as_the_best_lap_ever() {
@@ -5472,6 +5488,18 @@ fn race_records_set(config: &DrCfg) -> Vec<(usize, i32, usize)> {
         .collect()
 }
 
+/// The race records (circuit, laps, car) that differ between `before` and `after`.
+fn race_records_changed(before: &DrCfg, after: &DrCfg) -> Vec<(usize, i32, usize)> {
+    let circuits = (0..18).flat_map(|circuit| dr_cfg::RACE_LAPS.map(|laps| (circuit, laps)));
+    circuits
+        .chain([(dr_cfg::ARENA, dr_cfg::ARENA_LAPS)])
+        .flat_map(|(circuit, laps)| (0..6).map(move |car| (circuit, laps, car)))
+        .filter(|&(circuit, laps, car)| {
+            before.race_record(circuit, laps, car) != after.race_record(circuit, laps, car)
+        })
+        .collect()
+}
+
 /// The circuits' records (circuit, car) that differ between `before` and `after`.
 fn records_changed(before: &DrCfg, after: &DrCfg) -> Vec<(usize, usize)> {
     (0..18)
@@ -5493,7 +5521,7 @@ fn a_race_s_records_are_written_to_dr_cfg_as_it_ends() {
     slots[0] = Some(leader_turn_save(&assets.menu.texts));
     let keys: Vec<(u64, Key)> = RACE_START_KEYS.to_vec();
     let held = leader_turn_held("leader-turn.keys", include_str!("leader-turn.keys"), 12_823);
-    let (before, written) = configs_written(slow_records_config, slots, (&keys, &held), 13_150);
+    let (before, written) = configs_written(all_records_slow, slots, (&keys, &held), 13_150);
     let after_race: Vec<&(u64, DrCfg)> = written.iter().filter(|(t, _)| *t > 12_823).collect();
     assert_eq!(after_race.len(), 1, "dr.cfg written once as the race ends");
     let after = &after_race[0].1;
@@ -5502,8 +5530,11 @@ fn a_race_s_records_are_written_to_dr_cfg_as_it_ends() {
     let (circuit, car) = changed[0];
     assert_eq!(circuit, 7, "Holocaust's record");
     assert_eq!(after.record(circuit, car), (&b"TESTER"[..], [0, 31, 7]));
-    assert_eq!(after.record(dr_cfg::ARENA, car), (&b""[..], [0, 0, 0]));
-    assert_eq!(race_records_set(after), [(7, 4, car)]);
+    assert_eq!(
+        after.record(dr_cfg::ARENA, car),
+        before.record(dr_cfg::ARENA, car)
+    );
+    assert_eq!(race_records_changed(&before, after), [(7, 4, car)]);
     assert_eq!(after.race_record(7, 4, car), (&b"TESTER"[..], [2, 5, 58]));
 }
 
@@ -5534,13 +5565,14 @@ fn a_lap_in_the_arena_is_the_arena_s_record_and_written_as_it_ends() {
     let mut slots = vec![None; 8];
     slots[0] = Some(leader_save(&assets.menu.texts));
     let held = arena_won_held();
-    let (before, written) = configs_written(DrCfg::clone, slots, (&ARENA_KEYS[..9], &held), 15_300);
+    let (before, written) =
+        configs_written(all_records_slow, slots, (&ARENA_KEYS[..9], &held), 15_300);
     let after_race: Vec<&(u64, DrCfg)> = written.iter().filter(|(t, _)| *t > 15_181).collect();
     assert_eq!(after_race.len(), 1, "dr.cfg written once as the race ends");
     let after = &after_race[0].1;
     assert_eq!(records_changed(&before, after), []);
     let arena: Vec<usize> = (0..6)
-        .filter(|&car| after.record(dr_cfg::ARENA, car).1 != [0, 0, 0])
+        .filter(|&car| after.record(dr_cfg::ARENA, car) != before.record(dr_cfg::ARENA, car))
         .collect();
     assert_eq!(arena.len(), 1, "one car's Arena record: {arena:?}");
     let (name, [minutes, seconds, hundredths]) = after.record(dr_cfg::ARENA, arena[0]);
@@ -5548,7 +5580,10 @@ fn a_lap_in_the_arena_is_the_arena_s_record_and_written_as_it_ends() {
     assert!(minutes == 0 && seconds > 0 && hundredths < 100);
     // Its whole race is the Arena's record over 9 laps, longer than 9 of its best laps.
     let car = arena[0];
-    assert_eq!(race_records_set(after), [(dr_cfg::ARENA, 9, car)]);
+    assert_eq!(
+        race_records_changed(&before, after),
+        [(dr_cfg::ARENA, 9, car)]
+    );
     let (racer, [minutes, seconds, _]) = after.race_record(dr_cfg::ARENA, 9, car);
     assert_eq!(racer, name);
     assert!(60 * minutes + seconds >= 9 * seconds_of_lap(after.record(dr_cfg::ARENA, car).1));

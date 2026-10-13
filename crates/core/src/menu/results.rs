@@ -647,7 +647,7 @@ impl Menu {
         let player = *self.campaign.player();
         let car = player.car.clamp(0, 5) as usize;
         let best = self.outcome.best_lap;
-        let (_, record) = self.config.record(circuit, car);
+        let (_, record) = self.lap_record(circuit, car);
         let kept = beats_record(best, record);
         if kept {
             self.config
@@ -669,7 +669,7 @@ impl Menu {
         let player = *self.campaign.player();
         let car = player.car.clamp(0, 5) as usize;
         let time = self.outcome.race_time;
-        let (_, record) = self.config.race_record(circuit, laps, car);
+        let (_, record) = self.race_record(circuit, laps, car);
         let kept = beats_record(time, record);
         if kept {
             self.config.set_race_record(
@@ -729,7 +729,7 @@ impl Menu {
             let circuit = self.records_circuit(race);
             let car = player.car.clamp(0, 5) as usize;
             let best = self.outcome.best_lap;
-            let record = self.config.record(circuit, car).1.map(|part| part as i32);
+            let record = self.lap_record(circuit, car).1.map(|part| part as i32);
             let books = self.books;
             rows.extend([
                 plain(format!("{place}.")),
