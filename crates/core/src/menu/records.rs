@@ -3,7 +3,7 @@
 //! and the Arena's laps and every race, which the original has no records of, as Remedy might
 //! have driven them.
 
-use deadrally_gamedata::dr_cfg::ARENA;
+use deadrally_gamedata::dr_cfg::{ARENA, ARENA_LAPS, DrCfg, RACE_LAPS};
 
 use super::Menu;
 
@@ -45,6 +45,11 @@ impl Menu {
         (driver.to_vec(), time)
     }
 
+    /// How many lap records and race records the player holds.
+    pub(super) fn records_held(&self) -> (usize, usize) {
+        held(&self.config, self.campaign.player().name())
+    }
+
     /// The race record of `car` over `laps` laps of `circuit` (or [`ARENA`]): the driver and
     /// the time; Remedy's from its lap record there while none is set.
     pub(super) fn race_record(&self, circuit: usize, laps: i32, car: usize) -> (Vec<u8>, [u32; 3]) {
@@ -61,9 +66,54 @@ impl Menu {
     }
 }
 
+/// How many lap records and race records `config` gives `name`, as the records keep a name
+/// (upper-cased, up to 11 letters); none to no name.
+fn held(config: &DrCfg, name: &[u8]) -> (usize, usize) {
+    let name = name[..name.len().min(11)].to_ascii_uppercase();
+    if name.is_empty() {
+        return (0, 0);
+    }
+    let circuits = (0..18).chain([ARENA]);
+    let laps = circuits
+        .clone()
+        .flat_map(|circuit| (0..6).map(move |car| config.record(circuit, car).0))
+        .filter(|driver| *driver == name.as_slice())
+        .count();
+    let races = circuits
+        .flat_map(|circuit| {
+            let counts: Vec<i32> = if circuit == ARENA {
+                vec![ARENA_LAPS]
+            } else {
+                RACE_LAPS.to_vec()
+            };
+            counts.into_iter().flat_map(move |laps| {
+                (0..6).map(move |car| config.race_record(circuit, laps, car).0)
+            })
+        })
+        .filter(|driver| *driver == name.as_slice())
+        .count();
+    (laps, races)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_statistics_count_the_records_the_player_holds_by_name() {
+        // The records keep a name upper-cased and cut to 11 letters, so the player's own are
+        // found that way, the Arena's and the races' too; another driver's are not theirs.
+        let mut config = DrCfg::parse(&[0; 8]).unwrap();
+        config.set_record(14, 0, b"Victor Trnka", [0, 13, 1]);
+        config.set_record(7, 1, b"VICTOR TRNKA", [0, 26, 50]);
+        config.set_record(ARENA, 1, b"victor trnka", [0, 14, 80]);
+        config.set_record(3, 2, b"Remedy", [0, 11, 0]);
+        config.set_race_record(14, 4, 0, b"Victor Trnka", [0, 56, 90]);
+        config.set_race_record(ARENA, ARENA_LAPS, 5, b"Someone", [2, 0, 0]);
+        assert_eq!(held(&config, b"Victor Trnka"), (3, 1));
+        assert_eq!(held(&config, b"Remedy"), (1, 0));
+        assert_eq!(held(&config, b""), (0, 0));
+    }
 
     #[test]
     fn remedy_s_races_are_its_laps_5_percent_slower_and_a_standing_start() {

@@ -123,6 +123,14 @@ fn in_menu(assets: Assets) -> Game {
     in_menu_with(assets, common::config())
 }
 
+/// The menu as the Windows version plays it, the Start Racing menu's six rows the original's.
+fn in_windows_menu(assets: Assets) -> Game {
+    let mut game = Game::new(assets, common::config());
+    game.as_the_windows_version();
+    run(&mut game, MENU_SHOWN);
+    game
+}
+
 fn in_menu_with(assets: Assets, config: DrCfg) -> Game {
     let mut game = Game::new(assets, config);
     run(&mut game, MENU_SHOWN);
@@ -1060,6 +1068,147 @@ fn a_loaded_game_opens_the_shop_and_escape_comes_back_to_the_start_menu() {
         [BIG_B, BIG_B, BIG_B, BIG_A, BIG_B, BIG_B],
         "back on the load row, with the game's rows active"
     );
+}
+
+/// The game in the shop saved into slot 1 under "q" from the Start Racing menu, the
+/// highlight `downs` rows above "Save game": its file.
+fn saved_from_the_shop(game: &mut Game, downs: usize) -> Vec<u8> {
+    step(game, Key::Escape);
+    run(game, 60);
+    for _ in 0..downs {
+        step(game, Key::Down);
+    }
+    step(game, Key::Enter);
+    step(game, Key::Down);
+    step(game, Key::Enter);
+    step(game, Key::Q);
+    step(game, Key::Enter);
+    game.take_saved_game().expect("a game was saved").1
+}
+
+/// A game loaded from slot 0 holding `file`, played as the Windows version when `windows`:
+/// in the shop it opens on.
+fn loaded(file: Vec<u8>, windows: bool) -> Game {
+    let mut game = Game::new(assets(), common::config());
+    if windows {
+        game.as_the_windows_version();
+    }
+    game.set_saved_games(vec![Some(file)]);
+    run(&mut game, MENU_SHOWN);
+    to_the_slots(&mut game);
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Space);
+    run(&mut game, 60);
+    game
+}
+
+#[test]
+fn a_saved_game_carries_its_personal_best_as_deadrally() {
+    // The personal best belongs to its game: loaded with it, saved again with it after the
+    // original's bytes; a game the original saved has none, and the Windows version writes
+    // the original's file alone.
+    use deadrally_gamedata::save_game::{PersonalBest, SAVE_BYTES};
+    let mut best = PersonalBest::default();
+    best.keep_race(14, 4, 0, [0, 58, 21]);
+    best.keep_lap(18, 5, [0, 12, 0]);
+    let file = [saved_game(), best.to_bytes()].concat();
+    let mut game = loaded(file.clone(), false);
+    let saved = saved_from_the_shop(&mut game, 1);
+    assert_eq!(PersonalBest::read(&saved), best, "kept through the game");
+    assert!(saved.len() > SAVE_BYTES);
+    let mut game = loaded(saved_game(), false);
+    let saved = saved_from_the_shop(&mut game, 1);
+    assert_eq!(
+        PersonalBest::read(&saved),
+        PersonalBest::default(),
+        "none in the original's"
+    );
+    let mut game = loaded(file, true);
+    let saved = saved_from_the_shop(&mut game, 1);
+    assert_eq!(saved.len(), SAVE_BYTES, "the Windows version's file");
+}
+
+#[test]
+fn a_new_game_starts_with_no_personal_best() {
+    use deadrally_gamedata::save_game::PersonalBest;
+    let mut best = PersonalBest::default();
+    best.keep_lap(0, 0, [0, 30, 0]);
+    let mut game = loaded([saved_game(), best.to_bytes()].concat(), false);
+    step(&mut game, Key::Escape);
+    run(&mut game, 60);
+    // "End current game", yes, then a new game and the save from its shop.
+    for _ in 0..2 {
+        step(&mut game, Key::Up);
+    }
+    step(&mut game, Key::Enter);
+    step(&mut game, Key::Enter);
+    run(&mut game, 4);
+    step(&mut game, Key::Escape);
+    through_a_new_game(&mut game);
+    step(&mut game, Key::Enter);
+    run(&mut game, 60);
+    let saved = saved_from_the_shop(&mut game, 4);
+    assert_eq!(PersonalBest::read(&saved), PersonalBest::default());
+}
+
+/// The statistics from the Start Racing menu with a game on, faded in.
+fn on_the_statistics(game: &mut Game) {
+    through_a_new_game(game);
+    step(game, Key::Down);
+    step(game, Key::Down);
+    step(game, Key::Enter);
+    run(game, STATS_FADES);
+}
+
+/// The waits of a way out and a way in between the statistics, the personal best and the
+/// menu, with time to spare.
+const STATS_FADES: u32 = 260;
+
+#[test]
+fn the_statistics_lead_on_to_the_personal_best_and_back_to_the_menu() {
+    // DeadRally's personal best comes after the statistics, not in a menu row of its own (the
+    // owner's choice): a key there fades to its pages, Left and Right turn them, and Enter
+    // goes back to the Start Racing menu as the statistics did.
+    let mut game = in_menu(assets());
+    on_the_statistics(&mut game);
+    assert_ne!(
+        pixel(&game, (320, 99)),
+        MEDIUM,
+        "the statistics, no title there"
+    );
+    step(&mut game, Key::Space);
+    run(&mut game, STATS_FADES);
+    assert_eq!(pixel(&game, (320, 99)), MEDIUM, "the personal best's title");
+    step(&mut game, Key::Right);
+    run(&mut game, 4);
+    assert_eq!(
+        pixel(&game, (320, 99)),
+        MEDIUM,
+        "Right turns the page, still there"
+    );
+    step(&mut game, Key::Enter);
+    run(&mut game, STATS_FADES);
+    assert_eq!(
+        row_fonts(&game, START)[2],
+        BIG_A,
+        "back on the statistics' row"
+    );
+}
+
+#[test]
+fn escape_on_the_statistics_and_the_windows_version_go_back_to_the_menu() {
+    // Escape leaves the statistics as before; the Windows version has no personal best, so
+    // any key there leaves.
+    let mut game = in_menu(assets());
+    on_the_statistics(&mut game);
+    step(&mut game, Key::Escape);
+    run(&mut game, STATS_FADES);
+    assert_eq!(row_fonts(&game, START)[2], BIG_A);
+    let mut game = in_windows_menu(assets());
+    on_the_statistics(&mut game);
+    step(&mut game, Key::Space);
+    run(&mut game, STATS_FADES);
+    assert_eq!(row_fonts(&game, START)[2], BIG_A);
 }
 
 #[test]

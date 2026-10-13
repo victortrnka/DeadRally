@@ -14,6 +14,7 @@ mod hall_of_fame;
 mod licence;
 mod market;
 pub(crate) mod palette;
+mod personal_best;
 mod preview;
 mod records;
 mod results;
@@ -223,12 +224,19 @@ enum State {
     EndFameOut {
         step: u32,
     },
+    /// The statistics from the Start Racing menu, and after them DeadRally's personal best:
+    /// `page` none for the statistics, else the personal best's page; `next` the page the
+    /// way out leads to, none for the menu.
     StatsIn {
         step: u32,
+        page: Option<usize>,
     },
-    StatsWait,
+    StatsWait {
+        page: Option<usize>,
+    },
     StatsOut {
         step: u32,
+        next: Option<usize>,
     },
     StatsHold {
         waits: u32,
@@ -681,9 +689,9 @@ impl Menu {
             State::EndFameIn { step } => self.end_fame_in(step),
             State::EndFameWait => self.end_fame_wait(),
             State::EndFameOut { step } => self.end_fame_out(step),
-            State::StatsIn { step } => self.stats_in(step),
-            State::StatsWait => self.stats_wait(),
-            State::StatsOut { step } => self.stats_out(step),
+            State::StatsIn { step, page } => self.stats_in(step, page),
+            State::StatsWait { page } => self.stats_wait(page),
+            State::StatsOut { step, next } => self.stats_out(step, next),
             State::StatsHold { waits } => self.stats_hold(waits),
             State::StatsMenuIn { step } => self.stats_menu_in(step),
             State::Confirm { then } => self.confirm_tick(then),
@@ -1102,6 +1110,8 @@ impl Menu {
     /// `initDrivers` (0x428930), with the globals it resets; it ends composing the palette
     /// for the player's colour (`sub_4224E0`).
     fn init_drivers(&mut self) {
+        // A new game, or none, has no personal best.
+        self.campaign.personal_best = deadrally_gamedata::save_game::PersonalBest::default();
         let texts = &self.assets.menu.texts.campaign;
         self.campaign.init_drivers(&texts.cars, &texts.driver_names);
         self.shop.reset();

@@ -3,7 +3,7 @@
 //! (`confirmationPopup` 0x42DC70). DreeRally `ui/loadSaveGameScreen.c`, `savegame.c`; dRally
 //! `drencryption.c`.
 
-use deadrally_gamedata::save_game::{self, DRIVERS_BYTES, NAME_BYTES, SaveGame};
+use deadrally_gamedata::save_game::{self, DRIVERS_BYTES, NAME_BYTES, PersonalBest, SaveGame};
 
 use super::draw::Focus;
 use super::licence::Nickname;
@@ -97,7 +97,8 @@ impl Menu {
         campaign.underground_popup = false;
         campaign.welcome = false;
         campaign.started = true;
-        self.take_game(&game);
+        let file = self.slot_files[slot].clone().unwrap_or_default();
+        self.take_game(&game, &file);
         let loaded = self.assets.menu.texts.campaign.game_loaded.clone();
         self.confirm(&loaded, Confirmed::Loaded)
     }
@@ -141,8 +142,9 @@ impl Menu {
 
     /// A loaded game's weapons, drivers, the market's stock from the player's car and the
     /// difficulty into `dr.cfg`.
-    fn take_game(&mut self, game: &SaveGame) {
+    fn take_game(&mut self, game: &SaveGame, file: &[u8]) {
         let campaign = &mut self.campaign;
+        campaign.personal_best = PersonalBest::read(file);
         campaign.player_index = usize::from(game.driver_id);
         campaign.was_leading = false;
         // 0x422362, 0x42F536: a loaded game's next race shows no welcome box.
@@ -176,7 +178,11 @@ impl Menu {
             name: padded,
             drivers,
         };
-        let file = game.encode(key);
+        let mut file = game.encode(key);
+        // DeadRally's personal best after the original's bytes, which are all it reads.
+        if !self.campaign.windows_version {
+            file.extend(self.campaign.personal_best.to_bytes());
+        }
         self.slot_files[slot] = Some(file.clone());
         self.written_slot = Some((slot, file));
     }
@@ -199,7 +205,10 @@ impl Menu {
             let Some(game) = game else {
                 return Some(Quick::NotFound);
             };
-            self.take_game(&game);
+            let file = self.slot_files[save_game::QUICKSAVE_SLOT]
+                .clone()
+                .unwrap_or_default();
+            self.take_game(&game, &file);
             done = Some(Quick::Loaded);
         }
         done

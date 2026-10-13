@@ -8,6 +8,8 @@
 - Remedy's race records and Arena lap records to beat, from Remedy's lap records.
 - "It's a new race record" at the finish line, made of the announcer's own calls; with a lap record on the last lap, the lap's call first, then the race's, then "race over".
 - `deadrally-headless render --deadrally` renders the game as DeadRally plays it, not as the Windows version.
+- Personal best: each game's own best laps and races, saved with it, after See Current Statistics; the statistics count the records the player holds.
+- Up and Down never leave the Hall of Fame's best ten.
 
 ## 1.0.0 (2026-10-10)
 
