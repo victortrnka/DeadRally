@@ -416,3 +416,137 @@ fn every_track_loads_with_its_scene_and_shadows() {
         assert_eq!((len("DRV.DAT"), len("OHI.DAT")), (2048, 1024), "TR{number}");
     }
 }
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_arena_s_snapshot_is_made_of_its_track() {
+    // DeadRally's snapshot of the Arena, which the original has none of: the first
+    // circuit's frame with its name cleared and a race's view of the Arena's start line made
+    // smaller in its picture, in the snapshots' own colours. Checked by eye in the Hall of
+    // Fame's records and the personal best before its hash was written down.
+    let validation = deadrally_gamedata::validate(&data_dir()).unwrap();
+    let assets = deadrally_gamedata::assets::Assets::load(&validation)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let snapshot = &assets.menu.arena_snapshot;
+    assert_eq!((snapshot.width, snapshot.height), (128, 112));
+    let hash: String = Sha256::digest(&snapshot.pixels)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(
+        hash,
+        "945297b0083b9a32fa4826d9db3effe98ca0db23149ab7f332b00a5ccacc67f7"
+    );
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_title_font_letters_as_track_records_is_lettered() {
+    // DeadRally's font for titles takes "TRACK RECORDS"'s own letters 1:1 (the owner's
+    // choice) and makes the others of their parts, so a title in it looks lettered as
+    // "TRACK RECORDS" is: "TRA" and "CK" set where `RECOTXT` has them fall on its pixels
+    // exactly, over the menus' background it is drawn on from line 92. Its glyphs were
+    // checked by eye, enlarged, on a sheet of them all before their hash was written down.
+    let validation = deadrally_gamedata::validate(&data_dir()).unwrap();
+    let assets = deadrally_gamedata::assets::Assets::load(&validation)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let menu = &assets.menu;
+    assert_eq!(menu.title_glyphs.len(), 96);
+    assert!(menu.title_glyphs.iter().all(|glyph| glyph.height == 16));
+    let glyph = |c: u8| &menu.title_glyphs[usize::from(c - 32)];
+    for (text, from) in [(&b"TRA"[..], 221), (b"CK", 269)] {
+        let mut set = menu.background.pixels[92 * 640..108 * 640].to_vec();
+        let mut pen = from;
+        let mut end = from;
+        for &c in text {
+            let at = usize::from(c - 32);
+            let glyph = &menu.title_glyphs[at];
+            let width = glyph.width as usize;
+            for y in 0..16 {
+                for x in 0..width {
+                    let pixel = glyph.pixels[y * width + x];
+                    if pixel != 0 {
+                        set[y * 640 + pen + x] = pixel;
+                    }
+                }
+            }
+            end = pen + width;
+            pen += usize::from(menu.title_advances[at]);
+        }
+        for y in 0..16 {
+            assert_eq!(
+                set[y * 640 + from..y * 640 + end],
+                menu.records_title.pixels[y * 640 + from..y * 640 + end],
+                "{} on line {y}",
+                String::from_utf8_lossy(text)
+            );
+        }
+    }
+    // The made strokes are the originals' (the owner found the first made letters too bold
+    // and too dark): P is R without its leg, R's very pixels down to its bowl and its stem
+    // below it ...
+    let (p, r) = (glyph(b'P'), glyph(b'R'));
+    let (p_width, r_width) = (p.width as usize, r.width as usize);
+    for y in 0..16 {
+        for x in 0..p_width {
+            let from_r = y < 9 || x < 4;
+            let expected = if from_r { r.pixels[y * r_width + x] } else { 0 };
+            assert_eq!(p.pixels[y * p_width + x], expected, "P at {x},{y}");
+        }
+    }
+    // ... B's lower bowl is its upper bowl again (the owner's word), R's moved 5 lines down:
+    // right of the stem it is inked on lines 9 to 13 where R is on lines 4 to 8 ...
+    let b = glyph(b'B');
+    let b_width = b.width as usize;
+    for y in 9..14 {
+        for x in 4..r_width {
+            assert_eq!(
+                b.pixels[y * b_width + x] != 0,
+                r.pixels[(y - 5) * r_width + x] != 0,
+                "B at {x},{y}"
+            );
+        }
+    }
+    // ... and every made glyph has on each line only colours "TRACK RECORDS" has on it, so
+    // none is brighter or darker than its letters there.
+    let on_line = |y: usize| -> Vec<u8> {
+        (0..640)
+            .map(|x| menu.records_title.pixels[y * 640 + x])
+            .zip(&menu.background.pixels[(92 + y) * 640..(93 + y) * 640])
+            .filter(|(pixel, under)| pixel != *under)
+            .map(|(pixel, _)| pixel)
+            .collect()
+    };
+    for c in 33..127u8 {
+        let made = glyph(c);
+        let width = made.width as usize;
+        for y in 0..16 {
+            let colours = on_line(y);
+            for &pixel in &made.pixels[y * width..(y + 1) * width] {
+                assert!(
+                    pixel == 0 || colours.contains(&pixel),
+                    "{} has colour {pixel} on line {y}",
+                    char::from(c)
+                );
+            }
+        }
+    }
+    // Titles are capitals: a small letter is its capital.
+    for c in b'a'..=b'z' {
+        assert_eq!(glyph(c), glyph(c.to_ascii_uppercase()), "{}", char::from(c));
+    }
+    let mut hasher = Sha256::new();
+    for (glyph, advance) in menu.title_glyphs.iter().zip(&menu.title_advances) {
+        hasher.update([glyph.width as u8, *advance]);
+        hasher.update(&glyph.pixels);
+    }
+    let hash: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(
+        hash,
+        "19a1fa131f5b6be7995ab30c7336c6fc93aff1fc6f6b27753303f513419456c5"
+    );
+}
