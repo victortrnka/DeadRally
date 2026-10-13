@@ -826,6 +826,16 @@ impl Race {
                 laps.call = 0;
             }
         }
+        // DeadRally's race record call after the lap record's, then heard to its end.
+        laps.calls_left = (laps.calls_left - self.clock.between).max(0);
+        if laps.race_call > 0 {
+            laps.race_call -= self.clock.between;
+            if laps.race_call <= 0 {
+                laps.race_call = 0;
+                sound.trigger_at(CALL_CHANNEL, laps::RACE_RECORD, FULL, CALL_PITCH);
+                laps.calls_left = Self::call_ticks(sound, laps::RACE_RECORD);
+            }
+        }
         // The samples since the last pass, oldest first (0x41641F).
         let mut at = self.sampled;
         for k in 0..steps {
@@ -1113,8 +1123,14 @@ impl Race {
             last_lap_timed: self.last_lap_timed,
             race_record: self.race_record,
         };
-        for laps::Call(effect) in laps::check(&mut self.cars, &zones, &mut self.laps_state, &race) {
+        let mut calls = laps::check(&mut self.cars, &zones, &mut self.laps_state, &race);
+        let lap_call = i32::try_from(sound.effect_ticks(laps::RECORD, CALL_PITCH)).unwrap_or(0);
+        laps::queue_race_record(&mut calls, &mut self.laps_state, lap_call);
+        for laps::Call(effect) in calls {
             sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);
+            if effect == laps::RACE_RECORD {
+                self.laps_state.calls_left = Self::call_ticks(sound, effect);
+            }
         }
         laps::place_wrecks(&mut self.cars, &mut self.wrecks);
         self.over_ticks += laps::ending(&self.cars, self.player);
@@ -1389,7 +1405,8 @@ impl Race {
     /// The pass drawn, then the race over (0x417283) its box.
     fn draw_pass(&mut self, sound: &mut Sound, keys: &mut Keys, rand: &mut Rand) {
         self.draw(sound);
-        if self.over_ticks > OVER_TICKS {
+        // DeadRally's record calls are heard before the race's end and its own call.
+        if self.over_ticks > OVER_TICKS && self.laps_state.calls_over() {
             self.end_box(sound, keys, rand);
         }
     }
@@ -1439,6 +1456,11 @@ impl Race {
             outro: Box::new(outro),
             outcome,
         };
+    }
+
+    /// The ticks call `effect` lasts on the calls' channel.
+    fn call_ticks(sound: &Sound, effect: u8) -> i32 {
+        i32::try_from(sound.effect_ticks(effect, CALL_PITCH)).unwrap_or(i32::MAX)
     }
 
     /// The race over (0x4172A7): every channel but the last two silenced, the end's call, and

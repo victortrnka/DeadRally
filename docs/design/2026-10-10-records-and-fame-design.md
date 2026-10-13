@@ -32,7 +32,7 @@ A player sees their best whole-race times as well as their best laps, and winnin
    A block is written only when it or a later one has something in it. Blocks before it are written empty (zeros), which reads as no record. The first ten entries of the Hall of Fame stay in the original's ten slots, so the original can still read the file. A 1.0.0 file reads as before. *Cost if wrong:* a converter for files written in between.
 4. **The records screen's headings:** the title stays the circuit's name. On a race page the third column's heading reads its laps ("4 LAPS:"), drawn over the bar's own "LAP TIME:". A title with the laps ("Hell Mountain - 6 laps") did not fit its box. Checked by eye in the game. *Cost if wrong:* a different heading.
 5. **The Hall of Fame's screens:**
-   - The best ten from the main menu starts at the top. Up and Down move it a row while there are rows beyond the screen; any other key goes on as now.
+   - The best ten from the main menu starts at the top. Up and Down move it a row, and do nothing where it goes no further; they never leave it, also with only ten entries (the owner's choice of 2026-10-13, so that the keys behave the same with any number of entries). Any other key goes on as now.
    - The entry after a won game shows the ten rows ending with the new one when it is below the tenth, with the border round it; a key ends it as now.
    - Ranks past 99 move left to fit.
    - There is no limit to the entries.
@@ -46,11 +46,11 @@ A player sees their best whole-race times as well as their best laps, and winnin
 ## 3a. Added on 2026-10-13 (the owner's requests)
 
 1. **Remedy's records.** A race record or an Arena lap record never set is Remedy's, as the circuits' lap records are in the original:
-   - a race over N laps: Remedy's lap record there × N × (1.015 to 1.035), plus 1 s for the standing start. The spread is fixed for each record by its circuit, laps and car, so that the records do not look made by one rule.
+   - a race over N laps: Remedy's lap record there × N × 1.05, plus 1 s for the standing start. The owner chose 5 %: a clean race of his, 58.21 on Palm Side with the Vagabond, was 8.9 % slower a lap than the lap record. A first rule of 1.5 % to 3.5 % gave Remedy 55.56 there.
    - the Arena's laps: a Dervish lap of the Arena measured at 17.25 s in DeadRally's tests, at the pace Remedy's Holocaust record for the Dervish keeps over the same driving (26.96 s against 31.07 s), and the other cars at the pace of their records against the Dervish's over the eighteen circuits: 15.76, 14.97, 14.25, 13.62, 12.71 and 11.57 s.
 
    They are not written into `dr.cfg`; an empty record reads as Remedy's.
-2. **The race record call.** A whole race faster than its record calls "It's a new race record" at the finish line, after the lap's own call so that it is the one heard. The owner chose these words over "It's a race record". DeadRally makes the call when it loads the race's sounds: "It's a new" and "record" from the lap record's call ("It's a new lap record", effect 4), and "race" from "Race over" (effect 5), brought down two semitones to the lap record call's rate. A speech recogniser and the owner heard the result. Nothing derived from the game's sounds is in the repository.
+2. **The race record call.** A whole race faster than its record calls "It's a new race record" at the finish line. When the last lap is a lap record as well, the owner wants both heard: the lap record's call first, then the race record's 14 ticks after it has played, also when the lap record's waits for the last lap's call. Only then does the race's end come with its "race over": its box waits for the calls, which matters when every other car has stopped and the end comes after 150 ticks rather than 300. The owner chose these words over "It's a race record". DeadRally makes the call when it loads the race's sounds: "It's a new" and "record" from the lap record's call ("It's a new lap record", effect 4), and "race" from "Race over" (effect 5), brought down two semitones to the lap record call's rate. A speech recogniser and the owner heard the result. Nothing derived from the game's sounds is in the repository.
 
 ## 4. Tests
 

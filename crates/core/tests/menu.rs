@@ -870,7 +870,7 @@ fn up_and_down_show_deadrally_s_race_records_of_each_count_of_laps() {
 #[test]
 fn up_and_down_scroll_a_hall_of_fame_grown_past_ten() {
     // An eleventh winner is kept below the ten rows; Down shows it, Up the first ten again.
-    // With ten or fewer, Up and Down leave the best ten as any key does.
+    // Up and Down never leave the best ten, also with only ten entries, as other keys do.
     let mut config = common::config();
     assert_eq!(config.add_to_hall_of_fame(b"NEW", 5, 0), 10);
     let mut game = in_menu_with(assets(), config);
@@ -895,7 +895,12 @@ fn up_and_down_scroll_a_hall_of_fame_grown_past_ten() {
     assert_ne!(last_row_name(&game), MEDIUM, "the first ten again");
 
     let mut game = in_hall_of_fame(assets());
-    press(&mut game, Key::Down);
+    for key in [Key::Down, Key::Up] {
+        press(&mut game, key);
+        run(&mut game, 2 + WIPE);
+        assert_eq!(pixel(&game, (5, 95)), FAME_TITLE, "still the best ten");
+    }
+    press(&mut game, Key::Space);
     run(&mut game, 2 + WIPE);
     assert_eq!(pixel(&game, (5, 95)), RECORDS_TITLE, "on to the records");
 }

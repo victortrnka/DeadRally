@@ -155,8 +155,9 @@ impl Menu {
         }
     }
 
-    /// The best ten wait for any key. In DeadRally, while the Hall of Fame has rows past the
-    /// screen, Up and Down scroll it a row instead, `top` the first row shown.
+    /// The best ten wait for any key. In DeadRally, Up and Down scroll the Hall of Fame a row
+    /// instead, `top` the first row shown, and do nothing where it goes no further, also
+    /// with only ten entries, so that they never leave it (the owner's choice).
     pub(super) fn fame_wait(&mut self, top: usize) -> State {
         self.palette.after_wait();
         let key = self.keys.take();
@@ -165,7 +166,6 @@ impl Menu {
         }
         let last = self.config.hall_of_fame_len().saturating_sub(FAME_ROWS);
         if !self.campaign.windows_version
-            && last > 0
             && matches!(key, keys::UP | keys::PAD_UP | keys::DOWN | keys::PAD_DOWN)
         {
             let down = matches!(key, keys::DOWN | keys::PAD_DOWN);

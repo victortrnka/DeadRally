@@ -71,9 +71,19 @@ pub(super) struct Laps {
     /// whether the player has heard they are lapped (0x456BC0).
     pub(super) over: bool,
     pub(super) lapped: bool,
+    /// DeadRally's race record call: the ticks until it is called after the lap record's, and
+    /// until it has played, which the race's end waits for.
+    pub(super) race_call: i32,
+    pub(super) calls_left: i32,
 }
 
 impl Laps {
+    /// Whether DeadRally's record calls have been heard, so that the race's end and its call
+    /// may come.
+    pub(super) fn calls_over(&self) -> bool {
+        self.race_call == 0 && self.calls_left <= 0
+    }
+
     /// The time a race without weapons shows (0x414B82): the last lap's while it is shown
     /// (0x4A9EB0 above 0), else the lap's clock.
     pub(super) fn time_shown(&self) -> i32 {
@@ -240,6 +250,27 @@ fn race_record_call(car: &Car, laps: &Laps, race: &Race, calls: &mut Vec<Call>) 
     {
         calls.push(Call(RACE_RECORD));
     }
+}
+
+/// The ticks between the lap record's call and the race record's.
+pub(super) const CALLS_GAP: i32 = 14;
+
+/// The owner's order at the line: when the race record's call comes with the lap record's,
+/// or while the lap record's waits for the last lap's (`call`), the race record's is put off
+/// until the lap record's, `lap_call` ticks long, has played and a breath after.
+pub(super) fn queue_race_record(calls: &mut Vec<Call>, laps: &mut Laps, lap_call: i32) {
+    if !calls.contains(&Call(RACE_RECORD)) {
+        return;
+    }
+    let after = if calls.contains(&Call(RECORD)) {
+        0
+    } else if laps.call > 0 {
+        laps.call
+    } else {
+        return;
+    };
+    calls.retain(|call| *call != Call(RACE_RECORD));
+    laps.race_call = after + lap_call + CALLS_GAP;
 }
 
 /// Whether `car` drove the whole race of `laps` laps: it crossed the finish line on its last
@@ -502,6 +533,51 @@ mod tests {
                 "{record:?}: {calls:?}"
             );
         }
+    }
+
+    /// The owner's order at the line: the lap record's call first, the race record's when it
+    /// has played and a breath after, whether the lap record's is called now or waits for the
+    /// last lap's; the race record's alone is called at once.
+    #[test]
+    fn the_race_record_call_comes_after_the_lap_record_s() {
+        let mut laps = Laps::default();
+        let mut calls = vec![Call(RECORD), Call(RACE_RECORD)];
+        queue_race_record(&mut calls, &mut laps, 111);
+        assert_eq!(
+            (calls, laps.race_call),
+            (vec![Call(RECORD)], 111 + CALLS_GAP)
+        );
+        let mut laps = Laps {
+            call: 50,
+            ..Laps::default()
+        };
+        let mut calls = vec![Call(RACE_RECORD)];
+        queue_race_record(&mut calls, &mut laps, 111);
+        assert_eq!((calls, laps.race_call), (vec![], 50 + 111 + CALLS_GAP));
+        let mut laps = Laps::default();
+        let mut calls = vec![Call(RACE_RECORD)];
+        queue_race_record(&mut calls, &mut laps, 111);
+        assert_eq!((calls, laps.race_call), (vec![Call(RACE_RECORD)], 0));
+    }
+
+    /// The race's end, and its "race over", waits for DeadRally's record calls to be heard.
+    #[test]
+    fn the_end_waits_for_the_record_calls() {
+        assert!(Laps::default().calls_over());
+        assert!(
+            !Laps {
+                race_call: 5,
+                ..Laps::default()
+            }
+            .calls_over()
+        );
+        assert!(
+            !Laps {
+                calls_left: 3,
+                ..Laps::default()
+            }
+            .calls_over()
+        );
     }
 
     /// A car further round on the same lap takes the place of one behind it.
