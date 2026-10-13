@@ -29,8 +29,9 @@ const FULL_MASK: u32 = 0x1_0000 >> 8;
 /// Effect 26 sounds as Left or Right change the circuit; the arrow stays lit for 8 waits.
 const STEP_SOUND: u8 = 26;
 const ARROW_WAITS: u32 = 8;
-/// The snapshots are drawn 98 rows high.
+/// The snapshots are drawn 98 rows high; the Arena's name in its strip from line 3.
 const SNAPSHOT_ROWS: u32 = 98;
+const SNAPSHOT_NAME_Y: usize = 3;
 /// DeadRally's race records' heading, their laps: the records bar's third heading box
 /// (`RECOBAR`, drawn from row 132), its text cleared from column 502 to 602 on rows 50 to 65
 /// by repeating the eight columns from 494 before it, which hold one turn of its grid and no
@@ -193,7 +194,7 @@ impl Menu {
         let circuit = usize::from(menu.texts.hall_of_fame.circuit_order[0]);
         let mut back = std::mem::take(&mut self.back);
         self.draw_records(&mut back, circuit, None);
-        back.draw(&self.snapshot(circuit), at(40, 214), false);
+        self.draw_snapshot(&mut back, circuit, (40, 214));
         back.draw(&self.assets.menu.arrows[0], at(24, 228), false);
         back.draw(&self.assets.menu.arrows[1], at(168, 228), false);
         self.border(&mut back, 15, 204, 178, 117);
@@ -242,7 +243,7 @@ impl Menu {
         let kinds = self.record_kinds(circuit);
         // The kind of record stays when the circuit has it, else the lap's.
         let kind = if kind < kinds.len() { kind } else { 0 };
-        screen.draw(&self.snapshot(circuit), at(40, 214), false);
+        self.draw_snapshot(&mut screen, circuit, (40, 214));
         self.draw_records(&mut screen, circuit, kinds[kind]);
         self.screen = screen;
         self.shown = self.screen.clone();
@@ -380,21 +381,37 @@ impl Menu {
         medium.draw(canvas, heading.as_bytes(), at(x.saturating_sub(half), y));
     }
 
-    /// Circuit `circuit`'s snapshot, 98 rows of its frame; the Arena, which has none, its
-    /// picture on the race's preview shrunk to a snapshot's size.
-    fn snapshot(&self, circuit: usize) -> Image {
+    /// Circuit `circuit`'s snapshot drawn at `(x, y)`, 98 rows of its frame; the Arena's
+    /// DeadRally's own, with its name written in the strip its frame has cleared.
+    pub(super) fn draw_snapshot(
+        &self,
+        canvas: &mut Canvas,
+        circuit: usize,
+        (x, y): (usize, usize),
+    ) {
         let menu = &self.assets.menu;
+        let frame = if circuit == ARENA {
+            &menu.arena_snapshot
+        } else {
+            &menu.snapshots[circuit]
+        };
+        let rows = (frame.width * SNAPSHOT_ROWS) as usize;
+        if frame.pixels.len() < rows {
+            return;
+        }
+        let snapshot = Image::new(frame.width, SNAPSHOT_ROWS, frame.pixels[..rows].to_vec());
+        canvas.draw(&snapshot, at(x, y), false);
         if circuit == ARENA {
-            let width = menu.snapshots.first().map_or(0, |frame| frame.width);
-            let shape = menu.track_shapes.get(super::preview::ARENA_SHAPE);
-            return shape.map_or_else(
-                || Image::new(0, 0, Vec::new()),
-                |shape| shrink(shape, width, SNAPSHOT_ROWS),
+            let name = arena_name(&menu.texts.campaign.race_kinds[crate::campaign::ARENA]);
+            let name = name.to_ascii_uppercase();
+            let half = self.graphics.medium.width(&name) / 2;
+            let centre = x + frame.width as usize / 2;
+            self.graphics.medium.draw(
+                canvas,
+                &name,
+                at(centre - half.min(centre), y + SNAPSHOT_NAME_Y),
             );
         }
-        let frame = &self.assets.menu.snapshots[circuit];
-        let rows = (frame.width * SNAPSHOT_ROWS) as usize;
-        Image::new(frame.width, SNAPSHOT_ROWS, frame.pixels[..rows].to_vec())
     }
 
     /// The best ten's rows: the rank, the name, the races and the difficulty in the medium
@@ -502,17 +519,4 @@ impl Menu {
 pub(super) fn arena_name(heading: &[u8]) -> &[u8] {
     let heading = heading.trim_ascii();
     heading.strip_suffix(b":").unwrap_or(heading)
-}
-
-/// `image` shrunk to `width` x `height`, each pixel the nearest of the image's.
-fn shrink(image: &Image, width: u32, height: u32) -> Image {
-    let pixels = (0..height)
-        .flat_map(|y| {
-            (0..width).map(move |x| {
-                let (from_x, from_y) = (x * image.width / width, y * image.height / height);
-                image.pixels[(from_y * image.width + from_x) as usize]
-            })
-        })
-        .collect();
-    Image::new(width, height, pixels)
 }

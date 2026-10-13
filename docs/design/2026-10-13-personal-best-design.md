@@ -31,15 +31,24 @@ While playing a game, the player can look at their own best lap and best whole r
 3. **The screen:**
    - On the statistics, Escape goes back to the menu as before; any other key fades them out and the personal best's first page in, as the statistics fade.
    - Enter, Space or Escape fade it out and go back to the menu the way the statistics did.
-   - The menu's bottom panel stays under it.
-   - Its title is "PERSONAL BEST". Left and Right step through the circuits in the Hall of Fame's order, then the Arena.
+   - The menu's bottom panel is not drawn there (the owner's choice), so that the page fits: under the circuit's name the records' snapshot of it with its arrows and border, centred, the arrow pressed lit for 8 waits as on the records; the table under them.
+   - Its title is "PERSONAL BEST" in DeadRally's title font, a whole printable set made in the style of the records' "TRACK RECORDS" (the owner's request, "1:1"). That title is a picture whose letters lack the P, N, L and B, and the game's other titles are lettered otherwise. So the font takes its T, R, A, C, K, E, O, D and S 1:1: the first of each, the pixels where `RECOTXT` differs from the menus' background under it, the A and C split at their one touching column. It makes the others from those letters' parts, so their strokes are as thick and as bright as the originals' on every line. (A first version shrank the big font's letters, `F-BIG3A`; the owner found them too bold.) P is R without its leg, as the owner suggested, and B is that P with R's bowl again below it, 5 lines down (the owner: its lower bowl "practically as the upper"). F and L are E's. I and the other stems are K's stem. A slanted stroke is K's stem across each line, set a little further along on each. The round digits are made of O's halves. The 4 and the symbols take their shapes from a sheet the owner sent, redrawn from ours, built again of these parts. A part moved to other lines takes those lines' colours, as bright beside their strokes as it was beside its own. Where parts cross, the brighter pixel shows. Small letters are the capitals. All the glyphs are on its 16 lines, a column apart, a space 5 wide. The same letter is not alike in all its places in `RECOTXT`, since its letters were smoothed where each fell. So no font of one glyph a letter sets all of it pixel for pixel, but "TRA" and "CK" it does.
+   - Left and Right step through the circuits in the Hall of Fame's order, then the Arena.
+   - The headings read "LAP TIME:" and "4 LAPS:" and so on, as the records' "LAP TIME:" does, and the records bar's line joins their boxes.
    - The circuit's name is in the records' title box. Under it is a table of the six cars, with columns for the lap and each count of laps (the Arena's: the lap and 9 laps).
    - A time never driven shows as "--:--.--".
-   - There is no snapshot or driver's name: it is always the player.
+   - There is no driver's name: it is always the player.
 
    Checked by eye in the game. *Cost if wrong:* the layout changed.
 4. **Counting the records held:** a record is the player's when its driver is their name as the records keep a name: upper-cased and cut to 11 letters. Remedy's never count. The Arena's lap records and every race record count too. The rows are only on the statistics from the menu; after a race, that place holds the race's own rows. *Cost if wrong:* another way to count.
 5. **The Windows version plays as the original:** a key on the statistics goes back to the menu, there are no records rows and no personal best, and saved games are the original's 2179 bytes. The runs checked against the original keep their manifests.
+
+6. **The Arena's snapshot** (the owner's request of 2026-10-13: "a proper photo"). `TRSNAP2M` has none, so DeadRally makes one when it loads the data:
+   - the first circuit's frame, with its name's strip cleared by repeating the strip's first eight columns, which hold no letters;
+   - in its picture, a race's view (320 x 202) of the Arena's track round the start line, made smaller as the circuits' pictures are: each pixel the average of those under it, then the nearest colour the circuits' pictures use in the menu's palette, so that none pulses;
+   - the Arena's name written in the strip by the menu.
+
+   It shows on the Hall of Fame's records and the personal best.
 
 ## 4. Tests
 

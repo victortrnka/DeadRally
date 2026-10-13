@@ -5660,6 +5660,7 @@ fn the_personal_best_follows_the_statistics_as_deadrally() {
         &[
             (7480, "statistics"),
             (7800, "first-page"),
+            (8155, "palm-side-arrow-lit"),
             (8250, "palm-side"),
             (8650, "menu"),
         ],

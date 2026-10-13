@@ -33,7 +33,7 @@ const LAPS: [i32; 3] = [4, 5, 6];
 /// (`TR0`, never turned round), its laps; and the circuit whose lap records it reads and
 /// writes in the Windows version, the byte after the three races' circuits (0x46126F), which
 /// nothing ever sets, so circuit 0's. DeadRally gives the Arena records of its own.
-pub(super) const ARENA_SHAPE: usize = 18;
+const ARENA_SHAPE: usize = 18;
 const ARENA_TRACK: usize = 0;
 const ARENA_LAPS: i32 = 9;
 const ARENA_RECORDS: usize = 0;

@@ -396,6 +396,8 @@ pub(crate) struct Menu {
     outcome: crate::books::Outcome,
     books: crate::books::Books,
     press_blink: u32,
+    /// The personal best's arrow lit by Left or Right: whether the right one, and its waits.
+    lit_arrow: Option<(bool, u32)>,
     /// What the results follow: a race (`postRaceMain(0)`), or no race (1).
     results_from: results::ResultsFrom,
     /// Whether these results first made the player the leader (0x463DF8), and the animation
@@ -487,6 +489,7 @@ impl Menu {
             outcome: crate::books::Outcome::default(),
             books: crate::books::Books::default(),
             press_blink: 0,
+            lit_arrow: None,
             results_from: results::ResultsFrom::Race,
             newly_leading: false,
             film: None,

@@ -6,7 +6,7 @@ mod common;
 
 use common::{
     ARROW, BACKGROUND, BIG_A, BIG_B, BIG_D, CREDITS, CURSOR, END, FAME_TITLE, KNOB, MEDIUM,
-    PREVIEW, RECORDS_BAR, RECORDS_TITLE, SLIDER, SMALL, SNAPSHOT,
+    RECORDS_BAR, RECORDS_TITLE, SLIDER, SMALL, SNAPSHOT,
 };
 use deadrally_core::{Game, InputEvent, Key, PadAxis, PadButton};
 use deadrally_gamedata::assets::{Assets, Picture};
@@ -841,10 +841,10 @@ fn the_records_step_through_the_circuits_in_the_originals_order() {
         press(&mut game, Key::Left);
         run(&mut game, 12);
     }
-    // DeadRally's last page is the Arena's own records, its snapshot the Arena's picture.
+    // DeadRally's last page is the Arena's own records, its snapshot DeadRally's own.
     assert_eq!(
         snapshot(&game),
-        PREVIEW + 3,
+        SNAPSHOT + 20,
         "Left wraps to the last page, the Arena's"
     );
     press(&mut game, Key::Left);

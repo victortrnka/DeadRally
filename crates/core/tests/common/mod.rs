@@ -315,10 +315,14 @@ pub fn menu_assets() -> MenuAssets {
         knob: solid(10, 24, KNOB),
         default_config: config(),
         medium: glyphs(9, MEDIUM),
+        // DeadRally's title font as the medium one, so that its title reads as MEDIUM.
+        title_glyphs: glyphs(9, MEDIUM),
+        title_advances: vec![9; 96],
         fame_title: solid(640, 54, FAME_TITLE),
         records_title: solid(640, 16, RECORDS_TITLE),
         records_bar: solid(640, 68, RECORDS_BAR),
         snapshots: (0..20).map(|c| solid(128, 112, SNAPSHOT + c)).collect(),
+        arena_snapshot: solid(128, 112, SNAPSHOT + 20),
         arrows: (0..4).map(|k| solid(16, 84, ARROW + k)).collect(),
         // Frame k covers its tile's rows from k on: frame 0 all of it, so every column is
         // covered once the band's first tile column has passed over it.

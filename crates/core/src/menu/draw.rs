@@ -137,6 +137,8 @@ pub(crate) struct Graphics {
     pub(crate) small: [Font; 3],
     /// The Hall of Fame's font.
     pub(crate) medium: Font,
+    /// DeadRally's font for titles, as "TRACK RECORDS" is lettered.
+    pub(crate) title: Font,
     /// `dr.exe`'s menu text table: `menus[m][r]` is row `r` of menu `m`. The original rewrites
     /// some rows as settings change.
     menus: Vec<Vec<Vec<u8>>>,
@@ -163,6 +165,14 @@ impl Graphics {
                 Font::new(assets.small_c.clone(), &texts.small),
             ],
             medium: Font::new(assets.medium.clone(), &texts.medium),
+            title: Font::new(
+                assets.title_glyphs.clone(),
+                &deadrally_gamedata::text::Metrics {
+                    width: 0,
+                    height: 0,
+                    advances: assets.title_advances.clone(),
+                },
+            ),
             menus: texts.menus.clone(),
             slider: assets.slider.clone(),
             knob: assets.knob.clone(),
@@ -481,6 +491,7 @@ pub(crate) mod tests {
                 Font::new(glyphs(16, 62), &metrics(16)),
             ],
             medium: Font::new(glyphs(9, 63), &metrics(9)),
+            title: Font::new(glyphs(9, 64), &metrics(9)),
             menus: texts().menus,
             slider: solid(172, 24, 70),
             knob: solid(10, 24, 71),
