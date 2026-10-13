@@ -3,6 +3,8 @@
 //! 0x42F6E0; dRally `drencryption.c`). Byte by byte from the second: the key subtracted, 17
 //! times the byte's offset added, rotated right by the offset modulo 6.
 
+use crate::dr_cfg::{ARENA, ARENA_LAPS, RACE_LAPS};
+
 /// A saved game's file length.
 pub const SAVE_BYTES: usize = 0x883;
 /// Slots 0 to 7; the last is the quicksave.
@@ -117,9 +119,162 @@ impl SaveGame {
     }
 }
 
+/// DeadRally's personal best of one game (docs/design/2026-10-13-personal-best-design.md):
+/// the player's best lap and best whole race over each count of laps, by circuit and car, and
+/// the Arena's, in hundredths (0 for none). A saved game's file ends with it after the
+/// original's bytes, which are all the original reads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersonalBest {
+    times: Vec<u32>,
+}
+
+/// The block's tag, and its times: for each circuit and car the lap and the races of
+/// [`RACE_LAPS`], then for each car the Arena's lap and its race of [`ARENA_LAPS`].
+const PERSONAL_BEST_TAG: &[u8; 4] = b"DRPB";
+const CIRCUIT_TIMES: usize = 1 + RACE_LAPS.len();
+const TIMES: usize = 18 * 6 * CIRCUIT_TIMES + 6 * 2;
+
+impl Default for PersonalBest {
+    fn default() -> PersonalBest {
+        PersonalBest {
+            times: vec![0; TIMES],
+        }
+    }
+}
+
+impl PersonalBest {
+    /// The personal best a saved game's file holds after the original's bytes; none when it
+    /// holds no whole block (a game the original saved).
+    pub fn read(file: &[u8]) -> PersonalBest {
+        let block = file.get(SAVE_BYTES..).unwrap_or_default();
+        match block.split_first_chunk::<4>() {
+            Some((tag, times)) if tag == PERSONAL_BEST_TAG && times.len() >= 4 * TIMES => {
+                PersonalBest {
+                    times: times
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .take(TIMES)
+                        .map(|&bytes| u32::from_le_bytes(bytes))
+                        .collect(),
+                }
+            }
+            _ => PersonalBest::default(),
+        }
+    }
+
+    /// The block a saved game's file ends with.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let times = self.times.iter().flat_map(|time| time.to_le_bytes());
+        PERSONAL_BEST_TAG.iter().copied().chain(times).collect()
+    }
+
+    /// The best lap of `car` on `circuit` (or [`ARENA`]).
+    pub fn lap(&self, circuit: usize, car: usize) -> Option<[u32; 3]> {
+        clock(self.times[index(circuit, None, car)])
+    }
+
+    /// The best whole race of `car` over `laps` laps of `circuit` (or [`ARENA`]).
+    pub fn race(&self, circuit: usize, laps: i32, car: usize) -> Option<[u32; 3]> {
+        clock(self.times[index(circuit, Some(laps), car)])
+    }
+
+    /// `time` kept as the best lap when it is the first or better; whether it was.
+    pub fn keep_lap(&mut self, circuit: usize, car: usize, time: [u32; 3]) -> bool {
+        self.keep(index(circuit, None, car), time)
+    }
+
+    /// `time` kept as the best whole race over `laps` laps when it is the first or better;
+    /// whether it was.
+    pub fn keep_race(&mut self, circuit: usize, laps: i32, car: usize, time: [u32; 3]) -> bool {
+        self.keep(index(circuit, Some(laps), car), time)
+    }
+
+    fn keep(&mut self, at: usize, [minutes, seconds, hundredths]: [u32; 3]) -> bool {
+        let time = minutes
+            .saturating_mul(6000)
+            .saturating_add(seconds.saturating_mul(100))
+            .saturating_add(hundredths);
+        let best = &mut self.times[at];
+        let kept = time > 0 && (*best == 0 || time < *best);
+        if kept {
+            *best = time;
+        }
+        kept
+    }
+}
+
+/// Where the time of `car` over `laps` laps (none: the lap) of `circuit` sits in the block.
+fn index(circuit: usize, laps: Option<i32>, car: usize) -> usize {
+    assert!(car < 6, "no car {car}");
+    if circuit == ARENA {
+        let kind = match laps {
+            None => 0,
+            Some(ARENA_LAPS) => 1,
+            Some(laps) => panic!("no race of {laps} laps in the Arena"),
+        };
+        return 18 * 6 * CIRCUIT_TIMES + car * 2 + kind;
+    }
+    assert!(circuit < 18, "no circuit {circuit}");
+    let kind = match laps {
+        None => 0,
+        Some(laps) => {
+            1 + RACE_LAPS
+                .iter()
+                .position(|&count| count == laps)
+                .unwrap_or_else(|| panic!("no race of {laps} laps"))
+        }
+    };
+    (circuit * 6 + car) * CIRCUIT_TIMES + kind
+}
+
+/// A time in hundredths as minutes, seconds and hundredths; none for 0.
+fn clock(time: u32) -> Option<[u32; 3]> {
+    (time > 0).then_some([time / 6000, time / 100 % 60, time % 100])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_personal_best_keeps_the_player_s_better_times_by_circuit_laps_and_car() {
+        // The first time and each better one, never a worse one: a slow race is kept until a
+        // faster comes, whatever the records are; laps and races and cars kept apart.
+        let mut best = PersonalBest::default();
+        assert_eq!(best.lap(14, 0), None);
+        assert!(best.keep_race(14, 4, 0, [0, 58, 21]));
+        assert!(!best.keep_race(14, 4, 0, [0, 59, 0]), "a worse race");
+        assert!(best.keep_race(14, 4, 0, [0, 57, 99]), "a better one");
+        assert!(best.keep_lap(14, 0, [0, 14, 2]));
+        assert!(best.keep_lap(ARENA, 5, [0, 12, 0]));
+        assert!(best.keep_race(ARENA, 9, 5, [2, 0, 0]));
+        assert!(!best.keep_lap(3, 1, [0, 0, 0]), "no lap driven");
+        assert_eq!(best.race(14, 4, 0), Some([0, 57, 99]));
+        assert_eq!(best.lap(14, 0), Some([0, 14, 2]));
+        assert_eq!(best.race(14, 5, 0), None);
+        assert_eq!(best.race(14, 4, 1), None);
+        assert_eq!(best.lap(ARENA, 5), Some([0, 12, 0]));
+        assert_eq!(best.race(ARENA, 9, 5), Some([2, 0, 0]));
+        assert_eq!(best.lap(3, 1), None);
+    }
+
+    #[test]
+    fn a_saved_game_carries_its_personal_best_after_the_original_s_bytes() {
+        // The original reads only its 2179 bytes, so the block after them leaves its game
+        // whole; a game the original saved has no personal best.
+        let mut best = PersonalBest::default();
+        best.keep_race(17, 6, 5, [1, 20, 30]);
+        let original = vec![7; SAVE_BYTES];
+        let file = [original.clone(), best.to_bytes()].concat();
+        assert_eq!(PersonalBest::read(&file), best);
+        assert_eq!(SaveGame::decode(&file), SaveGame::decode(&original));
+        assert_eq!(PersonalBest::read(&original), PersonalBest::default());
+        assert_eq!(
+            PersonalBest::read(&file[..file.len() - 1]),
+            PersonalBest::default()
+        );
+    }
 
     fn game() -> SaveGame {
         SaveGame {

@@ -72,6 +72,10 @@ const STATISTICS_ROWS_Y: [usize; 13] = [
     115, 138, 161, 184, 207, 270, 293, 316, 339, 362, 385, 408, 431,
 ];
 const RACE_HEADING_Y: usize = 247;
+/// DeadRally's rows of the records the player holds, 23 lines apart as the others.
+const LAP_RECORDS: &[u8] = b"Lap records";
+const RACE_RECORDS: &[u8] = b"Race records";
+const RECORDS_STEP: usize = 23;
 
 /// A time as the statistics write it: minutes, seconds and hundredths, each of one digit
 /// with a 0 before it, as "00:05.65".
@@ -345,34 +349,72 @@ impl Menu {
         self.draw_press(0);
         self.shown = self.screen.clone();
         self.compose_palette();
-        State::StatsIn { step: 0 }
+        State::StatsIn {
+            step: 0,
+            page: None,
+        }
     }
 
     /// A wait of the statistics' way in: all but entries 96 to 127 up to 98 %.
-    pub(super) fn stats_in(&mut self, step: u32) -> State {
+    pub(super) fn stats_in(&mut self, step: u32, page: Option<usize>) -> State {
         self.palette.fade_market(2 * i64::from(step));
         if step + 1 < FADE_IN_STEPS {
-            return State::StatsIn { step: step + 1 };
+            return State::StatsIn {
+                step: step + 1,
+                page,
+            };
         }
-        State::StatsWait
+        State::StatsWait { page }
     }
 
-    /// The statistics' wait for a key, the pulse and the line blinking as on the results.
-    pub(super) fn stats_wait(&mut self) -> State {
+    /// The statistics' wait for a key, the pulse and the line blinking as on the results; then
+    /// the way out to the menu. In DeadRally a key but Escape goes on to the personal best,
+    /// where Left and Right step through its pages and Enter or Escape go back to the menu.
+    pub(super) fn stats_wait(&mut self, page: Option<usize>) -> State {
         self.palette.after_wait();
-        self.blink_press();
-        if self.keys.take() == 0 {
-            return State::StatsWait;
+        let Some(page) = page else {
+            self.blink_press();
+            let key = self.keys.take();
+            if key == 0 {
+                return State::StatsWait { page: None };
+            }
+            self.compose_palette();
+            let next = (!self.campaign.windows_version && key != keys::ESCAPE).then_some(0);
+            return State::StatsOut { step: 0, next };
+        };
+        match self.personal_best_key(page) {
+            Some(page) => State::StatsWait { page: Some(page) },
+            None => {
+                self.compose_palette();
+                State::StatsOut {
+                    step: 0,
+                    next: None,
+                }
+            }
         }
-        self.compose_palette();
-        State::StatsOut { step: 0 }
     }
 
-    /// A wait of the statistics' way out: all but entries 96 to 127 from 100 % down to 0.
-    pub(super) fn stats_out(&mut self, step: u32) -> State {
+    /// A wait of the statistics' way out: all but entries 96 to 127 from 100 % down to 0;
+    /// then the personal best's page `next` drawn and faded in, or the menu.
+    pub(super) fn stats_out(&mut self, step: u32, next: Option<usize>) -> State {
         self.palette.fade_market(100 - 2 * i64::from(step));
         if step + 1 < OUT_STEPS {
-            return State::StatsOut { step: step + 1 };
+            return State::StatsOut {
+                step: step + 1,
+                next,
+            };
+        }
+        if let Some(page) = next {
+            self.keys.take();
+            let mut screen = std::mem::take(&mut self.screen);
+            self.draw_personal_best_screen(&mut screen, page);
+            self.screen = screen;
+            self.shown = self.screen.clone();
+            self.compose_palette();
+            return State::StatsIn {
+                step: 0,
+                page: Some(page),
+            };
         }
         // 0x42B4B2: the palette composed, then 51 waits with nothing changing.
         self.compose_palette();
@@ -693,6 +735,26 @@ impl Menu {
         if lap || race {
             self.save = true;
         }
+        self.keep_personal_best();
+    }
+
+    /// DeadRally's personal best of the game: the race's best lap and, driven to its end, the
+    /// race's time, each kept when it is the player's first or better, whatever the records.
+    fn keep_personal_best(&mut self) {
+        let race = self.campaign.entered_race.unwrap_or(0);
+        let circuit = self.records_circuit(race);
+        let car = self.campaign.player().car.clamp(0, 5) as usize;
+        let (lap, time) = (self.outcome.best_lap, self.outcome.race_time);
+        let best = &mut self.campaign.personal_best;
+        best.keep_lap(circuit, car, lap.map(|part| part as u32));
+        if self.outcome.whole {
+            best.keep_race(
+                circuit,
+                self.outcome.laps,
+                car,
+                time.map(|part| part as u32),
+            );
+        }
     }
 
     /// `drawStadistics` (0x4245D0): the player's statistics in small A beside the standings,
@@ -722,6 +784,7 @@ impl Menu {
             money(player.money),
         ];
         let place = self.books.place;
+        let race_part = place > 0;
         if place > 0 {
             let race = self.campaign.entered_race.unwrap_or(0);
             // The Windows version's Arena reads the never-set circuit after the three races'
@@ -763,6 +826,21 @@ impl Menu {
                 at(STATISTICS_LABEL_X, y),
             );
             font.draw(canvas, value, at(STATISTICS_VALUE_X, y));
+        }
+        if !race_part && !self.campaign.windows_version {
+            // DeadRally's: the records the player holds, under their money, where the
+            // statistics after a race have the race's.
+            let (laps, races) = self.records_held();
+            let separator = &texts.label_separator;
+            for (row, (label, count)) in [(LAP_RECORDS, laps), (RACE_RECORDS, races)]
+                .into_iter()
+                .enumerate()
+            {
+                let y = STATISTICS_ROWS_Y[rows.len() - 1] + RECORDS_STEP * (row + 1);
+                let value = [&separator[..], count.to_string().as_bytes()].concat();
+                font.draw(canvas, label, at(STATISTICS_LABEL_X, y));
+                font.draw(canvas, &value, at(STATISTICS_VALUE_X, y));
+            }
         }
     }
 

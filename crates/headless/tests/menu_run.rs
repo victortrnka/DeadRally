@@ -5556,6 +5556,122 @@ fn an_abandoned_race_sets_no_race_record() {
 
 #[test]
 #[ignore = "needs game data (DEADRALLY_DATA)"]
+fn a_race_s_times_go_into_the_game_s_personal_best() {
+    // As DeadRally, the leader turn's race (the Dervish on Holocaust) keeps its best lap and
+    // its whole race in the game's personal best, which F2 in the shop then saves with the
+    // game, after the original's bytes: Enter on the results' pages, F2 held from there.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(leader_turn_save(&assets.menu.texts));
+    let config = assets.menu.default_config.clone();
+    let mut game = Game::with_seed(assets, config, SEED);
+    game.set_saved_games(slots);
+    game.keep_opponents_still();
+    let mut held = leader_turn_held("leader-turn.keys", include_str!("leader-turn.keys"), 12_823);
+    for tick in [13_050, 13_400, 13_750, 14_100] {
+        held.push((tick, Key::Enter, 7));
+    }
+    held.push((14_200, Key::F2, 300));
+    let mut saved = Vec::new();
+    for done in 0..14_600 {
+        for &(_, key) in RACE_START_KEYS.iter().filter(|(at, _)| *at == done) {
+            for pressed in [true, false] {
+                game.input(InputEvent::Key { key, pressed });
+            }
+        }
+        for &(at, key, ticks) in &held {
+            if at == done || at + ticks == done {
+                game.input(InputEvent::Key {
+                    key,
+                    pressed: at == done,
+                });
+            }
+        }
+        game.tick();
+        game.take_audio(&mut Vec::new());
+        saved.extend(game.take_saved_game());
+    }
+    let (slot, file) = saved.last().expect("a quick save in the shop");
+    assert_eq!(*slot, deadrally_gamedata::save_game::QUICKSAVE_SLOT);
+    let best = deadrally_gamedata::save_game::PersonalBest::read(file);
+    assert_eq!(best.lap(7, 1), Some([0, 31, 7]));
+    assert_eq!(best.race(7, 4, 1), Some([2, 5, 58]));
+    assert_eq!(best.race(7, 5, 1), None);
+    assert_eq!(best.lap(7, 0), None);
+}
+
+/// The leader turn's game with a personal best: on Palm Side the Vagabond's lap, 4 and 5
+/// laps and the Deliverator's lap and 4 laps; a Dervish lap on every circuit; the Dervish's
+/// Arena lap and 9 laps.
+fn personal_best_save(texts: &deadrally_gamedata::text::Texts) -> Vec<u8> {
+    let mut best = deadrally_gamedata::save_game::PersonalBest::default();
+    best.keep_lap(14, 0, [0, 14, 2]);
+    best.keep_race(14, 4, 0, [0, 58, 21]);
+    best.keep_race(14, 5, 0, [1, 13, 90]);
+    best.keep_lap(14, 5, [0, 12, 10]);
+    best.keep_race(14, 4, 5, [0, 55, 80]);
+    for circuit in 0..18u32 {
+        best.keep_lap(circuit as usize, 1, [0, 20 + circuit, circuit * 3]);
+    }
+    best.keep_race(0, 4, 1, [1, 26, 40]);
+    best.keep_lap(dr_cfg::ARENA, 1, [0, 17, 25]);
+    best.keep_race(dr_cfg::ARENA, 9, 1, [2, 36, 22]);
+    [leader_turn_save(texts), best.to_bytes()].concat()
+}
+
+/// The defaults with records of the test game's player, TESTER: three lap records (one of
+/// them the Arena's) and a race record.
+fn tester_records(defaults: &DrCfg) -> DrCfg {
+    let mut config = defaults.clone();
+    config.set_record(14, 0, b"TESTER", [0, 13, 1]);
+    config.set_record(7, 1, b"TESTER", [0, 26, 50]);
+    config.set_record(dr_cfg::ARENA, 1, b"TESTER", [0, 14, 80]);
+    config.set_race_record(14, 4, 0, b"TESTER", [0, 56, 90]);
+    config
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_personal_best_follows_the_statistics_as_deadrally() {
+    // Written after these screens were checked by eye (`render --deadrally`): a game with a
+    // personal best loaded, the statistics from the Start Racing menu with the records its
+    // player holds (3 lap records, 1 race record), Space to the personal best's first page,
+    // Right to Palm Side's, and Enter back to the menu on the statistics' row.
+    let assets = Assets::load(&located().validation).unwrap_or_else(|error| panic!("{error}"));
+    let mut slots = vec![None; 8];
+    slots[0] = Some(personal_best_save(&assets.menu.texts));
+    let mut keys = vec![
+        (6455, Key::Enter),
+        (6500, Key::Down),
+        (6620, Key::Enter),
+        (6700, Key::Enter),
+        (6800, Key::Space),
+        (6950, Key::Escape),
+        (7150, Key::Up),
+        (7200, Key::Enter),
+        (7500, Key::Space),
+    ];
+    keys.extend((1..=11).map(|right| (7820 + 30 * right, Key::Right)));
+    keys.push((8300, Key::Enter));
+    let lines = manifest_configured(
+        tester_records,
+        (SEED, None),
+        (&keys, &[]),
+        &[
+            (7480, "statistics"),
+            (7800, "first-page"),
+            (8250, "palm-side"),
+            (8650, "menu"),
+        ],
+        8_700,
+        slots,
+        (true, false),
+    );
+    check_manifest("personal-best-run.sha256", &lines, "the personal best run");
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
 fn a_lap_in_the_arena_is_the_arena_s_record_and_written_as_it_ends() {
     // The original wrote the Arena's laps into Suburbia's records, and a won Arena, which
     // ends the game without the statistics, never kept its lap at all. In DeadRally the won

@@ -299,6 +299,8 @@ pub(crate) struct Campaign {
     /// Playing as the Windows version, the key that ends a race kept for what follows (see
     /// [`crate::Game::as_the_windows_version`]).
     pub(crate) windows_version: bool,
+    /// DeadRally's personal best of this game, kept with its saved games.
+    pub(crate) personal_best: deadrally_gamedata::save_game::PersonalBest,
     /// The deals taken after a sign-up: the drug run's level (0x456BB4), and the hitman's
     /// (0x456BB8) with his victim (0x456BBC); 0 for none. Races settle them (M5).
     pub(crate) drug_deal: i32,
@@ -382,6 +384,7 @@ impl Campaign {
             fixed_clock: None,
             still_opponents: false,
             windows_version: false,
+            personal_best: deadrally_gamedata::save_game::PersonalBest::default(),
             drug_deal: 0,
             hit: 0,
             hit_victim: 0,

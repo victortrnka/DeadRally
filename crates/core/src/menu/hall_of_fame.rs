@@ -499,7 +499,7 @@ impl Menu {
 }
 
 /// The Arena's name as the statistics' heading for its race has it, without the colon.
-fn arena_name(heading: &[u8]) -> &[u8] {
+pub(super) fn arena_name(heading: &[u8]) -> &[u8] {
     let heading = heading.trim_ascii();
     heading.strip_suffix(b":").unwrap_or(heading)
 }
