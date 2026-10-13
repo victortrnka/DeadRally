@@ -5,6 +5,8 @@
 - Race records: the best time of each whole race, by circuit, car and number of laps, on the Hall of Fame's records with Up and Down.
 - The Hall of Fame keeps every winner; Up and Down scroll past the tenth.
 - The last lap of a player who finishes after the winner counts for the best lap and the lap record.
+- Remedy's race records and Arena lap records to beat, from Remedy's lap records.
+- "It's a new race record" at the finish line, made of the announcer's own calls.
 - `deadrally-headless render --deadrally` renders the game as DeadRally plays it, not as the Windows version.
 
 ## 1.0.0 (2026-10-10)

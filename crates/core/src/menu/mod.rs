@@ -15,6 +15,7 @@ mod licence;
 mod market;
 pub(crate) mod palette;
 mod preview;
+mod records;
 mod results;
 mod shop;
 mod sign_up;

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use deadrally_gamedata::bpa::Archive;
 use deadrally_gamedata::sound::{self, EFFECTS, MUSIC};
 use deadrally_gamedata::{DATA_ENV_VAR, locate};
+use sha2::{Digest, Sha256};
 
 fn musics() -> Archive {
     let dir = match std::env::var_os(DATA_ENV_VAR) {
@@ -73,4 +74,33 @@ fn the_banks_hold_their_documented_instruments() {
         let empties = bank.instruments.iter().filter(|i| i.is_none()).count();
         assert_eq!(empties, empty, "{name}");
     }
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_race_record_call_is_made_of_the_known_release_s_calls() {
+    // "It's a new race record" in the announcer's voice: the cuts are sample numbers of the
+    // known release's lap record and race over calls, so other samples would cut words in
+    // half. The call's samples were heard by the owner and by a speech recogniser before
+    // their hash was written down; DEADRALLY_DUMP_CALL names a file for its raw samples.
+    let bank = sound::load_effects(&musics(), "GEN-EFE.CMF").unwrap_or_else(|e| panic!("{e}"));
+    let call = sound::race_record_call(&bank).expect("the known release's calls");
+    if let Some(path) = std::env::var_os("DEADRALLY_DUMP_CALL") {
+        let bytes: Vec<u8> = call.data.iter().flat_map(|v| v.to_le_bytes()).collect();
+        std::fs::write(path, bytes).unwrap();
+    }
+    assert_eq!(call.relative_note, -19);
+    let mut hasher = Sha256::new();
+    for sample in &call.data {
+        hasher.update(sample.to_le_bytes());
+    }
+    let hash: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(
+        hash,
+        "44cb38c7a38b0b26401fb69f28b9541a244aafe6a741dcc5f2429c662e78fc53"
+    );
 }

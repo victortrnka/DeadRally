@@ -98,6 +98,8 @@ pub(super) const LAST_LAP: u8 = 2;
 pub(super) const RECORD: u8 = 4;
 pub(super) const LAPPED: u8 = 22;
 pub(super) const TOUGH_WINS: u8 = 31;
+/// DeadRally's race record call, made of the race's own (`sound::race_record_call`).
+pub(super) const RACE_RECORD: u8 = deadrally_gamedata::sound::RACE_RECORD_CALL;
 /// The ticks the last lap's call waits, and a lap's time stays shown.
 const CALL_WAIT: i32 = 210;
 
@@ -116,6 +118,9 @@ pub(super) struct Race {
     pub(super) special: bool,
     pub(super) tough: Option<usize>,
     pub(super) last_lap_timed: bool,
+    /// DeadRally's race record the player's whole race is called against; none as the
+    /// Windows version, which has no race records.
+    pub(super) race_record: Option<Time>,
 }
 
 /// `checkVaiZones` for every car; the calls it makes, in order.
@@ -159,6 +164,9 @@ pub(super) fn check(cars: &mut [Car], zones: &Zones, laps: &mut Laps, race: &Rac
             if slot == race.player && race.last_lap_timed {
                 lap_times(laps, race, &mut calls);
             }
+            if slot == race.player {
+                race_record_call(car, laps, race, &mut calls);
+            }
         } else {
             car.lap = (car.lap + 1) & 0xFF;
             if slot == race.player {
@@ -176,6 +184,7 @@ pub(super) fn check(cars: &mut [Car], zones: &Zones, laps: &mut Laps, race: &Rac
             if slot == race.player {
                 laps.shown = 9999;
                 car.effect = 0;
+                race_record_call(car, laps, race, &mut calls);
             }
             car.handling.engine = 0.0;
             laps.over = true;
@@ -220,6 +229,17 @@ fn lap_times(laps: &mut Laps, race: &Race, calls: &mut Vec<Call>) {
     laps.last_lap = laps.lap_clock;
     laps.shown = CALL_WAIT;
     laps.lap_clock = 0;
+}
+
+/// DeadRally's race record call, last of the line's calls so that it is the one heard, when
+/// the player has just finished the whole race faster than its record, or set its first.
+fn race_record_call(car: &Car, laps: &Laps, race: &Race, calls: &mut Vec<Call>) {
+    if let Some(record) = race.race_record
+        && whole_race(car, race.laps)
+        && (hundredths(time(laps.race_clock)) < hundredths(record) || record == [0; 3])
+    {
+        calls.push(Call(RACE_RECORD));
+    }
 }
 
 /// Whether `car` drove the whole race of `laps` laps: it crossed the finish line on its last
@@ -344,6 +364,7 @@ mod tests {
             special: false,
             tough: None,
             last_lap_timed: false,
+            race_record: None,
         }
     }
 
@@ -448,6 +469,39 @@ mod tests {
         assert!(whole_race(&cars[0], 2), "after the winner, on its last lap");
         assert!(cars[2].finished && !whole_race(&cars[2], 2), "a lap short");
         assert!(!whole_race(&car(3), 2), "still running");
+    }
+
+    /// DeadRally's race record call: the player finishing the whole race faster than its
+    /// record hears it at the line, over the lap's own call; a slower race, or the Windows
+    /// version, which has no race records, hears nothing of it.
+    #[test]
+    fn a_race_faster_than_its_record_calls_it_at_the_line() {
+        for (record, called) in [
+            (Some([0, 30, 0]), true),
+            (Some([0, 0, 0]), true),
+            (Some([0, 10, 0]), false),
+            (None, false),
+        ] {
+            let mut cars = vec![car(0)];
+            let mut laps = Laps {
+                race_clock: 70 * 20,
+                ..Laps::default()
+            };
+            cars[0].lap = 1;
+            cars[0].zone = 3;
+            put(&mut cars[0], 28.0);
+            let race = Race {
+                race_record: record,
+                ..race(1)
+            };
+            let calls = check(&mut cars, &zones(), &mut laps, &race);
+            assert!(cars[0].finished);
+            assert_eq!(
+                calls.last() == Some(&Call(RACE_RECORD)),
+                called,
+                "{record:?}: {calls:?}"
+            );
+        }
     }
 
     /// A car further round on the same lap takes the place of one behind it.

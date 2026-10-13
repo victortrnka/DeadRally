@@ -209,6 +209,8 @@ pub(crate) struct Race {
     still: bool,
     /// Whether the player's lap after another car has finished is timed (DeadRally's).
     last_lap_timed: bool,
+    /// DeadRally's race record the player's whole race is called against.
+    race_record: Option<[i32; 3]>,
     /// The scancodes of the eight controls in `dr.cfg`.
     controls: [u32; 8],
     /// The player's keys as the timer samples them each tick (0x4A7D60), and where the next
@@ -361,6 +363,9 @@ pub(crate) struct Setup {
     /// Whether the player's lap after another car has finished is timed: DeadRally's, as
     /// the original loses it.
     pub(crate) last_lap_timed: bool,
+    /// DeadRally's race record over the race's laps for the player's car, which a whole race
+    /// faster than it calls; none as the Windows version.
+    pub(crate) race_record: Option<[i32; 3]>,
     /// What the last race left in the original's globals.
     pub(crate) session: Session,
 }
@@ -582,6 +587,7 @@ impl Race {
             pickup_money,
             lap_record,
             last_lap_timed,
+            race_record,
             session,
         } = setup;
         let mut track = Track::load(&archives.tracks[number], number)?;
@@ -650,8 +656,12 @@ impl Race {
         shade[..table.len().min(256)].copy_from_slice(&table[..table.len().min(256)]);
         let music = sound::load_music(&archives.musics, &format!("TR{number}-MUS.CMF"))
             .map_err(RaceError::Sound)?;
-        let effects =
+        let mut effects =
             sound::load_effects(&archives.musics, "GEN-EFE.CMF").map_err(RaceError::Sound)?;
+        // DeadRally's race record call, made of the race's own calls, after them.
+        if let Some(call) = sound::race_record_call(&effects) {
+            effects.instruments.push(Some(call));
+        }
         let pedestrians = pedestrians::Pedestrians::new(
             &track.info,
             reversed,
@@ -718,6 +728,7 @@ impl Race {
             pads,
             still,
             last_lap_timed,
+            race_record,
             help_asked: false,
             controls,
             samples: [0; 16],
@@ -1100,6 +1111,7 @@ impl Race {
             special: self.drivers[0].car == 6,
             tough: self.tough,
             last_lap_timed: self.last_lap_timed,
+            race_record: self.race_record,
         };
         for laps::Call(effect) in laps::check(&mut self.cars, &zones, &mut self.laps_state, &race) {
             sound.trigger_at(CALL_CHANNEL, effect, FULL, CALL_PITCH);

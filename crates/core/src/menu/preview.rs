@@ -306,11 +306,16 @@ impl Menu {
             controls,
             pickup_money: self.pickup_money(race),
             lap_record: self
-                .config
-                .record(records, record.car.clamp(0, 5) as usize)
+                .lap_record(records, record.car.clamp(0, 5) as usize)
                 .1
                 .map(|part| part as i32),
             last_lap_timed: !self.campaign.windows_version,
+            race_record: (!self.campaign.windows_version).then(|| {
+                let car = record.car.clamp(0, 5) as usize;
+                self.race_record(records, laps, car)
+                    .1
+                    .map(|part| part as i32)
+            }),
             session: self.campaign.race_session,
         };
         let race =
