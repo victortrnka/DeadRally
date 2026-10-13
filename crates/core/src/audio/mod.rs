@@ -146,6 +146,13 @@ impl Sound {
         }
     }
 
+    /// The ticks effect `effect` of the loaded bank lasts at `pitch`; 0 for none.
+    pub(crate) fn effect_ticks(&self, effect: u8, pitch: u32) -> u32 {
+        self.effects
+            .as_ref()
+            .map_or(0, |effects| effects.ticks(effect, pitch))
+    }
+
     /// The volume and pitch of what plays on `channel` changed in place (`sub_43C1B0`).
     pub(crate) fn set_channel(&mut self, channel: usize, volume: u32, pitch: u32) {
         if let Some(effects) = &mut self.effects {

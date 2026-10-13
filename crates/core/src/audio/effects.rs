@@ -89,6 +89,20 @@ impl Effects {
         self.started[slot] = index;
     }
 
+    /// The ticks effect `effect` (1-based) lasts at `pitch`, played through once, the last one
+    /// begun; 0 for none.
+    pub(crate) fn ticks(&self, effect: u8, pitch: u32) -> u32 {
+        let Some(Some(sound)) = usize::from(effect)
+            .checked_sub(1)
+            .and_then(|index| self.sounds.get(index))
+        else {
+            return 0;
+        };
+        let hz = u64::from(frequency(sound, pitch));
+        let nanos = sound.data.len() as u64 * 1_000_000_000 / hz;
+        u32::try_from(nanos.div_ceil(crate::TICK_NANOS)).unwrap_or(u32::MAX)
+    }
+
     /// Sets the volume and pitch of the effect playing on `channel` (1-based), as the race
     /// does for the engine every tick (`sub_43C1B0`); nothing when the channel is silent.
     pub(crate) fn set(&mut self, channel: usize, volume: u32, pitch: u32) {
@@ -193,6 +207,16 @@ mod tests {
                 }),
             ],
         }
+    }
+
+    #[test]
+    fn an_effect_lasts_its_samples_at_its_rate_in_whole_ticks() {
+        // 48000 samples at 10536 Hz last 4.556 s: 326 ticks of 14 ms, the last one begun;
+        // a call queued after another waits this long.
+        let effects = Effects::new(&bank(0, 128));
+        assert_eq!(effects.ticks(2, FULL), 326);
+        assert_eq!(effects.ticks(1, FULL), 0, "no sound");
+        assert_eq!(effects.ticks(9, FULL), 0, "no effect");
     }
 
     #[test]
