@@ -139,6 +139,8 @@ pub(crate) struct Graphics {
     pub(crate) medium: Font,
     /// DeadRally's font for titles, as "TRACK RECORDS" is lettered.
     pub(crate) title: Font,
+    /// DeadRally's font for the snapshots' names, the circuits' strips' own letters.
+    pub(crate) snapshot: Font,
     /// `dr.exe`'s menu text table: `menus[m][r]` is row `r` of menu `m`. The original rewrites
     /// some rows as settings change.
     menus: Vec<Vec<Vec<u8>>>,
@@ -171,6 +173,14 @@ impl Graphics {
                     width: 0,
                     height: 0,
                     advances: assets.title_advances.clone(),
+                },
+            ),
+            snapshot: Font::new(
+                assets.snapshot_glyphs.clone(),
+                &deadrally_gamedata::text::Metrics {
+                    width: 0,
+                    height: 0,
+                    advances: assets.snapshot_advances.clone(),
                 },
             ),
             menus: texts.menus.clone(),
@@ -492,6 +502,7 @@ pub(crate) mod tests {
             ],
             medium: Font::new(glyphs(9, 63), &metrics(9)),
             title: Font::new(glyphs(9, 64), &metrics(9)),
+            snapshot: Font::new(glyphs(9, 65), &metrics(9)),
             menus: texts().menus,
             slider: solid(172, 24, 70),
             knob: solid(10, 24, 71),

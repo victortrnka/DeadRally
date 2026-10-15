@@ -2,6 +2,7 @@
 //! circuit (`drawRecordByCircuit`, 0x41E490) and the wipes between them and the main menu
 //! (`sub_42C560`, `sub_42C4A0`).
 
+use deadrally_gamedata::assets::SNAPSHOT_LETTER_GAP;
 use deadrally_gamedata::dr_cfg::{ARENA, ARENA_LAPS, RACE_LAPS};
 use deadrally_gamedata::image::Image;
 
@@ -29,9 +30,8 @@ const FULL_MASK: u32 = 0x1_0000 >> 8;
 /// Effect 26 sounds as Left or Right change the circuit; the arrow stays lit for 8 waits.
 const STEP_SOUND: u8 = 26;
 const ARROW_WAITS: u32 = 8;
-/// The snapshots are drawn 98 rows high; the Arena's name in its strip from line 3.
+/// The snapshots are drawn 98 rows high.
 const SNAPSHOT_ROWS: u32 = 98;
-const SNAPSHOT_NAME_Y: usize = 3;
 /// DeadRally's race records' heading, their laps: the records bar's third heading box
 /// (`RECOBAR`, drawn from row 132), its text cleared from column 502 to 602 on rows 50 to 65
 /// by repeating the eight columns from 494 before it, which hold one turn of its grid and no
@@ -382,7 +382,8 @@ impl Menu {
     }
 
     /// Circuit `circuit`'s snapshot drawn at `(x, y)`, 98 rows of its frame; the Arena's
-    /// DeadRally's own, with its name written in the strip its frame has cleared.
+    /// DeadRally's own, with its name set in the strip its frame has cleared in the circuits'
+    /// strips' own letters, centred as theirs are.
     pub(super) fn draw_snapshot(
         &self,
         canvas: &mut Canvas,
@@ -404,13 +405,10 @@ impl Menu {
         if circuit == ARENA {
             let name = arena_name(&menu.texts.campaign.race_kinds[crate::campaign::ARENA]);
             let name = name.to_ascii_uppercase();
-            let half = self.graphics.medium.width(&name) / 2;
-            let centre = x + frame.width as usize / 2;
-            self.graphics.medium.draw(
-                canvas,
-                &name,
-                at(centre - half.min(centre), y + SNAPSHOT_NAME_Y),
-            );
+            let font = &self.graphics.snapshot;
+            let lettered = font.width(&name).saturating_sub(SNAPSHOT_LETTER_GAP);
+            let left = x + (frame.width as usize).saturating_sub(lettered) / 2;
+            font.draw(canvas, &name, at(left, y));
         }
     }
 

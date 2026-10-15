@@ -323,6 +323,8 @@ pub fn menu_assets() -> MenuAssets {
         records_bar: solid(640, 68, RECORDS_BAR),
         snapshots: (0..20).map(|c| solid(128, 112, SNAPSHOT + c)).collect(),
         arena_snapshot: solid(128, 112, SNAPSHOT + 20),
+        snapshot_glyphs: glyphs(9, MEDIUM),
+        snapshot_advances: vec![9; 96],
         arrows: (0..4).map(|k| solid(16, 84, ARROW + k)).collect(),
         // Frame k covers its tile's rows from k on: frame 0 all of it, so every column is
         // covered once the band's first tile column has passed over it.

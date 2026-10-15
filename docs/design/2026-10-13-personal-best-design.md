@@ -44,9 +44,9 @@ While playing a game, the player can look at their own best lap and best whole r
 5. **The Windows version plays as the original:** a key on the statistics goes back to the menu, there are no records rows and no personal best, and saved games are the original's 2179 bytes. The runs checked against the original keep their manifests.
 
 6. **The Arena's snapshot** (the owner's request of 2026-10-13: "a proper photo"). `TRSNAP2M` has none, so DeadRally makes one when it loads the data:
-   - the first circuit's frame, with its name's strip cleared by repeating the strip's first eight columns, which hold no letters;
+   - the first circuit's frame, with its name's strip cleared by repeating its columns 8 to 15, which hold one turn of the strip's pattern and no letters (repeating its first eight, as at first, repeated the mark the strip has at its left edge too);
    - in its picture, a race's view (320 x 202) of the Arena's track round the start line, made smaller as the circuits' pictures are: each pixel the average of those under it, then the nearest colour the circuits' pictures use in the menu's palette, so that none pulses;
-   - the Arena's name written in the strip by the menu.
+   - the Arena's name set in the strip by the menu in the circuits' strips' own letters (the owner's request of 2026-10-15, "to match the others' style"). The letters are cut 1:1 from the circuits' strips with their shadows: a strip's pixels that differ from its pattern, split where nothing of them is between, the first of each letter in the circuits' order, from the strips with as many letters as their names (Hell Mountain's run together). They are set 2 columns apart, words 9 apart, the most common gaps in the strips, and centred as the strips' names are.
 
    It shows on the Hall of Fame's records and the personal best.
 

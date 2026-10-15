@@ -429,14 +429,61 @@ fn the_arena_s_snapshot_is_made_of_its_track() {
         .unwrap_or_else(|error| panic!("{error}"));
     let snapshot = &assets.menu.arena_snapshot;
     assert_eq!((snapshot.width, snapshot.height), (128, 112));
+    // Its name's strip is the circuits' strip without letters, as Oasis's is where it has
+    // none (the owner found the Arena's unlike the others'), its first columns the first
+    // frame's own edge.
+    let oasis = &assets.menu.snapshots[5];
+    for y in 0..14 {
+        for x in (8..36).chain(95..125) {
+            assert_eq!(
+                snapshot.pixels[y * 128 + x],
+                oasis.pixels[y * 128 + x],
+                "strip at {x},{y}"
+            );
+        }
+    }
     let hash: String = Sha256::digest(&snapshot.pixels)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
     assert_eq!(
         hash,
-        "945297b0083b9a32fa4826d9db3effe98ca0db23149ab7f332b00a5ccacc67f7"
+        "a74874c8be3d3c8defacf41ae765d898133536d6452c32dd629145023c722ac8"
     );
+}
+
+#[test]
+#[ignore = "needs game data (DEADRALLY_DATA)"]
+fn the_arena_s_name_is_lettered_as_the_circuits_names_are() {
+    // The Arena's name in its snapshot is set in the circuits' strips' own letters, so it
+    // looks as theirs do (the owner's request): every letter of the font is one of a strip's
+    // 1:1, its shadow with it, and the Arena's name has all of its letters.
+    let validation = deadrally_gamedata::validate(&data_dir()).unwrap();
+    let assets = deadrally_gamedata::assets::Assets::load(&validation)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let menu = &assets.menu;
+    let glyph = |c: u8| &menu.snapshot_glyphs[usize::from(c - 32)];
+    for c in b"THEARN" {
+        assert!(glyph(*c).width > 0, "no {}", char::from(*c));
+    }
+    for c in b'A'..=b'Z' {
+        let letter = glyph(c);
+        let width = letter.width as usize;
+        if width == 0 {
+            continue;
+        }
+        let found = menu.snapshots[..18].iter().any(|frame| {
+            (0..=128 - width).any(|left| {
+                (0..14).all(|y| {
+                    (0..width).all(|x| {
+                        let pixel = letter.pixels[y * width + x];
+                        pixel == 0 || pixel == frame.pixels[y * 128 + left + x]
+                    })
+                })
+            })
+        });
+        assert!(found, "{} is no strip's", char::from(c));
+    }
 }
 
 #[test]
