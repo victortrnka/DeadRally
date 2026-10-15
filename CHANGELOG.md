@@ -11,7 +11,7 @@
 - Personal best: each game's own best laps and races, saved with it, after See Current Statistics; the statistics count the records the player holds.
 - Up and Down never leave the Hall of Fame's best ten.
 - The personal best's pages show the circuit's snapshot between the arrows, as the records do, over the whole screen.
-- The Arena's snapshot is made of its own track, at its start line.
+- The Arena's snapshot is made of its own track, at its start line, and its name lettered as the circuits' names are.
 - A title font of "TRACK RECORDS"'s own letters, the rest drawn in their style, for the personal best's title.
 
 ## 1.0.0 (2026-10-10)

@@ -106,6 +106,10 @@ pub struct MenuAssets {
     pub snapshots: Vec<Image>,
     /// DeadRally's snapshot of the Arena, which `TRSNAP2M` has none of ([`arena_snapshot`]).
     pub arena_snapshot: Image,
+    /// DeadRally's font for the snapshots' names, the letters the circuits' strips have
+    /// ([`snapshot_font`]): the glyphs and the pen's advance after each.
+    pub snapshot_glyphs: Vec<Image>,
+    pub snapshot_advances: Vec<u8>,
     /// DeadRally's font for titles as the records' "TRACK RECORDS" is lettered, every
     /// printable character ([`title_font`]): the glyphs and the pen's advance after each.
     pub title_glyphs: Vec<Image>,
@@ -293,6 +297,10 @@ impl Assets {
             &menu_assets.snapshots,
             &menu_assets.palette,
             (&arena.image, &arena.palette),
+        );
+        (menu_assets.snapshot_glyphs, menu_assets.snapshot_advances) = snapshot_font(
+            &menu_assets.snapshots,
+            &menu_assets.texts.hall_of_fame.circuits,
         );
         Ok(Assets {
             intro: Animation::open(&path("SANIM.HAF")).map_err(AssetError::Animation)?,
@@ -513,6 +521,8 @@ fn menu_assets(
         records_bar: frames(menu, "RECOBAR.BPK")?.remove(0),
         snapshots: frames(menu, "TRSNAP2M.BPK")?,
         arena_snapshot: Image::new(0, 0, Vec::new()),
+        snapshot_glyphs: Vec::new(),
+        snapshot_advances: Vec::new(),
         title_glyphs: Vec::new(),
         title_advances: Vec::new(),
         arrows: frames(menu, "TRARR1.BPK")?,
@@ -637,11 +647,18 @@ fn letterbox(menu: &Archive) -> Result<Picture, AssetError> {
 }
 
 /// The snapshots' parts: the eighteen circuits' frames (two more for the sign-up's buttons
-/// follow), their name's strip (lines 0 to 13) whose first eight columns hold one turn of its
-/// pattern and no letters, and their picture (columns 3 to 124, lines 18 to 94).
+/// follow), their name's strip (lines 0 to 13), whose pattern repeats every eight columns from
+/// column 8 to its last 3 (the first frame's columns 8 to 15 hold one turn of it and no
+/// letters; its first columns hold the strip's edge and a mark), and their picture (columns 3
+/// to 124, lines 18 to 94).
 const CIRCUIT_SNAPSHOTS: usize = 18;
 const NAME_STRIP: (usize, usize) = (0, 14);
-const STRIP_TILE: (usize, usize) = (3, 8);
+const STRIP_TILE: (usize, usize) = (8, 8);
+const STRIP_BORDER: usize = 3;
+/// How the strips set their names' letters: mostly 2 columns between a letter's shadow and
+/// the next letter, words 9 apart.
+pub const SNAPSHOT_LETTER_GAP: usize = 2;
+const SNAPSHOT_WORD_GAP: usize = 9;
 const PICTURE: (usize, usize, usize, usize) = (3, 18, 122, 77);
 /// The part of the Arena's track (`TR0-IMA`, 1408 x 512) its picture shows: a race's view,
 /// 320 x 202, round the start line, made smaller as the circuits' pictures are.
@@ -665,7 +682,7 @@ pub fn arena_snapshot(
     let (strip_top, strip_lines) = NAME_STRIP;
     let (tile_x, tile) = STRIP_TILE;
     for y in strip_top..strip_top + strip_lines {
-        for x in tile_x..width - tile_x {
+        for x in tile_x..width - STRIP_BORDER {
             pixels[y * width + x] = frame.pixels[y * width + tile_x + (x - tile_x) % tile];
         }
     }
@@ -722,6 +739,83 @@ pub fn arena_snapshot(
         }
     }
     Image::new(frame.width, frame.height, pixels)
+}
+
+/// DeadRally's font for the snapshots' names, for the Arena's: the letters the circuits'
+/// strips have, 1:1 with their shadows, the first of each in the circuits' order. A strip's
+/// letters are its pixels that differ from its pattern, split where nothing of them is
+/// between; a strip whose letters run into each other (Hell Mountain's) has fewer than its
+/// name and gives none. `names` are the circuits', in the snapshots' order. The glyphs, and
+/// the pen's advance after each; a space moves the next word [`SNAPSHOT_WORD_GAP`] on.
+pub fn snapshot_font(snapshots: &[Image], names: &[Vec<u8>]) -> (Vec<Image>, Vec<u8>) {
+    let (top, lines) = NAME_STRIP;
+    let mut glyphs = vec![Image::new(0, lines as u32, Vec::new()); TITLE_GLYPHS];
+    let mut advances = vec![(SNAPSHOT_WORD_GAP - SNAPSHOT_LETTER_GAP) as u8; TITLE_GLYPHS];
+    let Some(first) = snapshots.first() else {
+        return (glyphs, advances);
+    };
+    let width = first.width as usize;
+    let (tile_x, tile) = STRIP_TILE;
+    let pattern = |x: usize, y: usize| first.pixels[y * width + tile_x + (x - tile_x) % tile];
+    let mut taken = [false; TITLE_GLYPHS];
+    for (frame, name) in snapshots.iter().zip(names).take(CIRCUIT_SNAPSHOTS) {
+        if frame.width != first.width || frame.pixels.len() < width * (top + lines) {
+            continue;
+        }
+        let lettered = |x: usize, y: usize| {
+            let pixel = frame.pixels[y * width + x];
+            (pixel != pattern(x, y)).then_some(pixel)
+        };
+        let inked = |x: usize| (top..top + lines).any(|y| lettered(x, y).is_some());
+        let mut spans = Vec::new();
+        let mut x = tile_x;
+        while x < width - STRIP_BORDER {
+            if !inked(x) {
+                x += 1;
+                continue;
+            }
+            let start = x;
+            while x < width - STRIP_BORDER && inked(x) {
+                x += 1;
+            }
+            spans.push((start, x));
+        }
+        let letters: Vec<u8> = name
+            .iter()
+            .filter(|&&c| c != b' ')
+            .map(u8::to_ascii_uppercase)
+            .collect();
+        if spans.len() != letters.len() {
+            continue;
+        }
+        for (&c, &(start, end)) in letters.iter().zip(&spans) {
+            let Some(at) = usize::from(c)
+                .checked_sub(32)
+                .filter(|&at| at < TITLE_GLYPHS)
+            else {
+                continue;
+            };
+            if std::mem::replace(&mut taken[at], true) {
+                continue;
+            }
+            let glyph_width = end - start;
+            let pixels = (top..top + lines)
+                .flat_map(|y| (start..end).map(move |x| (x, y)))
+                .map(|(x, y)| lettered(x, y).unwrap_or(0))
+                .collect();
+            glyphs[at] = Image::new(glyph_width as u32, lines as u32, pixels);
+            advances[at] = (glyph_width + SNAPSHOT_LETTER_GAP) as u8;
+        }
+    }
+    for c in b'a'..=b'z' {
+        let (small, capital) = (
+            usize::from(c - 32),
+            usize::from(c.to_ascii_uppercase() - 32),
+        );
+        glyphs[small] = glyphs[capital].clone();
+        advances[small] = advances[capital];
+    }
+    (glyphs, advances)
 }
 
 /// DeadRally's title font (docs/design/2026-10-13-personal-best-design.md): its 16 lines are
