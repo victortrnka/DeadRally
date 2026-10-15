@@ -12,7 +12,7 @@
 - Up and Down never leave the Hall of Fame's best ten.
 - The personal best's pages show the circuit's snapshot between the arrows, as the records do, over the whole screen.
 - The Arena's snapshot is made of its own track, at its start line.
-- A title font made of "TRACK RECORDS"'s own letters and their parts, for the personal best's title.
+- A title font of "TRACK RECORDS"'s own letters, the rest drawn in their style, for the personal best's title.
 
 ## 1.0.0 (2026-10-10)
 

@@ -482,33 +482,9 @@ fn the_title_font_letters_as_track_records_is_lettered() {
             );
         }
     }
-    // The made strokes are the originals' (the owner found the first made letters too bold
-    // and too dark): P is R without its leg, R's very pixels down to its bowl and its stem
-    // below it ...
-    let (p, r) = (glyph(b'P'), glyph(b'R'));
-    let (p_width, r_width) = (p.width as usize, r.width as usize);
-    for y in 0..16 {
-        for x in 0..p_width {
-            let from_r = y < 9 || x < 4;
-            let expected = if from_r { r.pixels[y * r_width + x] } else { 0 };
-            assert_eq!(p.pixels[y * p_width + x], expected, "P at {x},{y}");
-        }
-    }
-    // ... B's lower bowl is its upper bowl again (the owner's word), R's moved 5 lines down:
-    // right of the stem it is inked on lines 9 to 13 where R is on lines 4 to 8 ...
-    let b = glyph(b'B');
-    let b_width = b.width as usize;
-    for y in 9..14 {
-        for x in 4..r_width {
-            assert_eq!(
-                b.pixels[y * b_width + x] != 0,
-                r.pixels[(y - 5) * r_width + x] != 0,
-                "B at {x},{y}"
-            );
-        }
-    }
-    // ... and every made glyph has on each line only colours "TRACK RECORDS" has on it, so
-    // none is brighter or darker than its letters there.
+    // The glyphs drawn for it (the owner's sheet, in its colours line by line) have on each
+    // line only colours "TRACK RECORDS" has there: as bright as its letters, and none that
+    // the menus change ...
     let on_line = |y: usize| -> Vec<u8> {
         (0..640)
             .map(|x| menu.records_title.pixels[y * 640 + x])
@@ -517,12 +493,12 @@ fn the_title_font_letters_as_track_records_is_lettered() {
             .map(|(pixel, _)| pixel)
             .collect()
     };
-    for c in 33..127u8 {
-        let made = glyph(c);
-        let width = made.width as usize;
+    for c in (33..127u8).filter(|c| !b"ACDEKORST".contains(c) && !c.is_ascii_lowercase()) {
+        let glyph = glyph(c);
+        let width = glyph.width as usize;
         for y in 0..16 {
             let colours = on_line(y);
-            for &pixel in &made.pixels[y * width..(y + 1) * width] {
+            for &pixel in &glyph.pixels[y * width..(y + 1) * width] {
                 assert!(
                     pixel == 0 || colours.contains(&pixel),
                     "{} has colour {pixel} on line {y}",
@@ -531,6 +507,27 @@ fn the_title_font_letters_as_track_records_is_lettered() {
             }
         }
     }
+    // ... F is E without its lower bar, E's very pixels (the sheet's F was bolder than E
+    // beside it) ...
+    let (f, e) = (glyph(b'F'), glyph(b'E'));
+    let (f_width, e_width) = (f.width as usize, e.width as usize);
+    for y in 0..16 {
+        for x in 0..f_width {
+            let expected = if y < 11 || x < 5 {
+                e.pixels[y * e_width + x]
+            } else {
+                0
+            };
+            assert_eq!(f.pixels[y * f_width + x], expected, "F at {x},{y}");
+        }
+    }
+    // ... and H's bar meets both its stems (the owner found a gap there).
+    let h = glyph(b'H');
+    let h_width = h.width as usize;
+    assert!(
+        (0..h_width).all(|x| h.pixels[7 * h_width + x] != 0),
+        "H's bar does not meet its stems"
+    );
     // Titles are capitals: a small letter is its capital.
     for c in b'a'..=b'z' {
         assert_eq!(glyph(c), glyph(c.to_ascii_uppercase()), "{}", char::from(c));
@@ -547,6 +544,6 @@ fn the_title_font_letters_as_track_records_is_lettered() {
         .collect();
     assert_eq!(
         hash,
-        "19a1fa131f5b6be7995ab30c7336c6fc93aff1fc6f6b27753303f513419456c5"
+        "2ea1c7a8e5d68549d5f0818c4f15ad4ddcebd88acc67ad11c7431e6ec776cc99"
     );
 }

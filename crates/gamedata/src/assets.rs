@@ -726,8 +726,8 @@ pub fn arena_snapshot(
 
 /// DeadRally's title font (docs/design/2026-10-13-personal-best-design.md): its 16 lines are
 /// those of "TRACK RECORDS" (`RECOTXT`, drawn from line 92 of the menus' background), whose
-/// letters it takes 1:1 and whose letters' parts make the others. Glyphs are a column apart, a
-/// space 5 wide.
+/// letters it takes 1:1; the others are drawn in their style ([`MADE`]). Glyphs are a column
+/// apart, a space 5 wide.
 const TITLE_LINES: usize = 16;
 const TITLE_GLYPHS: usize = 96;
 const TITLE_SPACING: usize = 1;
@@ -735,400 +735,18 @@ const TITLE_SPACE: u8 = 5;
 const RECORDS_TOP: usize = 92;
 const RECORDS_TEXT: &[u8] = b"TRACKRECORDS";
 
-/// A part of a made glyph, out of "TRACK RECORDS"'s letters, whose strokes are on lines 1 to
-/// 14.
-#[derive(Clone, Copy)]
-enum Part {
-    /// A letter's columns and lines, its first column set at a column of the glyph and the
-    /// lines moved down (or up) some lines, each pixel moved then the colour of that line as
-    /// bright beside the line's strokes.
-    Copy(u8, (usize, usize), (usize, usize), isize, isize),
-    /// K's stem on these lines at a column: its columns 0 to 4, and its glow (column 5) on
-    /// its first and last lines, where its arms do not reach.
-    Stem((usize, usize), isize),
-    /// A slanted stroke: on each of these lines, K's stem across that line (its columns 1 to
-    /// 4), from a column on the first line to one on the last, evenly.
-    Slant((usize, usize), isize, isize),
-    /// Nothing at these columns and lines.
-    Clear((usize, usize), (usize, usize)),
-}
-
-use Part::{Clear, Slant, Stem};
-
-/// A letter's columns and lines, set at a column of the glyph.
-const fn copy(letter: u8, columns: (usize, usize), lines: (usize, usize), at: isize) -> Part {
-    Part::Copy(letter, columns, lines, at, 0)
-}
-
-/// A whole letter.
-const fn take(letter: u8) -> Part {
-    copy(letter, (0, usize::MAX), (0, TITLE_LINES), 0)
-}
-
-/// K's foot as a dot, at a column.
-const fn dot(at: isize) -> Part {
-    copy(b'K', (0, 6), (11, 15), at)
-}
-
-/// The glyphs made of "TRACK RECORDS"'s letters' parts, the strokes as thick and bright as
-/// theirs on every line (the owner's choice): P is R without its leg, B that with R's bowl
-/// again below it, F and L are E's, I and the other stems K's, slanted strokes K's stem across each
-/// line, the round digits O's halves, and so on. Each was checked by eye, enlarged, on a sheet
-/// of them all.
-const MADE: &[(u8, &[Part])] = &[
-    (b'P', &[take(b'R'), Clear((4, 14), (9, 15))]),
-    (
-        b'B',
-        &[
-            copy(b'R', (0, 14), (1, 9), 0),
-            copy(b'R', (0, 4), (9, 15), 0),
-            Part::Copy(b'R', (4, 14), (2, 9), 4, 5),
-            copy(b'D', (5, 11), (14, 15), 4),
-        ],
-    ),
-    (b'F', &[take(b'E'), Clear((5, 14), (11, 15))]),
-    (
-        b'L',
-        &[take(b'E'), Clear((0, 14), (1, 11)), Stem((1, 11), 0)],
-    ),
-    (b'I', &[Stem((1, 15), 0)]),
-    (
-        b'H',
-        &[
-            Stem((1, 15), 0),
-            Stem((1, 15), 9),
-            copy(b'E', (5, 9), (6, 9), 5),
-        ],
-    ),
-    (
-        b'N',
-        &[Stem((1, 15), 0), Stem((1, 15), 10), Slant((1, 15), 1, 10)],
-    ),
-    (
-        b'M',
-        &[
-            Stem((1, 15), 0),
-            Stem((1, 15), 13),
-            Slant((1, 11), 1, 7),
-            Slant((1, 11), 13, 7),
-        ],
-    ),
-    (b'V', &[Slant((1, 15), 0, 6), Slant((1, 15), 12, 6)]),
-    (
-        b'W',
-        &[
-            Slant((1, 15), 0, 4),
-            Slant((1, 15), 9, 4),
-            Slant((1, 15), 9, 14),
-            Slant((1, 15), 18, 14),
-        ],
-    ),
-    (b'X', &[Slant((1, 15), 0, 11), Slant((1, 15), 11, 0)]),
-    (
-        b'Y',
-        &[
-            Slant((1, 8), 0, 5),
-            Slant((1, 8), 10, 5),
-            copy(b'K', (1, 5), (8, 15), 5),
-        ],
-    ),
-    (
-        b'Z',
-        &[
-            copy(b'T', (0, 15), (1, 4), 0),
-            Clear((6, 10), (3, 4)),
-            copy(b'T', (2, 6), (3, 4), 6),
-            Slant((4, 12), 10, 1),
-            copy(b'E', (1, 8), (12, 15), 0),
-            copy(b'E', (5, 14), (12, 15), 6),
-        ],
-    ),
-    (
-        b'U',
-        &[
-            copy(b'O', (0, 16), (5, 15), 0),
-            copy(b'K', (0, 6), (1, 5), -1),
-            copy(b'K', (0, 6), (1, 5), 11),
-        ],
-    ),
-    (
-        b'G',
-        &[
-            take(b'C'),
-            copy(b'E', (5, 11), (7, 9), 7),
-            copy(b'K', (1, 5), (8, 12), 10),
-        ],
-    ),
-    (b'Q', &[take(b'O'), copy(b'K', (7, 15), (11, 15), 9)]),
-    (
-        b'J',
-        &[
-            copy(b'O', (0, 8), (10, 15), 0),
-            copy(b'O', (10, 16), (10, 15), 8),
-            Stem((1, 10), 9),
-        ],
-    ),
-    (
-        b'0',
-        &[
-            copy(b'O', (0, 8), (1, 15), 0),
-            copy(b'O', (10, 16), (1, 15), 8),
-        ],
-    ),
-    (b'1', &[Stem((1, 15), 3), Slant((2, 5), 2, 0)]),
-    (
-        b'2',
-        &[
-            copy(b'O', (0, 16), (1, 4), 0),
-            copy(b'O', (9, 16), (4, 8), 9),
-            Slant((7, 12), 11, 1),
-            copy(b'E', (0, 14), (12, 15), 0),
-        ],
-    ),
-    (
-        b'3',
-        &[
-            take(b'R'),
-            Clear((4, 14), (9, 15)),
-            Clear((0, 4), (9, 15)),
-            copy(b'D', (0, 16), (9, 15), -1),
-            Clear((0, 4), (4, 12)),
-            Clear((4, 6), (6, 10)),
-        ],
-    ),
-    (
-        b'4',
-        &[
-            Slant((1, 10), 7, 0),
-            Stem((1, 15), 8),
-            copy(b'A', (5, 10), (9, 12), 0),
-            copy(b'A', (5, 10), (9, 12), 5),
-            copy(b'A', (5, 10), (9, 12), 9),
-        ],
-    ),
-    (
-        b'5',
-        &[
-            copy(b'E', (0, 14), (1, 4), 0),
-            copy(b'E', (0, 5), (4, 6), 0),
-            copy(b'S', (0, 14), (6, 15), 0),
-        ],
-    ),
-    (
-        b'6',
-        &[
-            copy(b'C', (0, 7), (1, 6), 0),
-            copy(b'C', (8, 15), (1, 6), 7),
-            copy(b'O', (0, 7), (6, 10), 0),
-            Part::Copy(b'O', (0, 7), (2, 4), 0, 6),
-            Part::Copy(b'O', (9, 16), (2, 4), 7, 6),
-            copy(b'O', (0, 7), (10, 15), 0),
-            copy(b'O', (9, 16), (10, 15), 7),
-        ],
-    ),
-    (
-        b'7',
-        &[copy(b'E', (1, 14), (1, 4), 0), Slant((4, 15), 9, 2)],
-    ),
-    (
-        b'8',
-        &[
-            copy(b'O', (0, 7), (1, 6), 0),
-            copy(b'O', (9, 16), (1, 6), 7),
-            Part::Copy(b'O', (0, 7), (11, 14), 0, -5),
-            Part::Copy(b'O', (9, 16), (11, 14), 7, -5),
-            Part::Copy(b'O', (0, 7), (2, 4), 0, 6),
-            Part::Copy(b'O', (9, 16), (2, 4), 7, 6),
-            copy(b'O', (0, 7), (10, 15), 0),
-            copy(b'O', (9, 16), (10, 15), 7),
-        ],
-    ),
-    (
-        b'9',
-        &[
-            copy(b'O', (0, 7), (1, 6), 0),
-            copy(b'O', (9, 16), (1, 6), 7),
-            Part::Copy(b'O', (0, 7), (11, 14), 0, -5),
-            Part::Copy(b'O', (9, 16), (11, 14), 7, -5),
-            copy(b'O', (9, 16), (6, 10), 7),
-            copy(b'S', (0, 14), (10, 15), 0),
-        ],
-    ),
-    (b'.', &[dot(0)]),
-    (
-        b',',
-        &[
-            copy(b'K', (1, 5), (10, 14), 1),
-            copy(b'K', (0, 4), (14, 15), 0),
-        ],
-    ),
-    (b':', &[copy(b'K', (0, 5), (4, 8), 0), dot(0)]),
-    (
-        b';',
-        &[
-            copy(b'K', (0, 5), (4, 8), 1),
-            copy(b'K', (1, 5), (10, 14), 2),
-            copy(b'K', (0, 4), (14, 15), 1),
-        ],
-    ),
-    (
-        b'-',
-        &[
-            copy(b'E', (5, 11), (6, 9), 0),
-            copy(b'E', (5, 11), (6, 9), 3),
-        ],
-    ),
-    (b'!', &[Stem((1, 10), 0), dot(0)]),
-    (
-        b'?',
-        &[
-            copy(b'O', (4, 16), (1, 4), 0),
-            copy(b'O', (10, 16), (4, 7), 6),
-            Slant((7, 10), 6, 5),
-            dot(5),
-        ],
-    ),
-    (b'\'', &[Stem((1, 6), 0)]),
-    (b'"', &[Stem((1, 6), 0), Stem((1, 6), 6)]),
-    (b'`', &[Slant((1, 5), 0, 2)]),
-    (b'/', &[Slant((1, 15), 8, 0)]),
-    (b'\\', &[Slant((1, 15), 0, 8)]),
-    (b'|', &[Stem((1, 15), 0)]),
-    (
-        b'(',
-        &[
-            Slant((1, 5), 3, 1),
-            Slant((5, 11), 0, 0),
-            Slant((11, 15), 1, 3),
-        ],
-    ),
-    (
-        b')',
-        &[
-            Slant((1, 5), 0, 2),
-            Slant((5, 11), 3, 3),
-            Slant((11, 15), 2, 0),
-        ],
-    ),
-    (
-        b'[',
-        &[
-            Stem((1, 15), 0),
-            copy(b'E', (5, 9), (1, 4), 5),
-            copy(b'E', (5, 9), (12, 15), 5),
-        ],
-    ),
-    (
-        b']',
-        &[
-            copy(b'E', (5, 9), (1, 4), 0),
-            copy(b'E', (5, 9), (12, 15), 0),
-            Stem((1, 15), 3),
-        ],
-    ),
-    (b'<', &[Slant((3, 8), 6, 0), Slant((8, 13), 0, 6)]),
-    (b'>', &[Slant((3, 8), 0, 6), Slant((8, 13), 6, 0)]),
-    (
-        b'+',
-        &[
-            Stem((4, 12), 4),
-            copy(b'E', (5, 11), (6, 9), 0),
-            copy(b'E', (5, 11), (6, 9), 6),
-        ],
-    ),
-    (
-        b'=',
-        &[
-            Part::Copy(b'E', (5, 11), (6, 9), 0, -2),
-            Part::Copy(b'E', (5, 11), (6, 9), 5, -2),
-            copy(b'A', (4, 12), (9, 12), 0),
-            copy(b'A', (4, 12), (9, 12), 3),
-        ],
-    ),
-    (b'_', &[copy(b'E', (1, 14), (12, 15), 0)]),
-    (
-        b'*',
-        &[Stem((1, 8), 4), Slant((2, 7), 0, 8), Slant((2, 7), 8, 0)],
-    ),
-    (b'^', &[Slant((2, 7), 3, 0), Slant((2, 7), 3, 6)]),
-    (
-        b'~',
-        &[
-            copy(b'E', (5, 9), (6, 9), 0),
-            Part::Copy(b'E', (5, 9), (6, 9), 3, -1),
-            copy(b'E', (5, 9), (6, 9), 6),
-            Part::Copy(b'E', (5, 9), (6, 9), 9, 1),
-            copy(b'E', (5, 9), (6, 9), 12),
-        ],
-    ),
-    (
-        b'#',
-        &[
-            Stem((1, 15), 2),
-            Stem((1, 15), 9),
-            Part::Copy(b'E', (5, 10), (6, 9), 0, -2),
-            Part::Copy(b'E', (5, 10), (6, 9), 5, -2),
-            Part::Copy(b'E', (5, 11), (6, 9), 9, -2),
-            copy(b'A', (4, 12), (9, 12), 0),
-            copy(b'A', (4, 12), (9, 12), 7),
-        ],
-    ),
-    (b'$', &[take(b'S'), copy(b'K', (2, 4), (1, 15), 6)]),
-    (
-        b'%',
-        &[
-            Slant((1, 15), 12, 2),
-            copy(b'K', (0, 6), (1, 5), 0),
-            dot(10),
-        ],
-    ),
-    (
-        b'&',
-        &[
-            copy(b'O', (0, 6), (1, 6), 0),
-            copy(b'O', (11, 16), (1, 6), 6),
-            Part::Copy(b'O', (0, 6), (11, 14), 0, -5),
-            Part::Copy(b'O', (11, 16), (11, 14), 6, -5),
-            Part::Copy(b'O', (0, 7), (2, 4), 0, 6),
-            copy(b'O', (0, 7), (10, 15), 0),
-            copy(b'O', (7, 10), (12, 15), 7),
-            Slant((7, 15), 4, 11),
-            Slant((8, 12), 14, 11),
-        ],
-    ),
-    (
-        b'@',
-        &[
-            take(b'O'),
-            Part::Copy(b'K', (1, 5), (11, 15), 6, -5),
-            copy(b'K', (2, 4), (5, 12), 9),
-        ],
-    ),
-    (
-        b'{',
-        &[
-            Slant((1, 6), 4, 2),
-            Slant((6, 8), 2, 0),
-            Slant((8, 10), 0, 2),
-            Slant((10, 15), 2, 4),
-        ],
-    ),
-    (
-        b'}',
-        &[
-            Slant((1, 6), 0, 2),
-            Slant((6, 8), 2, 4),
-            Slant((8, 10), 4, 2),
-            Slant((10, 15), 2, 0),
-        ],
-    ),
-];
+/// The glyphs "TRACK RECORDS" lacks, drawn in its style on a sheet the owner made (on a
+/// template of those letters, a square for each pixel) in its colours, line by line. Each is
+/// its character, then its lines 1 to 14: each pixel the rank of its colour among those
+/// "TRACK RECORDS" has on that line ([`RANKS`], brightest first), `.` nothing.
+const MADE: &str = include_str!("title_font.txt");
+const RANKS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 
 /// DeadRally's font for titles: every printable character, as "TRACK RECORDS" is lettered.
 /// Its letters are taken 1:1: the first of each, the pixels where `RECOTXT` differs from
 /// the menus' background under it, letters split where nothing of them is between or where
-/// least is (its A and C touch). The others are made of their parts ([`MADE`]), small
-/// letters as capitals. The glyphs, and the pen's advance after each.
+/// least is (its A and C touch). The others are [`MADE`]'s. Small letters are the capitals.
+/// The glyphs, and the pen's advance after each.
 pub fn title_font(title: &Image, background: &Image, palette: &Palette) -> (Vec<Image>, Vec<u8>) {
     let width = title.width as usize;
     let lines = (title.height as usize).min(TITLE_LINES);
@@ -1143,20 +761,20 @@ pub fn title_font(title: &Image, background: &Image, palette: &Palette) -> (Vec<
             .map(|&part| u32::from(part))
             .sum::<u32>()
     };
-    // Each line's colours, and its strokes' (its brightest).
+    // Each line's colours, the first of each look, brightest first.
+    let look = |index: u8| palette.0[usize::from(index)];
     let mut colours: Vec<Vec<u8>> = vec![Vec::new(); TITLE_LINES];
-    let mut strokes: Vec<Option<u8>> = vec![None; TITLE_LINES];
-    for y in 0..lines {
+    for (y, line) in colours.iter_mut().enumerate().take(lines) {
         for x in 0..width {
-            if let Some(pixel) = letter(x, y) {
-                if !colours[y].contains(&pixel) {
-                    colours[y].push(pixel);
-                }
-                if strokes[y].is_none_or(|best| brightness(pixel) > brightness(best)) {
-                    strokes[y] = Some(pixel);
-                }
+            if let Some(pixel) = letter(x, y)
+                && !line.iter().any(|&colour| look(colour) == look(pixel))
+            {
+                line.push(pixel);
             }
         }
+    }
+    for line in &mut colours {
+        line.sort_by_key(|&colour| (std::cmp::Reverse(brightness(colour)), look(colour)));
     }
     let index = |c: u8| usize::from(c - 32);
     let mut glyphs = vec![Image::new(0, TITLE_LINES as u32, Vec::new()); TITLE_GLYPHS];
@@ -1206,106 +824,21 @@ pub fn title_font(title: &Image, background: &Image, palette: &Palette) -> (Vec<
         glyphs[at] = Image::new(glyph_width as u32, TITLE_LINES as u32, pixels);
         advances[at] = (glyph_width + TITLE_SPACING) as u8;
     }
-    // A pixel moved from line `from` to line `to`: the colour of `to` nearest to its
-    // strokes' as much brighter or darker as the pixel is beside `from`'s.
-    let recolour = |pixel: u8, from: usize, to: usize| {
-        let (Some(was), Some(stroke)) = (strokes[from], strokes[to]) else {
-            return pixel;
+    for made in MADE.split("\n\n") {
+        let mut rows = made.lines();
+        let (Some(name), rows) = (rows.next(), rows.collect::<Vec<_>>()) else {
+            continue;
         };
-        let (part, whole) = (i64::from(brightness(pixel)), i64::from(brightness(was)));
-        let stroke = palette.0[usize::from(stroke)];
-        colours[to]
-            .iter()
-            .copied()
-            .min_by_key(|&colour| {
-                palette.0[usize::from(colour)]
-                    .iter()
-                    .zip(stroke)
-                    .map(|(&a, b)| (i64::from(a) * whole - i64::from(b) * part).pow(2))
-                    .sum::<i64>()
-            })
-            .unwrap_or(pixel)
-    };
-    for &(c, parts) in MADE {
-        let mut columns: Vec<[u8; TITLE_LINES]> = Vec::new();
-        // Where parts cross, the brighter pixel shows.
-        let put = |columns: &mut Vec<[u8; TITLE_LINES]>, x: isize, y: usize, pixel: u8| {
-            let Ok(x) = usize::try_from(x) else {
-                return;
-            };
-            if pixel == 0 || y >= TITLE_LINES {
-                return;
-            }
-            if columns.len() <= x {
-                columns.resize(x + 1, [0; TITLE_LINES]);
-            }
-            let old = columns[x][y];
-            if old == 0 || brightness(pixel) > brightness(old) {
-                columns[x][y] = pixel;
-            }
-        };
-        let at = |c: u8, x: usize, y: usize| {
-            let glyph = &glyphs[index(c)];
-            glyph.pixels[y * glyph.width as usize + x]
-        };
-        for &part in parts {
-            match part {
-                Part::Copy(from, (x0, x1), (y0, y1), to, down) => {
-                    let x1 = x1.min(glyphs[index(from)].width as usize);
-                    for y in y0..y1 {
-                        let Some(line) = y.checked_add_signed(down) else {
-                            continue;
-                        };
-                        for x in x0..x1 {
-                            let pixel = at(from, x, y);
-                            let pixel = if line == y || pixel == 0 || line >= TITLE_LINES {
-                                pixel
-                            } else {
-                                recolour(pixel, y, line)
-                            };
-                            put(&mut columns, to + (x - x0) as isize, line, pixel);
-                        }
-                    }
-                }
-                Stem((y0, y1), to) => {
-                    for y in y0..y1 {
-                        let glow = if y == 1 || y == 14 { 6 } else { 5 };
-                        for x in 0..glow {
-                            put(&mut columns, to + x as isize, y, at(b'K', x, y));
-                        }
-                    }
-                }
-                Slant((y0, y1), from, to) => {
-                    let steps = (y1 - 1 - y0).max(1) as isize;
-                    for y in y0..y1 {
-                        let along = halves_to_even((to - from) * (y - y0) as isize, steps);
-                        for x in 1..5 {
-                            put(
-                                &mut columns,
-                                from + along + x as isize - 1,
-                                y,
-                                at(b'K', x, y),
-                            );
-                        }
-                    }
-                }
-                Clear((x0, x1), (y0, y1)) => {
-                    for column in columns.iter_mut().take(x1).skip(x0) {
-                        column[y0..y1].fill(0);
-                    }
-                }
+        let c = name.as_bytes()[0];
+        let glyph_width = rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        let mut pixels = vec![0; glyph_width * TITLE_LINES];
+        for (row, y) in rows.iter().zip(1..TITLE_LINES) {
+            for (x, mark) in row.bytes().enumerate() {
+                let rank = RANKS.iter().position(|&rank| rank == mark);
+                let pixel = rank.and_then(|rank| colours[y].get(rank).copied());
+                pixels[y * glyph_width + x] = pixel.unwrap_or(0);
             }
         }
-        while columns
-            .last()
-            .is_some_and(|column| column.iter().all(|&p| p == 0))
-        {
-            columns.pop();
-        }
-        let glyph_width = columns.len();
-        let pixels = (0..TITLE_LINES)
-            .flat_map(|y| columns.iter().map(move |column| column[y]))
-            .collect();
         glyphs[index(c)] = Image::new(glyph_width as u32, TITLE_LINES as u32, pixels);
         advances[index(c)] = (glyph_width + TITLE_SPACING) as u8;
     }
@@ -1315,16 +848,6 @@ pub fn title_font(title: &Image, background: &Image, palette: &Palette) -> (Vec<
         advances[index(c)] = advances[capital];
     }
     (glyphs, advances)
-}
-
-/// `part` / `whole` rounded to the nearest whole, halves to the even one.
-fn halves_to_even(part: isize, whole: isize) -> isize {
-    let (quotient, rest) = (part.div_euclid(whole), part.rem_euclid(whole));
-    match (2 * rest).cmp(&whole) {
-        std::cmp::Ordering::Less => quotient,
-        std::cmp::Ordering::Equal => quotient + (quotient & 1),
-        std::cmp::Ordering::Greater => quotient + 1,
-    }
 }
 
 #[cfg(test)]
